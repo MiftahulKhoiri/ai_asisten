@@ -51,6 +51,13 @@
     }, 1000);
     gulir(true);
   }
+  function pastikanBerpikir() {
+    if (!indEl) mulaiBerpikir();
+  }
+  function taruhDiBawah() {
+    const b = $('pesan');
+    if (indEl && b.lastElementChild !== indEl) { b.appendChild(indEl); gulir(); }
+  }
   function hentiBerpikir() {
     clearInterval(indTimer); indTimer = null;
     if (indEl) { indEl.remove(); indEl = null; }
@@ -279,28 +286,33 @@
     try { const c = await apij('/api/chat/' + chatId); $('judulChat').textContent = c.judul || 'Obrolan'; } catch (e) { /* abaikan */ }
   }
   function tangani(ev, st) {
-    hentiBerpikir();
     switch (ev.t) {
       case 'token':
+        hentiBerpikir();  // animasi berhenti tepat saat jawaban mulai muncul
         if (!st.bubble) { st.bubble = tambahAsisten(''); st.raw = ''; }
         st.raw += ev.d; st.bubble.innerHTML = md(st.raw); gulir(); break;
-      case 'pikir':
+      case 'pikir':     // model sedang bernalar: animasi tetap jalan
         if (!st.pikir) {
           const d = document.createElement('details'); d.className = 'pikir';
           const s = document.createElement('summary'); s.textContent = 'Berpikir…';
           const pre = document.createElement('pre'); d.append(s, pre); $('pesan').appendChild(d); st.pikir = pre;
         }
         st.pikirRaw += ev.d; st.pikir.textContent = st.pikirRaw; break;
-      case 'tool': st.bubble = null; st.pikir = null; st.pikirRaw = ''; kartuTool(ev.id, ev.ringkas); break;
-      case 'konfirmasi': kartuKonfirmasi(ev); break;
-      case 'hasil': isiHasil(ev.id, ev.d); mulaiBerpikir(); break;
-      case 'ringkas': tambahInfo('🗜 ' + ev.d); st.bubble = null; mulaiBerpikir(); break;
+      case 'tool':      // tool sedang jalan: tunggu hasilnya
+        st.bubble = null; st.pikir = null; st.pikirRaw = '';
+        kartuTool(ev.id, ev.ringkas); pastikanBerpikir(); break;
+      case 'konfirmasi': // menunggu keputusan pengguna, bukan menunggu model
+        hentiBerpikir(); kartuKonfirmasi(ev); break;
+      case 'hasil':     // hasil tool masuk, model lanjut menyusun jawaban
+        isiHasil(ev.id, ev.d); pastikanBerpikir(); break;
+      case 'ringkas': tambahInfo('🗜 ' + ev.d); st.bubble = null; pastikanBerpikir(); break;
       case 'info': tambahInfo(ev.tok + ' token · ' + ev.tok_s + ' tok/s'); st.bubble = null; break;
-      case 'error': tambahInfo('⚠ ' + ev.d, true); break;
-      case 'batal': tambahInfo('Dibatalkan.'); break;
-      case 'batas': tambahInfo('Batas langkah tercapai. Kirim pesan lanjutan jika perlu.'); break;
+      case 'error': hentiBerpikir(); tambahInfo('⚠ ' + ev.d, true); break;
+      case 'batal': hentiBerpikir(); tambahInfo('Dibatalkan.'); break;
+      case 'batas': hentiBerpikir(); tambahInfo('Batas langkah tercapai. Kirim pesan lanjutan jika perlu.'); break;
       default: break;
     }
+    taruhDiBawah();     // indikator selalu di bawah elemen yang baru muncul
   }
 
   /* ---------- event ---------- */
