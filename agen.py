@@ -25,6 +25,18 @@ LOG_AKSI = Path(__file__).resolve().parent / "aksi.log"
 MAX_OUTPUT = tolls.MAX_OUTPUT  # karakter maksimum hasil tool yang dikirim balik ke model
 MAX_STEPS = 8        # maksimum putaran tool per pesan
 
+# Peringkasan riwayat: pesan lama diganti ringkasan pendek (riwayat asli tetap utuh).
+RINGKAS_AMBANG = 0.7        # mulai meringkas saat riwayat > 70% MAX_HISTORY
+RINGKAS_SISA_GILIRAN = 2    # giliran terakhir yang selalu dikirim utuh
+RINGKAS_MAKS_KARAKTER = 1200
+PROMPT_RINGKAS = (
+    "Kamu meringkas percakapan antara pengguna dan asisten AI untuk dijadikan ingatan. "
+    "Tulis ringkasan padat dalam bahasa Indonesia, poin-poin singkat, maksimal 150 kata. "
+    "Pertahankan: tujuan pengguna, path file dan nama penting, angka, keputusan, hasil "
+    "tool yang penting, dan hal yang belum selesai. Buang basa-basi. "
+    "Tulis hanya ringkasannya."
+)
+
 SYSTEM_PROMPT = (
     "Kamu adalah asisten AI yang berjalan di Raspberry Pi 5 milik pengguna dan "
     "dapat mengakses sistemnya lewat tools. Jawabanmu tampil di chat web di HP.\n"
@@ -81,10 +93,14 @@ def catat(nama, args, hasil):
 ringkas = tolls.ringkas
 
 
-def buat_system():
-    return SYSTEM_PROMPT.format(
+def buat_system(ringkasan=""):
+    teks = SYSTEM_PROMPT.format(
         host=socket.gethostname(), user=os.environ.get("USER", "?"),
         home=str(Path.home()), waktu=datetime.now().strftime("%Y-%m-%d %H:%M"))
+    if ringkasan:
+        teks += ("\nRingkasan percakapan sebelumnya (pesan lama sudah diringkas, "
+                 "gunakan sebagai ingatan):\n" + ringkasan)
+    return teks
 
 
 eksekusi = tolls.eksekusi  # eksekusi(nama, args, ctx) -> teks hasil
@@ -151,19 +167,99 @@ def siapkan(riwayat):
     return pesan
 
 
-def giliran(riwayat, model, ctx):
+def _transkrip(pesan):
+    """Ubah pesan menjadi teks polos untuk diringkas (bagian terbaru dipertahankan)."""
+    baris = []
+    for m in pesan:
+        peran = m.get("role")
+        isi = m.get("content") or ""
+        if peran == "user":
+            baris.append("Pengguna: " + isi[:600])
+        elif peran == "assistant":
+            teks = isi[:600]
+            for c in m.get("tool_calls") or []:
+                fn = c.get("function") or {}
+                teks += " [tool %s %s]" % (fn.get("name"), (fn.get("arguments") or "")[:150])
+            baris.append("Asisten: " + teks.strip())
+        elif peran == "tool":
+            baris.append("Hasil tool: " + isi[:250])
+    return "\n".join(baris)[-7000:]
+
+
+def buat_ringkasan(lama, pesan, model):
+    """Minta model meringkas (ringkasan lama + pesan baru). Kosong jika gagal."""
+    isi = ""
+    if lama:
+        isi += "Ringkasan sebelumnya:\n" + lama + "\n\n"
+    isi += ("Percakapan baru:\n" + _transkrip(pesan)
+            + "\n\nTulis ringkasan gabungan yang diperbarui.")
+    body = {"model": model, "temperature": 0.2, "max_tokens": 350, "stream": False,
+            "messages": [{"role": "system", "content": PROMPT_RINGKAS},
+                         {"role": "user", "content": isi}],
+            "chat_template_kwargs": {"enable_thinking": False}}
+    try:
+        d = llama("/v1/chat/completions", body, timeout=300)
+        teks = (d["choices"][0]["message"].get("content") or "").strip()
+    except Exception:  # noqa: BLE001 - gagal meringkas bukan error fatal
+        return ""
+    return teks[:RINGKAS_MAKS_KARAKTER]
+
+
+def ringkas_bila_perlu(riwayat, model, memori, ctx):
+    """Generator event. Meringkas pesan lama jika riwayat mendekati batas konteks.
+
+    memori: dict obrolan; hasilnya disimpan di memori["ringkasan"] =
+    {"teks": ..., "sampai": N} (N = jumlah pesan awal yang sudah diwakili ringkasan).
+    Riwayat asli (riwayat) tidak diubah.
+    """
+    r = memori.get("ringkasan") or {}
+    mulai = r.get("sampai", 0)
+    if mulai > len(riwayat):  # riwayat berubah di luar dugaan: mulai ulang
+        memori.pop("ringkasan", None)
+        r, mulai = {}, 0
+    if ukuran(riwayat[mulai:]) + len(r.get("teks", "")) <= RINGKAS_AMBANG * MAX_HISTORY:
+        return
+    idx = [i for i in range(mulai, len(riwayat)) if riwayat[i]["role"] == "user"]
+    if len(idx) <= RINGKAS_SISA_GILIRAN:
+        return  # tidak ada giliran lama yang bisa diringkas
+    potong = idx[-RINGKAS_SISA_GILIRAN]
+    gagal = memori.get("ringkas_gagal")
+    if gagal is not None and len(riwayat) - gagal < 6:
+        return  # baru saja gagal; jangan coba terus-menerus
+    if ctx.batal.is_set():
+        return
+    yield {"t": "ringkas", "d": "Meringkas percakapan lama ..."}
+    teks = buat_ringkasan(r.get("teks", ""), riwayat[mulai:potong], model)
+    if not teks:
+        memori["ringkas_gagal"] = len(riwayat)
+        yield {"t": "ringkas", "d": "Gagal meringkas; riwayat lama dipangkas biasa."}
+        return
+    memori["ringkasan"] = {"teks": teks, "sampai": potong}
+    memori.pop("ringkas_gagal", None)
+    yield {"t": "ringkas",
+           "d": f"Riwayat diringkas: {potong - mulai} pesan lama jadi {len(teks)} karakter."}
+
+
+def giliran(riwayat, model, ctx, memori=None):
     """Generator event untuk satu pesan pengguna.
 
     riwayat: daftar pesan (tanpa system), diubah di tempat.
     ctx: .auto, .batal (threading.Event), .konfirmasi(jenis, ringkas, detail)
-    Event: pikir, token, info, tool, hasil, error, batal, batas, selesai.
+    memori: dict obrolan (opsional); jika diberikan, pesan lama diringkas otomatis
+            dan ringkasannya disimpan di memori["ringkasan"].
+    Event: ringkas, pikir, token, info, tool, hasil, error, batal, batas, selesai.
     """
+    if memori is not None:
+        yield from ringkas_bila_perlu(riwayat, model, memori, ctx)
     sudah = set()  # tool+argumen yang sudah dijalankan (anti-loop)
     for langkah in range(MAX_STEPS):
         if ctx.batal.is_set():
             yield {"t": "batal"}
             return
-        kirim = [{"role": "system", "content": buat_system()}] + siapkan(riwayat)
+        r = (memori or {}).get("ringkasan") or {}
+        mulai = min(r.get("sampai", 0), len(riwayat))
+        kirim = ([{"role": "system", "content": buat_system(r.get("teks", ""))}]
+                 + siapkan(riwayat[mulai:]))
         teks, calls, timings = "", {}, None
         try:
             for ch in stream_chat(model, kirim, ctx.batal):
