@@ -7,6 +7,7 @@ Dipakai oleh asisten.py (server web).
 """
 import json
 import os
+import re
 import socket
 import sys
 import urllib.error
@@ -42,8 +43,10 @@ SYSTEM_PROMPT = (
     "dapat mengakses sistemnya lewat tools. Jawabanmu tampil di chat web di HP.\n"
     "Aturan:\n"
     "1. Jawab dalam bahasa Indonesia, singkat dan jelas.\n"
-    "2. Kalau butuh informasi atau tindakan di sistem, panggil tool. Jangan "
-    "menebak atau mengarang hasil.\n"
+    "2. Panggil tool HANYA kalau pengguna meminta informasi atau tindakan di "
+    "sistem (file, folder, perintah, suhu, RAM, git, dll). Untuk sapaan, "
+    "ucapan terima kasih, pertanyaan umum, penjelasan, atau obrolan biasa, "
+    "JAWAB LANGSUNG tanpa tool. Jangan menebak atau mengarang hasil.\n"
     "3. Kerjakan langkah kecil satu per satu, lalu periksa hasilnya.\n"
     "4. Untuk tindakan berisiko (hapus, ubah konfigurasi, sudo) jelaskan dulu "
     "singkat.\n"
@@ -62,6 +65,35 @@ SYSTEM_PROMPT = (
     "`ps aux --sort=-%cpu | head`; throttling = `vcgencmd get_throttled`.\n"
     "Info: host={host}, user={user}, home={home}, waktu={waktu}."
 )
+
+# Gerbang tool: model kecil sering asal memanggil tool bahkan untuk "halo".
+# Di langkah pertama tiap pesan, tool hanya dikirim ke model kalau pesan pengguna
+# tampak butuh akses sistem. Matikan dengan ASISTEN_GERBANG=0.
+GERBANG = os.environ.get("ASISTEN_GERBANG", "1") != "0"
+KATA_TOOL = re.compile(
+    r"\b(file|berkas|folder|direktori|path|baca|buka|tulis|buat|edit|ubah|ganti|"
+    r"hapus|salin|pindah|cari|temukan|jalankan|eksekusi|perintah|cek|periksa|"
+    r"lihat|tampilkan|daftar|suhu|panas|cpu|memori|disk|proses|jaringan|wifi|"
+    r"layanan|service|systemctl|commit|push|pull|repo|unduh|download|http|"
+    r"arsip|ekstrak|hitung|instal|install|restart|reboot|sudo|script|skrip|"
+    r"kode|baterai|kipas|uptime|sistem|raspberry|"
+    r"(?:ram|ip|pi|git|log|port|zip|url|ups|pip|apt|kill|matikan)\b)"
+    r"|\.(?:py|sh|txt|md|json|log|conf)\b|[/~$]", re.I)
+
+
+def perlu_tool(teks, riwayat):
+    """True jika pesan pengguna tampaknya butuh tool (atau lanjutan dari giliran bertool)."""
+    if not GERBANG:
+        return True
+    if KATA_TOOL.search(teks or ""):
+        return True
+    # Pesan pendek ("lanjut", "ya", "coba lagi") setelah giliran yang memakai tool
+    if len((teks or "").split()) <= 4:
+        for m in riwayat[-8:-1]:
+            if m.get("role") == "tool":
+                return True
+    return False
+
 
 TOOLS = tolls.skema()  # dibuat otomatis dari dekorator @tool di src/tolls.py
 
@@ -119,11 +151,14 @@ def llama(path, data=None, timeout=300):
         return json.loads(r.read().decode())
 
 
-def stream_chat(model, pesan, batal):
+def stream_chat(model, pesan, batal, pakai_tools=True):
     """Generator potongan JSON dari llama-server (stream SSE)."""
-    body = {"model": model, "messages": pesan, "tools": TOOLS,
-            "tool_choice": "auto", "temperature": 0.3, "max_tokens": 700,
-            "stream": True, "chat_template_kwargs": {"enable_thinking": False}}
+    body = {"model": model, "messages": pesan, "temperature": 0.3,
+            "max_tokens": 700, "stream": True,
+            "chat_template_kwargs": {"enable_thinking": False}}
+    if pakai_tools:
+        body["tools"] = TOOLS
+        body["tool_choice"] = "auto"
     req = urllib.request.Request(
         LLAMA_URL + "/v1/chat/completions", data=json.dumps(body).encode(),
         headers={"Content-Type": "application/json"})
@@ -252,6 +287,9 @@ def giliran(riwayat, model, ctx, memori=None):
     if memori is not None:
         yield from ringkas_bila_perlu(riwayat, model, memori, ctx)
     sudah = set()  # tool+argumen yang sudah dijalankan (anti-loop)
+    teks_user = next((m.get("content") or "" for m in reversed(riwayat)
+                      if m.get("role") == "user"), "")
+    tool_aktif = perlu_tool(teks_user, riwayat)
     for langkah in range(MAX_STEPS):
         if ctx.batal.is_set():
             yield {"t": "batal"}
@@ -262,7 +300,7 @@ def giliran(riwayat, model, ctx, memori=None):
                  + siapkan(riwayat[mulai:]))
         teks, calls, timings = "", {}, None
         try:
-            for ch in stream_chat(model, kirim, ctx.batal):
+            for ch in stream_chat(model, kirim, ctx.batal, tool_aktif):
                 if ch.get("timings"):
                     timings = ch["timings"]
                 pil = (ch.get("choices") or [{}])[0]
