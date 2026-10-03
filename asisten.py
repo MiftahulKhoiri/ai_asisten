@@ -307,6 +307,15 @@ def status_json():
 # --------------------------------------------------------------------------
 # HTTP
 # --------------------------------------------------------------------------
+# File statis tampilan web (hanya yang ada di daftar ini yang boleh diakses)
+STATIS = {
+    "/": ("index.html", "text/html; charset=utf-8"),
+    "/index.html": ("index.html", "text/html; charset=utf-8"),
+    "/index.css": ("index.css", "text/css; charset=utf-8"),
+    "/index.js": ("index.js", "application/javascript; charset=utf-8"),
+}
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -337,10 +346,11 @@ class H(BaseHTTPRequestHandler):
     def _tangani(self, metode):
         path = urlparse(self.path).path
         try:
-            if metode == "GET" and path in ("/", "/index.html"):
-                data = (WEB / "index.html").read_bytes()
+            if metode == "GET" and path in STATIS:
+                nama, tipe = STATIS[path]
+                data = (WEB / nama).read_bytes()
                 self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Type", tipe)
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
