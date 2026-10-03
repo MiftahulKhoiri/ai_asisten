@@ -464,7 +464,7 @@ class H(BaseHTTPRequestHandler):
 
         def kerja():
             try:
-                for ev in agen.giliran(chat["pesan"], model, ctx):
+                for ev in agen.giliran(chat["pesan"], model, ctx, chat):
                     q.put(ev)
             except Exception as e:  # noqa: BLE001
                 q.put({"t": "error", "d": f"{type(e).__name__}: {e}"})
@@ -514,6 +514,8 @@ def catat_event(ev):
         log("KONF", f"menunggu izin: {ev['ringkas'][:100]}")
     elif t == "info":
         log("CHAT", f"jawaban: {ev['tok']} token, {ev['tok_s']} tok/s")
+    elif t == "ringkas":
+        log("CHAT", ev["d"])
     elif t == "error":
         log("ERR", ev["d"])
     elif t == "batal":
