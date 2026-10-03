@@ -24,7 +24,7 @@ LOG_AKSI = Path(__file__).resolve().parent / "aksi.log"
 MAX_OUTPUT = 2000    # karakter maksimum hasil tool yang dikirim balik ke model
 MAX_HISTORY = 12000  # karakter maksimum riwayat per permintaan (konteks 8192 token)
 MAX_STEPS = 8        # maksimum putaran tool per pesan
-CMD_TIMEOUT = 180     # detik, batas waktu satu perintah shell
+CMD_TIMEOUT = 60     # detik, batas waktu satu perintah shell
 
 # Perintah yang SELALU diblokir, bahkan dalam mode AUTO.
 BAHAYA = [
