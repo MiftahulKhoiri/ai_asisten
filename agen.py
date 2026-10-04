@@ -70,6 +70,9 @@ SYSTEM_PROMPT = (
 # Di langkah pertama tiap pesan, tool hanya dikirim ke model kalau pesan pengguna
 # tampak butuh akses sistem. Matikan dengan ASISTEN_GERBANG=0.
 GERBANG = os.environ.get("ASISTEN_GERBANG", "1") != "0"
+
+# Ukuran konteks model (samakan dengan -c di llama-server), untuk indikator pemakaian.
+CTX_MAKS = int(os.environ.get("ASISTEN_CTX", "8192"))
 KATA_TOOL = re.compile(
     r"\b(file|berkas|folder|direktori|path|baca|buka|tulis|buat|edit|ubah|ganti|"
     r"hapus|salin|pindah|cari|temukan|jalankan|eksekusi|perintah|cek|periksa|"
@@ -332,8 +335,10 @@ def giliran(riwayat, model, ctx, memori=None):
             return
 
         if timings:
+            gen = timings.get("predicted_n") or 0
+            pakai = (timings.get("prompt_n") or 0) + (timings.get("cache_n") or 0) + gen
             yield {"t": "info", "tok_s": round(timings.get("predicted_per_second") or 0, 1),
-                   "tok": timings.get("predicted_n") or 0}
+                   "tok": gen, "pakai": pakai, "maks": CTX_MAKS}
 
         daftar = []
         for i in sorted(calls):
