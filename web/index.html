@@ -29,6 +29,15 @@
     <div class="tengah">
       <h2>Pilih model</h2>
       <p class="redup">Model baru dimuat setelah kamu memilih, dan otomatis dibongkar saat sesi selesai.</p>
+      <div id="skillBox">
+        <div class="label">Skill (kemampuan) — pilih sebelum memuat model</div>
+        <div class="seg" id="seg">
+          <button type="button" data-skill="tanpa"><b>Tanpa skill</b><small>Chat saja</small></button>
+          <button type="button" data-skill="dasar"><b>Dasar</b><small id="nDasar">4 skill</small></button>
+          <button type="button" data-skill="semua"><b>Semua</b><small id="nSemua">20 skill</small></button>
+        </div>
+        <p id="skillKet" class="redup kecil"></p>
+      </div>
       <div id="modelPesan"></div>
       <div id="daftarModel"></div>
     </div>

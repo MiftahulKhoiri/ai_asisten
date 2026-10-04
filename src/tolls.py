@@ -17,7 +17,8 @@ Kebijakan izin (ctx datang dari asisten.py):
   tool berisiko    -> _izin(..., selalu=True): tanya SELALU, juga di mode AUTO
 
 Variabel lingkungan (opsional):
-  ASISTEN_TOOLS=dasar        hanya 4 tool inti (hemat konteks model)
+  ASISTEN_TOOLS=dasar        mode skill bawaan: hanya 4 tool inti (hemat konteks model)
+                             (di web, mode skill dipilih saat memilih model)
   ASISTEN_AKAR_TULIS=/a:/b   folder tambahan yang boleh ditulis/dihapus
 Hanya memakai library standar Python.
 """
@@ -96,10 +97,26 @@ def _mode_dasar():
     return os.environ.get("ASISTEN_TOOLS", "semua").strip().lower() == "dasar"
 
 
-def skema():
+MODE_SKILL = ("tanpa", "dasar", "semua")   # tanpa = chat saja, tanpa tool
+
+
+def mode_awal():
+    """Mode skill bawaan (dari ASISTEN_TOOLS) bila web belum memilih."""
+    return "dasar" if _mode_dasar() else "semua"
+
+
+def mode_ctx(ctx=None):
+    """Mode skill aktif untuk ctx (atribut ctx.skill diisi asisten.py)."""
+    m = getattr(ctx, "skill", None)
+    return m if m in MODE_SKILL else mode_awal()
+
+
+def skema(mode=None):
     """Daftar tool (format function calling) yang dikirim ke model."""
-    dasar = _mode_dasar()
-    return [t["skema"] for t in REGISTRY.values() if t["dasar"] or not dasar]
+    mode = mode if mode in MODE_SKILL else mode_awal()
+    if mode == "tanpa":
+        return []
+    return [t["skema"] for t in REGISTRY.values() if t["dasar"] or mode == "semua"]
 
 
 def _koersi(tipe, nilai):
@@ -114,7 +131,8 @@ def _koersi(tipe, nilai):
 
 def eksekusi(nama, args, ctx):
     t = REGISTRY.get(nama)
-    if not t or (_mode_dasar() and not t["dasar"]):
+    mode = mode_ctx(ctx)
+    if not t or mode == "tanpa" or (mode == "dasar" and not t["dasar"]):
         return f"ERROR: tool tidak dikenal: {nama}"
     kw = {}
     try:

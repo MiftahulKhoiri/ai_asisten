@@ -43,7 +43,8 @@ IDLE_MENIT = 20
 WARNA = sys.stdout.isatty()
 
 S = {"model": None, "target": None, "status": "kosong", "pesan": "",
-     "kita_muat": False, "auto": False, "aktivitas": time.time()}
+     "kita_muat": False, "auto": False, "aktivitas": time.time(),
+     "skill": None}   # tanpa / dasar / semua (dipilih di web saat memilih model)
 S_LOCK = threading.RLock()
 GEN_LOCK = threading.Lock()   # hanya satu proses generasi pada satu waktu
 AKTIF = {"ctx": None}
@@ -294,7 +295,9 @@ class Ctx:
 def status_json():
     with S_LOCK:
         d = {"model": S["model"], "status": S["status"], "pesan": S["pesan"],
-             "auto": S["auto"], "sibuk": GEN_LOCK.locked()}
+             "auto": S["auto"], "sibuk": GEN_LOCK.locked(), "skill": S["skill"],
+             "skill_bawaan": agen.tolls.mode_awal(),
+             "skills": {m: len(agen.tools_untuk(m)) for m in agen.tolls.MODE_SKILL}}
     if d["status"] != "siap":
         try:
             d["models"] = daftar_model()
@@ -434,6 +437,9 @@ class H(BaseHTTPRequestHandler):
 
     def pilih(self, b):
         nama = b.get("model")
+        skill = b.get("skill")
+        if skill not in agen.tolls.MODE_SKILL:
+            skill = agen.tolls.mode_awal()
         with S_LOCK:
             if S["status"] == "memuat":
                 return self._json(409, {"error": "Model sedang dimuat"})
@@ -441,6 +447,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(409, {"error": "Masih ada proses berjalan"})
             S["status"] = "memuat"
             S["pesan"] = f"Menyiapkan {nama} ..."
+            S["skill"] = skill
+        log("INFO", f"Skill dipilih: {skill} ({len(agen.tools_untuk(skill))} tool)")
         sentuh()
         threading.Thread(target=muat_model, args=(nama,), daemon=True).start()
         self._json(200, {"ok": True})
@@ -448,7 +456,7 @@ class H(BaseHTTPRequestHandler):
     def kirim(self, b):
         cid, teks = b.get("id"), (b.get("teks") or "").strip()
         with S_LOCK:
-            siap, model = S["status"] == "siap", S["model"]
+            siap, model, skill = S["status"] == "siap", S["model"], S["skill"]
         if not siap:
             return self._json(409, {"error": "Model belum dimuat. Pilih model dulu."})
         if not teks:
@@ -470,6 +478,7 @@ class H(BaseHTTPRequestHandler):
 
         q = queue.Queue()
         ctx = Ctx(q, threading.Event())
+        ctx.skill = skill
         AKTIF["ctx"] = ctx
 
         def kerja():

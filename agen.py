@@ -66,6 +66,19 @@ SYSTEM_PROMPT = (
     "Info: host={host}, user={user}, home={home}, waktu={waktu}."
 )
 
+# Prompt untuk mode "tanpa skill": murni chat, tanpa akses sistem.
+SYSTEM_CHAT = (
+    "Kamu adalah asisten AI yang ramah. Jawabanmu tampil di chat web di HP.\n"
+    "Aturan:\n"
+    "1. Jawab dalam bahasa Indonesia, singkat dan jelas.\n"
+    "2. Kamu hanya mengobrol. Kamu TIDAK bisa membuka file, menjalankan perintah, "
+    "atau mengakses sistem. Jangan berpura-pura bisa; kalau diminta, katakan "
+    "terus terang bahwa mode ini tanpa skill.\n"
+    "3. Jangan mengarang fakta. Kalau tidak tahu, bilang tidak tahu.\n"
+    "4. Boleh memakai `kode` dan blok ``` untuk kode.\n"
+    "Info: waktu={waktu}."
+)
+
 # Gerbang tool: model kecil sering asal memanggil tool bahkan untuk "halo".
 # Di langkah pertama tiap pesan, tool hanya dikirim ke model kalau pesan pengguna
 # tampak butuh akses sistem. Matikan dengan ASISTEN_GERBANG=0.
@@ -98,12 +111,20 @@ def perlu_tool(teks, riwayat):
     return False
 
 
-TOOLS = tolls.skema()  # dibuat otomatis dari dekorator @tool di src/tolls.py
+def tools_untuk(mode):
+    """Tool yang aktif untuk mode skill (tanpa/dasar/semua), dari dekorator @tool."""
+    return tolls.skema(mode)
 
-# Konteks 8192 token ~ 24000 karakter. Riwayat dibatasi menyesuaikan ukuran skema tool
-# (makin banyak tool aktif, makin sedikit ruang riwayat), disisakan ruang untuk system
-# prompt, jawaban (max_tokens 700), dan margin.
-MAX_HISTORY = max(5000, min(12000, 24000 - 1800 - len(json.dumps(TOOLS)) - 2100 - 3000))
+
+def mode_dari(ctx):
+    return tolls.mode_ctx(ctx)
+
+
+def max_history(tools):
+    """Konteks 8192 token ~ 24000 karakter. Riwayat dibatasi menyesuaikan ukuran
+    skema tool (makin banyak tool aktif, makin sedikit ruang riwayat), disisakan
+    ruang untuk system prompt, jawaban (max_tokens 700), dan margin."""
+    return max(5000, min(12000, 24000 - 1800 - len(json.dumps(tools)) - 2100 - 3000))
 
 
 # --------------------------------------------------------------------------
@@ -128,10 +149,18 @@ def catat(nama, args, hasil):
 ringkas = tolls.ringkas
 
 
-def buat_system(ringkasan=""):
-    teks = SYSTEM_PROMPT.format(
-        host=socket.gethostname(), user=os.environ.get("USER", "?"),
-        home=str(Path.home()), waktu=datetime.now().strftime("%Y-%m-%d %H:%M"))
+def buat_system(ringkasan="", mode="semua"):
+    waktu = datetime.now().strftime("%Y-%m-%d %H:%M")
+    if mode == "tanpa":
+        teks = SYSTEM_CHAT.format(waktu=waktu)
+    else:
+        teks = SYSTEM_PROMPT.format(
+            host=socket.gethostname(), user=os.environ.get("USER", "?"),
+            home=str(Path.home()), waktu=waktu)
+        if mode == "dasar":  # rule 8 menyebut tool yang tidak aktif di mode dasar
+            teks = "\n".join(l for l in teks.split("\n") if not l.startswith("8. "))
+            nama = ", ".join(t["function"]["name"] for t in tools_untuk("dasar"))
+            teks += "\nTool yang tersedia saat ini hanya: " + nama + "."
     if ringkasan:
         teks += ("\nRingkasan percakapan sebelumnya (pesan lama sudah diringkas, "
                  "gunakan sebagai ingatan):\n" + ringkasan)
@@ -154,13 +183,13 @@ def llama(path, data=None, timeout=300):
         return json.loads(r.read().decode())
 
 
-def stream_chat(model, pesan, batal, pakai_tools=True):
+def stream_chat(model, pesan, batal, tools=None):
     """Generator potongan JSON dari llama-server (stream SSE)."""
     body = {"model": model, "messages": pesan, "temperature": 0.3,
             "max_tokens": 700, "stream": True,
             "chat_template_kwargs": {"enable_thinking": False}}
-    if pakai_tools:
-        body["tools"] = TOOLS
+    if tools:
+        body["tools"] = tools
         body["tool_choice"] = "auto"
     req = urllib.request.Request(
         LLAMA_URL + "/v1/chat/completions", data=json.dumps(body).encode(),
@@ -188,19 +217,26 @@ def ukuran(pesan):
     return sum(len(json.dumps(m, ensure_ascii=False)) for m in pesan)
 
 
-def siapkan(riwayat):
-    """Salinan riwayat yang dipangkas supaya muat di konteks model."""
+def siapkan(riwayat, batas, tanpa_tool=False):
+    """Salinan riwayat yang dipangkas supaya muat di konteks model.
+    tanpa_tool=True: buang jejak tool dari riwayat (mode chat saja)."""
     pesan = json.loads(json.dumps(riwayat))
-    while ukuran(pesan) > MAX_HISTORY:
+    if tanpa_tool:
+        pesan = [m for m in pesan if m.get("role") != "tool"]
+        for m in pesan:
+            m.pop("tool_calls", None)
+        pesan = [m for m in pesan
+                 if not (m.get("role") == "assistant" and not (m.get("content") or "").strip())]
+    while ukuran(pesan) > batas:
         idx = [i for i, m in enumerate(pesan) if m["role"] == "user"]
         if len(idx) < 2:
             break
         del pesan[idx[0]:idx[1]]
-    if ukuran(pesan) > MAX_HISTORY:
+    if ukuran(pesan) > batas:
         for m in pesan:
             if m["role"] == "tool" and len(m["content"]) > 300:
                 m["content"] = m["content"][:300] + "...[dipotong]"
-                if ukuran(pesan) <= MAX_HISTORY:
+                if ukuran(pesan) <= batas:
                     break
     return pesan
 
@@ -255,7 +291,8 @@ def ringkas_bila_perlu(riwayat, model, memori, ctx):
     if mulai > len(riwayat):  # riwayat berubah di luar dugaan: mulai ulang
         memori.pop("ringkasan", None)
         r, mulai = {}, 0
-    if ukuran(riwayat[mulai:]) + len(r.get("teks", "")) <= RINGKAS_AMBANG * MAX_HISTORY:
+    batas = max_history(tools_untuk(mode_dari(ctx)))
+    if ukuran(riwayat[mulai:]) + len(r.get("teks", "")) <= RINGKAS_AMBANG * batas:
         return
     idx = [i for i in range(mulai, len(riwayat)) if riwayat[i]["role"] == "user"]
     if len(idx) <= RINGKAS_SISA_GILIRAN:
@@ -292,18 +329,21 @@ def giliran(riwayat, model, ctx, memori=None):
     sudah = set()  # tool+argumen yang sudah dijalankan (anti-loop)
     teks_user = next((m.get("content") or "" for m in reversed(riwayat)
                       if m.get("role") == "user"), "")
-    tool_aktif = perlu_tool(teks_user, riwayat)
+    mode = mode_dari(ctx)
+    tools = tools_untuk(mode)
+    batas = max_history(tools)
+    tool_aktif = bool(tools) and perlu_tool(teks_user, riwayat)
     for langkah in range(MAX_STEPS):
         if ctx.batal.is_set():
             yield {"t": "batal"}
             return
         r = (memori or {}).get("ringkasan") or {}
         mulai = min(r.get("sampai", 0), len(riwayat))
-        kirim = ([{"role": "system", "content": buat_system(r.get("teks", ""))}]
-                 + siapkan(riwayat[mulai:]))
+        kirim = ([{"role": "system", "content": buat_system(r.get("teks", ""), mode)}]
+                 + siapkan(riwayat[mulai:], batas, not tools))
         teks, calls, timings = "", {}, None
         try:
-            for ch in stream_chat(model, kirim, ctx.batal, tool_aktif):
+            for ch in stream_chat(model, kirim, ctx.batal, tools if tool_aktif else None):
                 if ch.get("timings"):
                     timings = ch["timings"]
                 pil = (ch.get("choices") or [{}])[0]

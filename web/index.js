@@ -96,13 +96,33 @@
     return j;
   }
 
+  /* ---------- pilihan skill ---------- */
+  const NAMA_SKILL = {tanpa: 'tanpa skill', dasar: 'skill dasar', semua: 'semua skill'};
+  let skill = null, jmlSkill = {tanpa: 0, dasar: 4, semua: 20};
+  try { skill = localStorage.getItem('skill'); } catch (e) { /* abaikan */ }
+  if (!NAMA_SKILL[skill]) skill = null;
+  function ketSkill() {
+    if (skill === 'tanpa') return 'Murni chat. Model tidak diberi tool, cocok untuk menguji kualitas jawaban.';
+    if (skill === 'dasar') return jmlSkill.dasar + ' tool inti: jalankan perintah, baca file, tulis file, lihat folder. Hemat konteks.';
+    return 'Semua ' + jmlSkill.semua + ' tool (cari, edit, git, info sistem, dll). Butuh model yang pintar memilih tool.';
+  }
+  function setSkill(v, simpan) {
+    skill = v;
+    if (simpan) { try { localStorage.setItem('skill', v); } catch (e) { /* abaikan */ } }
+    for (const b of document.querySelectorAll('#seg button')) b.classList.toggle('on', b.dataset.skill === v);
+    $('skillKet').textContent = ketSkill();
+  }
+  for (const b of document.querySelectorAll('#seg button')) b.onclick = () => setSkill(b.dataset.skill, true);
+
   /* ---------- status & model ---------- */
   async function cekStatus() {
     try {
       const s = await apij('/api/status');
       $('swAuto').checked = !!s.auto;
       if (s.status === 'siap') {
-        $('subModel').textContent = s.model;
+        $('subModel').textContent = s.model + (s.skill ? ' · ' + NAMA_SKILL[s.skill] : '');
+        $('input').placeholder = s.skill === 'tanpa' ? 'Ketik pesan...' : 'Ketik perintah...';
+        $('swAuto').closest('label').hidden = (s.skill === 'tanpa');
         if (layar !== 'chat') await masukChat();
         setPoll(15000);
       } else {
@@ -123,6 +143,14 @@
     pesan.textContent = s.status === 'memuat' ? (s.pesan || 'Memuat model...') :
                         s.status === 'error' ? ('Gagal: ' + s.pesan) : (s.pesan || '');
     box.className = s.status === 'memuat' ? 'mati' : '';
+    $('seg').className = s.status === 'memuat' ? 'seg mati' : 'seg';
+    if (s.skills) {
+      jmlSkill = s.skills;
+      $('nDasar').textContent = s.skills.dasar + ' skill';
+      $('nSemua').textContent = s.skills.semua + ' skill';
+    }
+    if (!skill) skill = s.skill_bawaan || 'semua';
+    setSkill(skill, false);
     box.innerHTML = '';
     for (const m of (s.models || [])) {
       const b = document.createElement('button'); b.className = 'model';
@@ -135,10 +163,10 @@
     }
   }
   async function pilihModel(id) {
-    try { await apij('/api/model/pilih', {method: 'POST', body: {model: id}}); }
+    try { await apij('/api/model/pilih', {method: 'POST', body: {model: id, skill}}); }
     catch (e) { if (e.message !== '401') { $('modelPesan').className = 'err'; $('modelPesan').textContent = e.message; } return; }
     $('modelPesan').className = ''; $('modelPesan').textContent = 'Memuat ' + id + ' ...';
-    $('daftarModel').className = 'mati';
+    $('daftarModel').className = 'mati'; $('seg').className = 'seg mati';
     setPoll(1500); cekStatus();
   }
   async function selesai() {
