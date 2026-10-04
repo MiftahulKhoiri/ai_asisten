@@ -285,6 +285,15 @@
   async function bukaJudul() {
     try { const c = await apij('/api/chat/' + chatId); $('judulChat').textContent = c.judul || 'Obrolan'; } catch (e) { /* abaikan */ }
   }
+  function ribu(n) { return n >= 1000 ? (n / 1000).toFixed(1).replace('.0', '') + 'k' : String(n); }
+  function teksInfo(ev) {
+    let t = ev.tok + ' token · ' + ev.tok_s + ' tok/s';
+    if (ev.pakai && ev.maks) {
+      const pct = Math.min(100, Math.round(ev.pakai / ev.maks * 100));
+      t += ' · konteks ' + ribu(ev.pakai) + '/' + ribu(ev.maks) + ' (' + pct + '%)' + (pct >= 85 ? ' ⚠ hampir penuh' : '');
+    }
+    return t;
+  }
   function tangani(ev, st) {
     switch (ev.t) {
       case 'token':
@@ -306,7 +315,7 @@
       case 'hasil':     // hasil tool masuk, model lanjut menyusun jawaban
         isiHasil(ev.id, ev.d); pastikanBerpikir(); break;
       case 'ringkas': tambahInfo('🗜 ' + ev.d); st.bubble = null; pastikanBerpikir(); break;
-      case 'info': tambahInfo(ev.tok + ' token · ' + ev.tok_s + ' tok/s'); st.bubble = null; break;
+      case 'info': tambahInfo(teksInfo(ev), false); st.bubble = null; break;
       case 'error': hentiBerpikir(); tambahInfo('⚠ ' + ev.d, true); break;
       case 'batal': hentiBerpikir(); tambahInfo('Dibatalkan.'); break;
       case 'batas': hentiBerpikir(); tambahInfo('Batas langkah tercapai. Kirim pesan lanjutan jika perlu.'); break;
