@@ -33,7 +33,11 @@ dan **tidak** dibongkar.
 
 ## Fitur web
 
-- Riwayat obrolan tersimpan di `riwayat/` dan bisa dibuka lagi (tombol menu).
+- Riwayat obrolan tersimpan di `riwayat/` dan bisa dibuka lagi (tombol menu). Tiap obrolan
+  menampilkan jumlah pesan dan cuplikan jawaban terakhir; ada kolom **cari** dan tombol
+  **Hapus semua obrolan** (obrolan yang sedang dibuka tetap disimpan).
+- Kartu tool punya ikon dan lencana status (berjalan, selesai, gagal, ditolak).
+- Tombol **Salin** di setiap blok kode dan hasil tool.
 - Tombol **Stop** menghentikan jawaban yang sedang berjalan.
 - Kartu izin (Ya/Tolak) sebelum perintah shell atau penulisan file.
 - Mode **AUTO** (di menu): tanpa konfirmasi, kecuali `sudo` dan instal paket.
@@ -51,6 +55,10 @@ dan **tidak** dibongkar.
 | `info_sistem` | ringkas (suhu, CPU, RAM, disk), proses, port, jaringan, disk, layanan, log_layanan | - |
 | `git_baca` | status, log, diff, branch, remote | - |
 | `hitung` | kalkulator aman | - |
+| `waktu_sekarang` | tanggal, jam, zona waktu Pi | - |
+| `bandingkan_file` | selisih (diff) dua file teks | - |
+| `ukuran_folder` | total ukuran folder dan 10 isi terbesar | - |
+| `cek_sintaks` | periksa sintaks `.py`, `.json`, `.sh` tanpa menjalankannya | - |
 | `tulis_file` | tulis/timpa (cadangan .bak) atau tambah di akhir | tanya (kecuali AUTO) |
 | `edit_file` | ganti satu potongan teks yang unik | tanya (kecuali AUTO) |
 | `buat_folder`, `salin_pindah`, `arsip` | folder, salin/pindah, zip (daftar/buat/ekstrak) | tanya (kecuali AUTO) |
@@ -83,9 +91,22 @@ jalankan dengan `ASISTEN_TOOLS=dasar python3 asisten.py` untuk hanya 4 tool inti
 | `asisten.py` | server web, siklus model, log terminal |
 | `agen.py` | klien llama-server, riwayat, loop agen |
 | `src/tolls.py` | semua tool + pengaman (tambah tool baru di sini) |
-| `web/index.html` | tampilan chat |
+| `web/index.html`, `index.css`, `index.js` | tampilan chat |
+| `tests/` | pengujian otomatis (`unittest`) |
 | `cli_lama.py` | versi CLI lama (tanpa web), masih bisa dipakai |
 | `riwayat/`, `.token`, `aksi.log` | data (dibuat otomatis) |
+
+## Pengujian
+
+```bash
+cd ~/ai_asisten
+python3 -m unittest discover -s tests -v
+```
+
+Mencakup tool dan pengaman (`tests/test_tolls.py`), server web dan riwayat
+(`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
+serta pemeriksaan tampilan web (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang).
+Tidak butuh model termuat.
 
 ## Batasan
 

@@ -254,6 +254,31 @@ def baru_chat(model):
     return chat
 
 
+def cuplikan_chat(chat, maks=80):
+    """Ringkasan satu baris: jawaban asisten terakhir (atau pesan terakhir)."""
+    for peran in ("assistant", "user"):
+        for m in reversed(chat.get("pesan", [])):
+            teks = m.get("content") if m.get("role") == peran else None
+            if isinstance(teks, str) and teks.strip():
+                teks = " ".join(teks.split())
+                return teks if len(teks) <= maks else teks[:maks - 1] + "\u2026"
+    return ""
+
+
+def hapus_semua_chat(kecuali=None):
+    """Hapus semua file riwayat (kecuali satu id). Kembalian: jumlah yang dihapus."""
+    n = 0
+    for f in RIWAYAT.glob("*.json"):
+        if f.stem == kecuali:
+            continue
+        try:
+            f.unlink()
+            n += 1
+        except OSError:
+            pass
+    return n
+
+
 def daftar_chat():
     file = sorted(RIWAYAT.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     hasil = []
@@ -261,7 +286,9 @@ def daftar_chat():
         try:
             c = json.loads(p.read_text(encoding="utf-8"))
             hasil.append({"id": c["id"], "judul": c.get("judul") or "Obrolan",
-                          "diubah": c.get("diubah", ""), "model": c.get("model")})
+                          "diubah": c.get("diubah", ""), "model": c.get("model"),
+                          "jumlah": sum(1 for m in c.get("pesan", []) if m.get("role") == "user"),
+                          "cuplikan": cuplikan_chat(c)})
         except (OSError, ValueError, KeyError):
             continue
     return hasil
@@ -395,6 +422,13 @@ class H(BaseHTTPRequestHandler):
                     model = S["model"]
                 sentuh()
                 return self._json(200, baru_chat(model))
+            if path == "/api/chat/hapus-semua":
+                kecuali = b.get("kecuali")
+                if kecuali is not None and not ID_RE.match(str(kecuali)):
+                    return self._json(400, {"error": "id tidak valid"})
+                n = hapus_semua_chat(kecuali)
+                log("INFO", f"{n} obrolan dihapus")
+                return self._json(200, {"ok": True, "dihapus": n})
             if path == "/api/model/pilih":
                 return self.pilih(b)
             if path == "/api/model/selesai":

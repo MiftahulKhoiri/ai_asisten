@@ -14,13 +14,26 @@
       if (i % 2 === 1) {
         const nl = p.indexOf('\n');
         const kode = (nl >= 0 && /^[\w+-]*$/.test(p.slice(0, nl).trim())) ? p.slice(nl + 1) : p;
-        return '<pre><code>' + esc(kode.replace(/\n$/, '')) + '</code></pre>';
+        return '<div class="kode"><button type="button" class="salin">Salin</button><pre><code>' +
+          esc(kode.replace(/\n$/, '')) + '</code></pre></div>';
       }
       return esc(p)
         .replace(/`([^`\n]+)`/g, '<code>$1</code>')
         .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\n/g, '<br>');
     }).join('');
+  }
+  async function salinTeks(teks) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(teks); return true; }
+    } catch (e) { /* lanjut ke cara cadangan */ }
+    try {   // http biasa (alamat IP lokal) tidak punya clipboard API
+      const t = document.createElement('textarea');
+      t.value = teks; t.setAttribute('readonly', '');
+      t.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
+      document.body.appendChild(t); t.select(); t.setSelectionRange(0, teks.length);
+      const ok = document.execCommand('copy'); t.remove(); return ok;
+    } catch (e) { return false; }
   }
   let toastT = null;
   function toast(m) {
@@ -98,7 +111,7 @@
 
   /* ---------- pilihan skill ---------- */
   const NAMA_SKILL = {tanpa: 'tanpa skill', dasar: 'skill dasar', semua: 'semua skill'};
-  let skill = null, jmlSkill = {tanpa: 0, dasar: 4, semua: 20};
+  let skill = null, jmlSkill = {tanpa: 0, dasar: 4, semua: 24};
   try { skill = localStorage.getItem('skill'); } catch (e) { /* abaikan */ }
   if (!NAMA_SKILL[skill]) skill = null;
   function ketSkill() {
@@ -178,11 +191,24 @@
   /* ---------- daftar chat ---------- */
   async function muatDaftarChat() {
     try { daftar = (await apij('/api/chat')).chat; } catch (e) { return; }
+    gambarDaftar();
+  }
+  function gambarDaftar() {
     const box = $('daftarChat'); box.innerHTML = '';
-    for (const c of daftar) {
+    const kata = ($('cari').value || '').trim().toLowerCase();
+    const tampilkan = daftar.filter(c => !kata || (c.judul + ' ' + (c.cuplikan || '')).toLowerCase().includes(kata));
+    if (!tampilkan.length) {
+      const k = document.createElement('p'); k.className = 'redup kosong';
+      k.textContent = kata ? 'Tidak ada obrolan yang cocok.' : 'Belum ada obrolan.'; box.appendChild(k);
+    }
+    for (const c of tampilkan) {
       const d = document.createElement('div'); d.className = 'chat' + (c.id === chatId ? ' aktif' : '');
       const t = document.createElement('button'); t.className = 't';
-      t.innerHTML = '<b>' + esc(c.judul) + '</b><small>' + esc((c.diubah || '').replace('T', ' ')) + '</small>';
+      const b = document.createElement('b'); b.textContent = c.judul;
+      const kecil = document.createElement('small');
+      kecil.textContent = (c.diubah || '').replace('T', ' ') + (c.jumlah ? ' · ' + c.jumlah + ' pesan' : '');
+      t.append(b, kecil);
+      if (c.cuplikan) { const cp = document.createElement('small'); cp.className = 'cup'; cp.textContent = c.cuplikan; t.appendChild(cp); }
       t.onclick = () => bukaChat(c.id);
       const x = document.createElement('button'); x.className = 'x'; x.textContent = '✕'; x.setAttribute('aria-label', 'Hapus');
       x.onclick = async () => {
@@ -192,6 +218,17 @@
       };
       d.append(t, x); box.appendChild(d);
     }
+  }
+  async function hapusSemua() {
+    if (sibuk) { toast('Tunggu proses selesai atau tekan Stop.'); return; }
+    const lain = daftar.filter(c => c.id !== chatId).length;
+    if (!lain) { toast('Tidak ada obrolan lain untuk dihapus.'); return; }
+    if (!confirm('Hapus ' + lain + ' obrolan lain? Obrolan yang sedang dibuka tetap disimpan.')) return;
+    try {
+      const r = await apij('/api/chat/hapus-semua', {method: 'POST', body: {kecuali: chatId}});
+      toast(r.dihapus + ' obrolan dihapus');
+    } catch (e) { toast(e.message); }
+    muatDaftarChat();
   }
   async function masukChat() {
     tampil('chat');
@@ -233,16 +270,37 @@
     const d = document.createElement('div'); d.className = 'info' + (err ? ' err' : ''); d.textContent = teks;
     $('pesan').appendChild(d); gulir();
   }
-  function kartuTool(id, ring, hasil) {
+  const IKON = {jalankan_perintah: '⌨', baca_file: '📄', tulis_file: '✏', edit_file: '✏',
+    daftar_folder: '📁', pohon_folder: '🌳', buat_folder: '📁', info_file: 'ℹ', cari_file: '🔍',
+    cari_teks: '🔎', baca_ekor: '📜', info_sistem: '🖥', git_baca: '⎇', git_tulis: '⎇',
+    salin_pindah: '📋', hapus: '🗑', ambil_url: '🌐', matikan_proses: '⛔', arsip: '🗜',
+    hitung: '🧮', waktu_sekarang: '🕒', bandingkan_file: '↔', ukuran_folder: '📊', cek_sintaks: '✔'};
+  function statusHasil(teks) {
+    if (teks === undefined) return ['menunggu', 'berjalan'];
+    if (/^(ERROR|GAGAL|SINTAKS SALAH|JSON TIDAK VALID)/.test(teks) || /^exit code [1-9]/.test(teks)) return ['gagal', 'gagal'];
+    if (/^(DITOLAK|DIBATALKAN)/.test(teks)) return ['ditolak', 'ditolak'];
+    return ['ok', 'selesai'];
+  }
+  function setLencana(el, teks) {
+    const [kelas, label] = statusHasil(teks);
+    el.className = 'lencana ' + kelas; el.textContent = label;
+  }
+  function kartuTool(id, ring, hasil, nama) {
     const d = document.createElement('details'); d.className = 'tool';
-    const s = document.createElement('summary'); s.textContent = '⚙ ' + ring + (hasil === undefined ? ' …' : '');
+    const s = document.createElement('summary');
+    const ik = document.createElement('span'); ik.className = 'ik'; ik.textContent = IKON[nama] || '⚙';
+    const rg = document.createElement('span'); rg.className = 'rg'; rg.textContent = ring;
+    const lc = document.createElement('span'); setLencana(lc, hasil);
+    s.append(ik, rg, lc);
+    const kotak = document.createElement('div'); kotak.className = 'kode';
+    const salin = document.createElement('button'); salin.type = 'button'; salin.className = 'salin'; salin.textContent = 'Salin';
     const pre = document.createElement('pre'); pre.textContent = hasil === undefined ? '(menunggu hasil)' : hasil;
-    d.append(s, pre); $('pesan').appendChild(d);
-    kartu[id] = {s, pre, ring}; gulir();
+    kotak.append(salin, pre); d.append(s, kotak); $('pesan').appendChild(d);
+    kartu[id] = {lc, pre}; gulir();
   }
   function isiHasil(id, teks) {
     const k = kartu[id]; if (!k) return;
-    k.s.textContent = '⚙ ' + k.ring; k.pre.textContent = teks;
+    setLencana(k.lc, teks); k.pre.textContent = teks;
   }
   function kartuKonfirmasi(ev) {
     const d = document.createElement('div'); d.className = 'konf';
@@ -270,7 +328,7 @@
         if (m.content && m.content.trim()) tambahAsisten(m.content);
         for (const c of (m.tool_calls || [])) {
           let a = {}; try { a = JSON.parse(c.function.arguments || '{}'); } catch (e) { /* abaikan */ }
-          kartuTool(c.id, ringkasTool(c.function.name, a), hasil[c.id]);
+          kartuTool(c.id, ringkasTool(c.function.name, a), hasil[c.id], c.function.name);
         }
       }
     }
@@ -337,7 +395,7 @@
         st.pikirRaw += ev.d; st.pikir.textContent = st.pikirRaw; break;
       case 'tool':      // tool sedang jalan: tunggu hasilnya
         st.bubble = null; st.pikir = null; st.pikirRaw = '';
-        kartuTool(ev.id, ev.ringkas); pastikanBerpikir(); break;
+        kartuTool(ev.id, ev.ringkas, undefined, ev.nama); pastikanBerpikir(); break;
       case 'konfirmasi': // menunggu keputusan pengguna, bukan menunggu model
         hentiBerpikir(); kartuKonfirmasi(ev); break;
       case 'hasil':     // hasil tool masuk, model lanjut menyusun jawaban
@@ -365,6 +423,15 @@
   $('tirai').onclick = tutupDrawer;
   $('btnBaru').onclick = () => { if (sibuk) { toast('Tunggu proses selesai atau tekan Stop.'); return; } chatBaru(); };
   $('btnSelesai').onclick = selesai;
+  $('cari').addEventListener('input', gambarDaftar);
+  $('btnHapusSemua').onclick = hapusSemua;
+  $('pesan').addEventListener('click', async e => {   // tombol Salin (blok kode & hasil tool)
+    const b = e.target.closest('.salin'); if (!b) return;
+    const pre = b.parentElement.querySelector('pre'); if (!pre) return;
+    const ok = await salinTeks(pre.textContent);
+    b.textContent = ok ? 'Tersalin ✓' : 'Gagal menyalin';
+    setTimeout(() => { b.textContent = 'Salin'; }, 1500);
+  });
   $('swAuto').onchange = async e => {
     const aktif = e.target.checked;
     if (aktif && !confirm('Mode AUTO menjalankan perintah dan menulis file TANPA konfirmasi (sudo, instal paket, hapus, git push, dan menghentikan proses tetap minta izin; perintah berbahaya tetap diblokir). Aktifkan?')) { e.target.checked = false; return; }

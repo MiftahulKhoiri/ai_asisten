@@ -23,8 +23,10 @@ Variabel lingkungan (opsional):
 Hanya memakai library standar Python.
 """
 import ast
+import difflib
 import fnmatch
 import html
+import json
 import math
 import operator
 import os
@@ -1062,3 +1064,123 @@ def hitung(ctx, ekspresi):
     except (SyntaxError, ValueError, OverflowError, TypeError) as e:
         return f"ERROR: tidak bisa dihitung ({e})"
     return f"{ekspresi.strip()} = " + (str(hasil) if isinstance(hasil, int) else format(hasil, ".12g"))
+
+
+# --------------------------------------------------------------------------
+# Tool hanya-baca tambahan (tanpa izin)
+# --------------------------------------------------------------------------
+_HARI = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+
+
+@tool("waktu_sekarang", "Tanggal, jam, dan zona waktu Pi saat ini.",
+      ringkas=lambda a: "waktu sekarang")
+def waktu_sekarang(ctx):
+    n = datetime.now().astimezone()
+    return f"{_HARI[n.weekday()]}, {n:%Y-%m-%d %H:%M:%S} ({n.tzname()}, UTC{n:%z})"
+
+
+def _baca_teks_aman(p, batas=1_000_000):
+    """(baris[], None) bila file teks biasa; (None, pesan_error) bila tidak boleh dibaca."""
+    if not p.is_file():
+        return None, f"ERROR: bukan file atau tidak ada: {p}"
+    if _rahasia(p):
+        return None, "DITOLAK: file ini berisi rahasia (token/kunci pribadi)."
+    if p.stat().st_size > batas:
+        return None, f"ERROR: file terlalu besar (> {_fmt(batas)}): {p}"
+    data = p.read_bytes()
+    if _teks_biner(data):
+        return None, f"ERROR: file biner: {p}"
+    return data.decode("utf-8", errors="replace").splitlines(), None
+
+
+@tool("bandingkan_file", "Selisih (diff) dua file teks.",
+      {"file_a": ("string", "path file lama"), "file_b": ("string", "path file baru")},
+      wajib=["file_a", "file_b"],
+      ringkas=lambda a: f"bandingkan {a.get('file_a', '')} {a.get('file_b', '')}")
+def bandingkan_file(ctx, file_a, file_b):
+    a, b = _p(file_a), _p(file_b)
+    baris_a, err = _baca_teks_aman(a)
+    if err:
+        return err
+    baris_b, err = _baca_teks_aman(b)
+    if err:
+        return err
+    selisih = list(difflib.unified_diff(baris_a, baris_b, str(a), str(b), lineterm="", n=2))
+    if not selisih:
+        return "Kedua file identik."
+    out = "\n".join(selisih)
+    batas = MAX_OUTPUT - 120
+    if len(out) > batas:
+        out = out[:batas].rsplit("\n", 1)[0] + f"\n...[dipotong, total {len(selisih)} baris selisih]"
+    return out
+
+
+@tool("ukuran_folder", "Total ukuran folder dan 10 isi terbesarnya.",
+      {"path": ("string", "folder, default home")},
+      ringkas=lambda a: f"ukuran {a.get('path', '~')}")
+def ukuran_folder(ctx, path="."):
+    p = _p(path)
+    if not p.is_dir():
+        return f"ERROR: bukan folder: {p}"
+    mulai, terpotong = time.time(), False
+    hasil, total = [], 0
+    try:
+        anak = sorted(p.iterdir())
+    except OSError as e:
+        return f"ERROR: tidak bisa membaca folder: {e}"
+    for c in anak:
+        if terpotong:
+            break
+        ukuran = 0
+        try:
+            if c.is_symlink():
+                continue
+            if c.is_file():
+                ukuran = c.stat().st_size
+            elif c.is_dir():
+                for d, _, files in os.walk(c):
+                    for nama in files:
+                        try:
+                            ukuran += os.lstat(os.path.join(d, nama)).st_size
+                        except OSError:
+                            pass
+                    if time.time() - mulai > 8:
+                        terpotong = True
+                        break
+        except OSError:
+            continue
+        total += ukuran
+        hasil.append((ukuran, c.name + ("/" if c.is_dir() else "")))
+    hasil.sort(reverse=True)
+    baris = [f"{p}: total {_fmt(total)} dalam {len(hasil)} entri"
+             + (" (dihitung sebagian: waktu habis)" if terpotong else "")]
+    baris += [f"{_fmt(u):>9}  {nama}" for u, nama in hasil[:10]]
+    return "\n".join(baris)
+
+
+@tool("cek_sintaks", "Periksa sintaks file .py, .json, atau .sh tanpa menjalankannya.",
+      {"path": ("string", "path file")}, wajib=["path"],
+      ringkas=lambda a: f"cek sintaks {a.get('path', '')}")
+def cek_sintaks(ctx, path):
+    p = _p(path)
+    baris, err = _baca_teks_aman(p)
+    if err:
+        return err
+    ekst = p.suffix.lower()
+    if ekst == ".py":
+        try:
+            ast.parse("\n".join(baris), str(p))
+        except SyntaxError as e:
+            return f"SINTAKS SALAH di baris {e.lineno}: {e.msg}"
+    elif ekst == ".json":
+        try:
+            json.loads("\n".join(baris))
+        except ValueError as e:
+            return f"JSON TIDAK VALID: {e}"
+    elif ekst == ".sh":
+        kode, out = _run(["bash", "-n", str(p)])
+        if kode != 0:
+            return f"SINTAKS SALAH: {out}"
+    else:
+        return "ERROR: hanya mendukung file .py, .json, dan .sh."
+    return f"Sintaks OK: {p.name} ({len(baris)} baris)"

@@ -90,3 +90,20 @@ details.pikir{color:var(--redup)}
 .seg button.on{border-color:var(--aksen);box-shadow:0 0 0 1px var(--aksen) inset}
 .seg button.on b{color:var(--aksen)}
 .kecil{font-size:13px;margin:8px 2px 0}
+
+/* ---------- salin kode, kartu tool, riwayat ---------- */
+.kode{position:relative}
+.kode pre{padding-top:30px}
+.salin{position:absolute;top:6px;right:6px;z-index:1;background:var(--panel);border:1px solid var(--garis);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--redup)}
+details.tool summary{display:flex;align-items:center;gap:8px}
+details.tool .ik{flex:none}
+details.tool .rg{flex:1;min-width:0}
+.lencana{flex:none;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--garis);color:var(--redup)}
+.lencana.menunggu{color:var(--aksen);border-color:var(--aksen)}
+.lencana.ok{color:var(--ok);border-color:var(--ok)}
+.lencana.gagal{color:var(--bahaya);border-color:var(--bahaya)}
+.lencana.ditolak{color:var(--izin);border-color:var(--izin)}
+.chat .t .cup{margin-top:2px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+#drawer .bawah{padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--garis)}
+#drawer .bawah .btn{width:100%}
+.kosong{padding:8px 10px;margin:0}
