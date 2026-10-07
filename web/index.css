@@ -84,7 +84,8 @@ details.pikir{color:var(--redup)}
 /* ---------- pilihan skill ---------- */
 #skillBox{margin:14px 0 6px}
 #skillBox .label{font-size:13px;color:var(--redup);margin-bottom:6px}
-.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.seg{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.seg button:last-child:nth-child(odd){grid-column:1/-1}
 .seg button{display:flex;flex-direction:column;align-items:center;gap:1px;padding:9px 4px;background:var(--panel);border:1px solid var(--garis);border-radius:10px;line-height:1.25}
 .seg button small{font-size:11px;color:var(--redup)}
 .seg button.on{border-color:var(--aksen);box-shadow:0 0 0 1px var(--aksen) inset}

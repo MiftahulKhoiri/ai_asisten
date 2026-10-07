@@ -44,7 +44,7 @@ WARNA = sys.stdout.isatty()
 
 S = {"model": None, "target": None, "status": "kosong", "pesan": "",
      "kita_muat": False, "auto": False, "aktivitas": time.time(),
-     "skill": None}   # tanpa / dasar / semua (dipilih di web saat memilih model)
+     "skill": None}   # tuple skill (tanpa/web/dasar/kompleks/kritis), dipilih di web
 S_LOCK = threading.RLock()
 GEN_LOCK = threading.Lock()   # hanya satu proses generasi pada satu waktu
 AKTIF = {"ctx": None}
@@ -321,10 +321,15 @@ class Ctx:
 
 def status_json():
     with S_LOCK:
+        sk = S["skill"]
+        ids = agen.tolls.SKILL_IDS
         d = {"model": S["model"], "status": S["status"], "pesan": S["pesan"],
-             "auto": S["auto"], "sibuk": GEN_LOCK.locked(), "skill": S["skill"],
-             "skill_bawaan": agen.tolls.mode_awal(),
-             "skills": {m: len(agen.tools_untuk(m)) for m in agen.tolls.MODE_SKILL}}
+             "auto": S["auto"], "sibuk": GEN_LOCK.locked(),
+             "skill": list(sk) if sk else None,
+             "tool_aktif": len(agen.tools_untuk(sk)) if sk else None,
+             "skill_bawaan": list(agen.tolls.normal_skill(None)),
+             "skills": {m: len(agen.tools_untuk(m)) for m in ids},
+             "skill_tools": {m: agen.tolls.nama_tool_aktif(m) for m in ids}}
     if d["status"] != "siap":
         try:
             d["models"] = daftar_model()
@@ -472,8 +477,7 @@ class H(BaseHTTPRequestHandler):
     def pilih(self, b):
         nama = b.get("model")
         skill = b.get("skill")
-        if skill not in agen.tolls.MODE_SKILL:
-            skill = agen.tolls.mode_awal()
+        skill = agen.tolls.normal_skill(skill)   # boleh beberapa skill sekaligus
         with S_LOCK:
             if S["status"] == "memuat":
                 return self._json(409, {"error": "Model sedang dimuat"})
@@ -482,7 +486,7 @@ class H(BaseHTTPRequestHandler):
             S["status"] = "memuat"
             S["pesan"] = f"Menyiapkan {nama} ..."
             S["skill"] = skill
-        log("INFO", f"Skill dipilih: {skill} ({len(agen.tools_untuk(skill))} tool)")
+        log("INFO", f"Skill dipilih: {'+'.join(skill)} ({len(agen.tools_untuk(skill))} tool)")
         sentuh()
         threading.Thread(target=muat_model, args=(nama,), daemon=True).start()
         self._json(200, {"ok": True})

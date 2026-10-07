@@ -1,8 +1,8 @@
 # ai_asisten
 
 Asisten AI lokal dengan tampilan chat web yang bisa dibuka dari HP. Otaknya model
-di `llama-server` (Raspberry Pi 5), dan ia bisa menjalankan perintah, membaca/menulis
-file, dan melihat folder lewat *function calling*. Hanya memakai library standar Python.
+di `llama-server` (Raspberry Pi 5). Ia bisa menjalankan perintah, membaca/menulis file,
+melihat folder, dan mencari informasi di internet lewat *function calling*. Hanya memakai library standar Python.
 
 Terminal hanya untuk menyalakan aplikasi dan menampilkan log.
 
@@ -21,7 +21,8 @@ Opsi: `--port 8090`, `--idle 20` (menit; 0 = mati), `--auto`, `--token-baru`, `-
 
 ## Alur sesi
 
-1. Buka halaman web, **pilih model**. Model baru dimuat setelah dipilih.
+1. Buka halaman web, **pilih skill** (boleh lebih dari satu) lalu **pilih model**.
+   Model baru dimuat setelah dipilih.
 2. Chat. Jawaban muncul bertahap (streaming), tiap tool tampil sebagai kartu.
 3. Model **otomatis dibongkar dari memori** saat:
    - menekan tombol **Selesai** di web,
@@ -30,6 +31,30 @@ Opsi: `--port 8090`, `--idle 20` (menit; 0 = mati), `--auto`, `--token-baru`, `-
 
 Model yang sudah termuat oleh pihak lain (misalnya klien Termux) dipakai apa adanya
 dan **tidak** dibongkar.
+
+## Skill (bisa digabung)
+
+Ada 5 skill; pilih satu atau beberapa sekaligus sebelum memuat model. Tool yang aktif
+adalah **gabungan** tool dari semua skill terpilih.
+
+| Skill | Fungsi |
+|---|---|
+| **Tanpa skill** | tanya jawab saja, tanpa tool |
+| **Web** | cari informasi dan berita terbaru di internet (4 tool: `berita`, `cari_web`, `baca_halaman`, `waktu_sekarang`) |
+| **Dasar** | 4 tool inti: perintah, baca file, tulis file, daftar folder |
+| **Kompleks** | semua tool sistem dan web |
+| **Berpikir kritis** | jawaban dibuat dua tahap: draf (tampil di blok "Berpikir"), lalu model memeriksa dan memperbaikinya. Sekitar 2x lebih lambat, lebih teliti |
+
+Contoh: **Tanpa skill + Web** = jago ngobrol plus informasi dari internet. **Web + Berpikir
+kritis** = hasil pencarian diperiksa ulang sebelum disajikan. Jawaban pendek (sapaan) tidak
+diperiksa ulang.
+
+Skill Web: tanyakan misalnya "carikan berita terbaru hari ini" atau "berapa harga emas
+sekarang". `berita` memakai Google News (judul, sumber, umur berita); `cari_web` memakai
+halaman hasil Brave Search dan beralih ke berita bila gagal; `baca_halaman` membuka isi
+halaman. Hanya alamat internet **publik** yang boleh dibuka (alamat lokal/privat ditolak,
+termasuk lewat pengalihan), dan isi halaman diperlakukan sebagai data, bukan perintah.
+Halaman yang butuh JavaScript (mis. harga emas dinamis) bisa terbaca kosong.
 
 ## Fitur web
 
@@ -55,6 +80,9 @@ dan **tidak** dibongkar.
 | `info_sistem` | ringkas (suhu, CPU, RAM, disk), proses, port, jaringan, disk, layanan, log_layanan | - |
 | `git_baca` | status, log, diff, branch, remote | - |
 | `hitung` | kalkulator aman | - |
+| `berita` | berita terbaru (judul, sumber, umur) dari Google News; skill Web | - |
+| `cari_web` | cari informasi di internet; skill Web | - |
+| `baca_halaman` | baca isi halaman web publik (hanya baca); skill Web | - |
 | `waktu_sekarang` | tanggal, jam, zona waktu Pi | - |
 | `bandingkan_file` | selisih (diff) dua file teks | - |
 | `ukuran_folder` | total ukuran folder dan 10 isi terbesar | - |
@@ -68,8 +96,9 @@ dan **tidak** dibongkar.
 | `matikan_proses` | kirim sinyal ke PID | selalu tanya |
 
 Menambah tool: tulis satu fungsi dengan dekorator `@tool(...)` di `src/tolls.py`;
-skema untuk model dibuat otomatis. Banyak tool memakan konteks model (8192 token);
-jalankan dengan `ASISTEN_TOOLS=dasar python3 asisten.py` untuk hanya 4 tool inti.
+skema untuk model dibuat otomatis (`dasar=True` / `web=True` memasukkannya ke skill itu).
+Banyak tool memakan konteks model (8192 token), jadi skill Dasar/Web lebih hemat daripada
+Kompleks. Skill bawaan bisa diubah: `ASISTEN_TOOLS=dasar python3 asisten.py`.
 
 ## Keamanan
 
@@ -80,6 +109,8 @@ jalankan dengan `ASISTEN_TOOLS=dasar python3 asisten.py` untuk hanya 4 tool inti
 - `hapus`, `git push`, dan `matikan_proses` **selalu** minta izin, juga di mode AUTO.
 - Tool pengubah file hanya boleh bekerja di home dan `/tmp` (tambah lewat `ASISTEN_AKAR_TULIS=/a:/b`), tidak di `~/.ssh`.
 - `.token` dan kunci pribadi SSH tidak bisa dibaca lewat tool file.
+- Tool Web hanya-baca dan hanya ke alamat publik; hasil pencarian bisa berisi instruksi
+  jahat, jadi jangan gabungkan Web dengan **Kompleks** + mode AUTO untuk situs yang tidak dipercaya.
 - Perintah berbahaya (`rm -rf /`, `mkfs`, `dd of=/dev/...`, `reboot`, dll.) **selalu diblokir**.
 - Semua aksi tool dicatat di `aksi.log`.
 - Daftar blokir hanya pengaman dasar. Baca perintah sebelum menekan Ya.
@@ -89,7 +120,7 @@ jalankan dengan `ASISTEN_TOOLS=dasar python3 asisten.py` untuk hanya 4 tool inti
 | Berkas | Fungsi |
 |---|---|
 | `asisten.py` | server web, siklus model, log terminal |
-| `agen.py` | klien llama-server, riwayat, loop agen |
+| `agen.py` | klien llama-server, riwayat, loop agen, skill web dan berpikir kritis |
 | `src/tolls.py` | semua tool + pengaman (tambah tool baru di sini) |
 | `web/index.html`, `index.css`, `index.js` | tampilan chat |
 | `tests/` | pengujian otomatis (`unittest`) |
@@ -105,6 +136,7 @@ python3 -m unittest discover -s tests -v
 
 Mencakup tool dan pengaman (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
+agen dan skill (`tests/test_agen.py`, memakai model palsu),
 serta pemeriksaan tampilan web (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang).
 Tidak butuh model termuat.
 

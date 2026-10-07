@@ -2,7 +2,10 @@
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src import tolls  # noqa: E402
@@ -187,6 +190,119 @@ class TestToolBaru(unittest.TestCase):
         self.assertIn("2 entri", r)
         self.assertLess(r.index("besar.txt"), r.index("sub/"))   # terbesar di atas
         self.assertTrue(jalan("ukuran_folder", {"path": str(self.d / "tidak_ada")}).startswith("ERROR"))
+
+
+class TestSkill(unittest.TestCase):
+    def test_normal_skill(self):
+        self.assertEqual(tolls.normal_skill("semua"), ("kompleks",))
+        self.assertEqual(tolls.normal_skill("kritis+web"), ("web", "kritis"))
+        self.assertEqual(tolls.normal_skill(["kritis", "tanpa"]), ("tanpa", "kritis"))
+        self.assertEqual(tolls.normal_skill("ngawur"), (tolls.mode_awal(),))
+        self.assertEqual(tolls.normal_skill(None), (tolls.mode_awal(),))
+
+    def test_gabungan_tool(self):
+        web = set(tolls.nama_tool_aktif("web"))
+        dasar = set(tolls.nama_tool_aktif("dasar"))
+        self.assertEqual(web, {"cari_web", "berita", "baca_halaman", "waktu_sekarang"})
+        self.assertEqual(set(tolls.nama_tool_aktif(["web", "dasar"])), web | dasar)
+        self.assertEqual(tolls.nama_tool_aktif(["tanpa", "web"]), tolls.nama_tool_aktif("web"))
+        self.assertEqual(tolls.nama_tool_aktif("kritis"), [])
+        self.assertEqual(tolls.nama_tool_aktif(["tanpa", "kritis"]), [])
+        self.assertEqual(len(tolls.nama_tool_aktif("kompleks")), len(tolls.REGISTRY))
+
+    def test_eksekusi_mengikuti_skill(self):
+        self.assertTrue(jalan("hitung", {"ekspresi": "1+1"}, skill=("web",)).startswith("ERROR"))
+        self.assertRegex(jalan("waktu_sekarang", skill=("web", "kritis")), r"\d{4}-\d{2}-\d{2}")
+        self.assertIn("= 2", jalan("hitung", {"ekspresi": "1+1"}, skill=("dasar", "kompleks")))
+        self.assertTrue(jalan("waktu_sekarang", skill=("tanpa", "kritis")).startswith("ERROR"))
+
+
+def _rss(*item):
+    isi = "".join(f"<item><title>{j}</title><pubDate>{format_datetime(w, usegmt=True)}</pubDate>"
+                  f"<source url='https://x.id'>{s}</source></item>" for j, s, w in item)
+    return f'<?xml version="1.0" encoding="UTF-8"?><rss><channel>{isi}</channel></rss>'
+
+
+BRAVE = (
+    '<div class="snippet svelte-x" data-pos="1" data-type="web" data-keynav="true"><div class="result-body">'
+    '<a href="https://contoh.id/emas" class="l1"><div class="title search-snippet-title svelte-y" '
+    'title="Harga Emas &amp; Perak">Harga Emas</div></a><div class="generic-snippet">'
+    '<div class="content desktop-default-regular t-primary"><span>1 hari lalu -</span> Harga '
+    '<strong>naik</strong> hari ini.</div></div></div></div>'
+    '<div class="snippet svelte-x" data-pos="2" data-type="web"><a href="https://search.brave.com/iklan" '
+    'class="l1"><div class="title" title="Iklan">Iklan</div></a></div>'
+    '<div class="snippet svelte-x" data-pos="3" data-type="web"><a href="https://kedua.com/x">'
+    '<div class="title svelte" title="Kedua">Kedua</div></a><div class="content">Cuplikan kedua</div></div>')
+
+
+class TestWeb(unittest.TestCase):
+    def test_hanya_alamat_publik(self):
+        for u in ("http://127.0.0.1:8080/", "http://localhost/", "http://192.168.1.1/", "http://10.0.0.5",
+                  "http://[::1]/", "http://169.254.169.254/", "file:///etc/passwd", "ftp://contoh.com/a"):
+            with self.assertRaises(ValueError, msg=u):
+                tolls._cek_publik(u)
+
+    def test_baca_halaman_menolak_alamat_lokal(self):
+        r = jalan("baca_halaman", {"url": "http://127.0.0.1:8080"}, skill=("web",))
+        self.assertTrue(r.startswith("ERROR"))
+        self.assertIn("lokal", r)
+
+    def test_html_ke_teks(self):
+        judul, teks = tolls._html_ke_teks(
+            '<html><head><title>Judul Uji</title><script>var x=1;</script></head><body>'
+            '<nav>menu menu menu menu menu menu menu</nav>'
+            '<p>Ini paragraf pertama yang cukup panjang untuk dibaca.</p>'
+            '<p data-x="a>b">Paragraf kedua juga cukup panjang untuk dipertahankan.</p></body></html>')
+        self.assertEqual(judul, "Judul Uji")
+        self.assertIn("paragraf pertama", teks)
+        self.assertIn("Paragraf kedua", teks)
+        self.assertNotIn("var x", teks)
+        self.assertNotIn("menu menu", teks)
+        self.assertNotIn("a>b", teks)
+
+    def test_parse_brave(self):
+        hasil = tolls._parse_brave(BRAVE, 5)
+        self.assertEqual(len(hasil), 2)   # iklan brave.com dilewati
+        self.assertEqual(hasil[0], ("Harga Emas & Perak", "https://contoh.id/emas",
+                                    "1 hari lalu - Harga naik hari ini."))
+        self.assertEqual(hasil[1][2], "Cuplikan kedua")
+
+    def test_cari_web(self):
+        with mock.patch.object(tolls, "_unduh", return_value=("text/html", BRAVE)):
+            r = jalan("cari_web", {"kueri": "harga emas"}, skill=("web",))
+        self.assertIn("1. Harga Emas & Perak", r)
+        self.assertIn("https://contoh.id/emas", r)
+        self.assertLessEqual(len(r), tolls.MAX_OUTPUT)
+        self.assertTrue(jalan("cari_web", {"kueri": "  "}, skill=("web",)).startswith("ERROR"))
+
+    def test_berita_terbaru_dulu_tanpa_duplikat(self):
+        sekarang = datetime.now(timezone.utc)
+        rss = _rss(("Berita lama - Kompas", "Kompas", sekarang - timedelta(hours=5)),
+                   ("Berita baru - Detik", "Detik", sekarang - timedelta(hours=2)),
+                   ("Berita baru - Detik", "Detik", sekarang - timedelta(hours=2)))
+        with mock.patch.object(tolls, "_unduh", return_value=("application/xml", rss)):
+            r = jalan("berita", {}, skill=("web",))
+        baris = r.splitlines()
+        self.assertTrue(baris[0].startswith("1. Berita baru - Detik, 2 jam lalu"), baris[0])
+        self.assertTrue(baris[1].startswith("2. Berita lama - Kompas, 5 jam lalu"), baris[1])
+        self.assertEqual(sum(1 for b in baris if b[:2] in ("1.", "2.", "3.")), 2)
+
+    def test_berita_gagal_jaringan(self):
+        with mock.patch.object(tolls, "_unduh", side_effect=ValueError("waktu habis")):
+            self.assertTrue(jalan("berita", {}, skill=("web",)).startswith("ERROR"))
+
+    def test_cari_web_cadangan_berita(self):
+        sekarang = datetime.now(timezone.utc)
+        rss = _rss(("Kabar emas - Antara", "Antara", sekarang - timedelta(hours=1)))
+
+        def palsu(url, maks=0, timeout=0):
+            if "brave" in url:
+                raise ValueError("server membalas HTTP 429")
+            return "application/xml", rss
+        with mock.patch.object(tolls, "_unduh", side_effect=palsu):
+            r = jalan("cari_web", {"kueri": "emas"}, skill=("web",))
+        self.assertTrue(r.startswith("(mesin pencari tidak memberi hasil"))
+        self.assertIn("Kabar emas", r)
 
 
 if __name__ == "__main__":

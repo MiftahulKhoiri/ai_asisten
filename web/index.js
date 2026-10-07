@@ -109,23 +109,53 @@
     return j;
   }
 
-  /* ---------- pilihan skill ---------- */
-  const NAMA_SKILL = {tanpa: 'tanpa skill', dasar: 'skill dasar', semua: 'semua skill'};
-  let skill = null, jmlSkill = {tanpa: 0, dasar: 4, semua: 24};
-  try { skill = localStorage.getItem('skill'); } catch (e) { /* abaikan */ }
-  if (!NAMA_SKILL[skill]) skill = null;
+  /* ---------- pilihan skill (boleh lebih dari satu) ---------- */
+  const URUT_SKILL = ['tanpa', 'web', 'dasar', 'kompleks', 'kritis'];
+  const NAMA_SKILL = {tanpa: 'Tanpa skill', web: 'Web', dasar: 'Dasar', kompleks: 'Kompleks', kritis: 'Berpikir kritis'};
+  const SKILL_LAMA = {semua: 'kompleks'};
+  let skill = null, skillTools = {};
+  function rapikanSkill(v) {
+    if (typeof v === 'string') v = v.split(/[+,\s]+/);
+    if (!Array.isArray(v)) return null;
+    const ada = new Set(v.map(x => SKILL_LAMA[x] || x));
+    const hasil = URUT_SKILL.filter(x => ada.has(x));
+    return hasil.length ? hasil : null;
+  }
+  try {
+    const t = localStorage.getItem('skill');
+    skill = rapikanSkill(t && t[0] === '[' ? JSON.parse(t) : t);
+  } catch (e) { skill = null; }
+  function labelSkill(l) { return l.map(x => NAMA_SKILL[x] || x).join(' + '); }
+  function jumlahTool(l) {
+    const u = new Set();
+    for (const x of l) for (const n of (skillTools[x] || [])) u.add(n);
+    return u.size;
+  }
   function ketSkill() {
-    if (skill === 'tanpa') return 'Murni chat. Model tidak diberi tool, cocok untuk menguji kualitas jawaban.';
-    if (skill === 'dasar') return jmlSkill.dasar + ' tool inti: jalankan perintah, baca file, tulis file, lihat folder. Hemat konteks.';
-    return 'Semua ' + jmlSkill.semua + ' tool (cari, edit, git, info sistem, dll). Butuh model yang pintar memilih tool.';
+    const p = [];
+    if (skill.includes('tanpa')) p.push('percakapan');
+    if (skill.includes('web')) p.push('cari info & berita di internet');
+    if (skill.includes('dasar')) p.push('tool inti (perintah, file, folder)');
+    if (skill.includes('kompleks')) p.push('semua tool sistem');
+    if (skill.includes('kritis')) p.push('periksa & perbaiki jawaban (dua tahap, lebih lambat tapi lebih teliti)');
+    const n = jumlahTool(skill);
+    return 'Aktif: ' + p.join(' + ') + ' - ' + (n ? n + ' tool' : 'tanpa tool') + '.';
   }
   function setSkill(v, simpan) {
-    skill = v;
-    if (simpan) { try { localStorage.setItem('skill', v); } catch (e) { /* abaikan */ } }
-    for (const b of document.querySelectorAll('#seg button')) b.classList.toggle('on', b.dataset.skill === v);
+    skill = rapikanSkill(v) || ['kompleks'];
+    if (simpan) { try { localStorage.setItem('skill', JSON.stringify(skill)); } catch (e) { /* abaikan */ } }
+    for (const b of document.querySelectorAll('#seg button')) {
+      const on = skill.includes(b.dataset.skill);
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
     $('skillKet').textContent = ketSkill();
   }
-  for (const b of document.querySelectorAll('#seg button')) b.onclick = () => setSkill(b.dataset.skill, true);
+  function togelSkill(id) {
+    const s = new Set(skill || []);
+    if (s.has(id)) { if (s.size === 1) { toast('Pilih minimal satu skill.'); return; } s.delete(id); } else s.add(id);
+    setSkill(URUT_SKILL.filter(x => s.has(x)), true);
+  }
+  for (const b of document.querySelectorAll('#seg button')) b.onclick = () => togelSkill(b.dataset.skill);
 
   /* ---------- status & model ---------- */
   async function cekStatus() {
@@ -133,9 +163,10 @@
       const s = await apij('/api/status');
       $('swAuto').checked = !!s.auto;
       if (s.status === 'siap') {
-        $('subModel').textContent = s.model + (s.skill ? ' · ' + NAMA_SKILL[s.skill] : '');
-        $('input').placeholder = s.skill === 'tanpa' ? 'Ketik pesan...' : 'Ketik perintah...';
-        $('swAuto').closest('label').hidden = (s.skill === 'tanpa');
+        $('subModel').textContent = s.model + (s.skill ? ' · ' + labelSkill(s.skill) : '');
+        const adaTool = s.tool_aktif !== 0;
+        $('input').placeholder = adaTool ? 'Ketik perintah...' : 'Ketik pesan...';
+        $('swAuto').closest('label').hidden = !adaTool;
         if (layar !== 'chat') await masukChat();
         setPoll(15000);
       } else {
@@ -157,12 +188,13 @@
                         s.status === 'error' ? ('Gagal: ' + s.pesan) : (s.pesan || '');
     box.className = s.status === 'memuat' ? 'mati' : '';
     $('seg').className = s.status === 'memuat' ? 'seg mati' : 'seg';
-    if (s.skills) {
-      jmlSkill = s.skills;
-      $('nDasar').textContent = s.skills.dasar + ' skill';
-      $('nSemua').textContent = s.skills.semua + ' skill';
+    if (s.skills && s.skill_tools) {
+      skillTools = s.skill_tools;
+      $('nWeb').textContent = s.skills.web + ' tool';
+      $('nDasar').textContent = s.skills.dasar + ' tool';
+      $('nKompleks').textContent = s.skills.kompleks + ' tool';
     }
-    if (!skill) skill = s.skill_bawaan || 'semua';
+    if (!skill) skill = rapikanSkill(s.skill_bawaan) || ['kompleks'];
     setSkill(skill, false);
     box.innerHTML = '';
     for (const m of (s.models || [])) {
@@ -274,7 +306,7 @@
     daftar_folder: '📁', pohon_folder: '🌳', buat_folder: '📁', info_file: 'ℹ', cari_file: '🔍',
     cari_teks: '🔎', baca_ekor: '📜', info_sistem: '🖥', git_baca: '⎇', git_tulis: '⎇',
     salin_pindah: '📋', hapus: '🗑', ambil_url: '🌐', matikan_proses: '⛔', arsip: '🗜',
-    hitung: '🧮', waktu_sekarang: '🕒', bandingkan_file: '↔', ukuran_folder: '📊', cek_sintaks: '✔'};
+    hitung: '🧮', waktu_sekarang: '🕒', cari_web: '🌐', berita: '📰', baca_halaman: '📖', bandingkan_file: '↔', ukuran_folder: '📊', cek_sintaks: '✔'};
   function statusHasil(teks) {
     if (teks === undefined) return ['menunggu', 'berjalan'];
     if (/^(ERROR|GAGAL|SINTAKS SALAH|JSON TIDAK VALID)/.test(teks) || /^exit code [1-9]/.test(teks)) return ['gagal', 'gagal'];
@@ -401,6 +433,7 @@
       case 'hasil':     // hasil tool masuk, model lanjut menyusun jawaban
         isiHasil(ev.id, ev.d); pastikanBerpikir(); break;
       case 'ringkas': tambahInfo('🗜 ' + ev.d); st.bubble = null; pastikanBerpikir(); break;
+      case 'kritik': tambahInfo('🧠 ' + ev.d); st.bubble = null; st.pikir = null; st.pikirRaw = ''; pastikanBerpikir(); break;
       case 'info': tambahInfo(teksInfo(ev), false); st.bubble = null; break;
       case 'error': hentiBerpikir(); tambahInfo('⚠ ' + ev.d, true); break;
       case 'batal': hentiBerpikir(); tambahInfo('Dibatalkan.'); break;

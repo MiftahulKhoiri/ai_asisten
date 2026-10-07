@@ -105,8 +105,12 @@ class TestServer(unittest.TestCase):
         kode, d = self.j("GET", "/api/status")
         self.assertEqual(kode, 200)
         self.assertEqual(d["skills"]["tanpa"], 0)
+        self.assertEqual(d["skills"]["kritis"], 0)
         self.assertEqual(d["skills"]["dasar"], 4)
-        self.assertGreater(d["skills"]["semua"], 4)
+        self.assertEqual(d["skills"]["web"], 4)
+        self.assertGreater(d["skills"]["kompleks"], 4)
+        self.assertIn("cari_web", d["skill_tools"]["web"])
+        self.assertEqual(len(d["skill_tools"]["kompleks"]), d["skills"]["kompleks"])
 
     def test_siklus_chat(self):
         kode, c = self.j("POST", "/api/chat/baru", {})
