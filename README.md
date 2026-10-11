@@ -1,4 +1,4 @@
- # ai_asisten
+# ai_asisten
 
 Asisten AI lokal dengan tampilan chat web yang bisa dibuka dari HP. Otaknya model
 `.gguf` yang dijalankan oleh `llama-server` (llama.cpp) di Raspberry Pi 5. Ia bisa
