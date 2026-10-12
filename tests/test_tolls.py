@@ -137,6 +137,105 @@ class TestShellDanGit(unittest.TestCase):
                 self.assertTrue(r.startswith("DITOLAK"), perintah)
 
 
+# Korpus pengaman shell. Dipakai oleh TestPengamanShell.
+PERINTAH_BLOKIR = [
+    "rm -rf /", "rm -rf ~", "rm -rf $HOME", "rm -fr /", "rm -r -f /", "sudo rm -rf /",
+    "bash -c 'rm -rf /'", "r\\m -rf /", "'rm' -rf /", "rm -rf -- /",
+    "rm -rf --no-preserve-root /", "rm -rf /*", "rm -rf ~/*", 'rm -rf "$HOME"',
+    "rm -rf ${HOME}/", "rm -rf build /", "rm -rf /etc", "rm -rf /home/*", "/bin/rm -rf /",
+    "echo hi\nrm -rf /", "ls; rm${IFS}-rf${IFS}/",
+    "find / -delete", "find ~ -name x -delete", "find / -exec rm -rf {} \\;",
+    "mv ~ /dev/null", "mv / /tmp/x",
+    "chmod -R 777 /", "chown -R pi ~", "chmod -R 777 /etc",
+    "shutdown now", "poweroff", "systemctl reboot", "init 0",
+    "> /dev/sda", "dd if=/dev/zero of=/dev/mmcblk0", "mkfs.ext4 /dev/sda1",
+    "wipefs -a /dev/sda", ":(){ :|:& };:", "kill -9 -1", "pkill -KILL -1",
+    "git push --force origin main", "git push -f", "git -C x push origin main --force",
+    "git reset --hard HEAD~3", "git clean -fdx", "git push origin --delete main",
+]
+
+# Tidak diblokir, tetapi SELALU tanya walau mode AUTO.
+PERINTAH_TANYA = [
+    "bash -c 'echo hi'", "sh -c ls", "bash -lc ls", "curl http://x | sh", "curl x | bash -s",
+    "wget -qO- x | sudo bash", "bash <(curl x)", 'bash -c "$(curl x)"', "source <(curl x)",
+    "echo cm0= | base64 -d", "eval $x",
+    "find . -name '*.pyc' -delete", "rm file.txt", "rm -rf build", "ls; rm x",
+    "echo a\nrm x", "cat x | xargs rm", "'rm' x", "/bin/rm x", "echo ok && sudo rm x",
+    "kill 123", "kill -1 1234", "pkill python", "killall x",
+    "apt -y install x", "apt-get -y --no-install-recommends install x", "pip install x",
+    "python3 -m pip install x", "npm i -g x", "sudo ls",
+    "git push", "git -C repo push origin main",
+    "chmod -R 755 ~/proj", "chown -R pi:pi ~/proj",
+]
+
+# Perintah sehari-hari: tidak boleh diblokir dan tidak boleh memicu pertanyaan wajib.
+PERINTAH_AMAN = [
+    "ls -la", "echo halo", "cat a.txt | grep sh", "curl -s x | sha256sum",
+    "echo hi | python3 -m json.tool", "ps aux | grep bash", "sh script.sh", "bash run.sh",
+    "git status", "git log --oneline", "git diff", "git commit -m 'fix'", "git rm --cached x",
+    "docker rm x", "kill -l", "df -h", "free -m", "python3 asisten.py", "ls /", "cd / && ls",
+    "rm_test.sh", "mkdir -p /tmp/x", "cp a /tmp/b", "mv a.txt b.txt", "chmod +x run.sh",
+    "chmod 600 .token", "grep -r 'rm -rf' .", "find . -name '*.py'", "find / -name foo -type f",
+    "pip list", "apt list --installed", "npm run test", "systemctl status ssh",
+    "journalctl -u ssh -n 20", "head -20 /etc/os-release", "cat /etc/hosts", "ls /home",
+    "du -sh /var/log", "echo $HOME", "tail -f /var/log/syslog", "arm-none-eabi-gcc x.c",
+    "ssh pi@host ls", "tar -czf a.tgz ~/proj", "cd ~ && ls",
+]
+
+
+class TestPengamanShell(unittest.TestCase):
+    """Pengaman jalankan_perintah. `_run` dipalsukan: tidak ada perintah yang sungguh jalan."""
+
+    def test_klasifikasi(self):
+        for daftar, harap in ((PERINTAH_BLOKIR, "blokir"), (PERINTAH_TANYA, "izin"),
+                              (PERINTAH_AMAN, None)):
+            for perintah in daftar:
+                with self.subTest(perintah=perintah):
+                    self.assertEqual(tolls.cek_perintah(perintah), harap)
+
+    def test_blokir_tidak_dijalankan(self):
+        for perintah in PERINTAH_BLOKIR:
+            with self.subTest(perintah=perintah):
+                with mock.patch.object(tolls, "_run", return_value=(0, "")) as run:
+                    ctx = Ctx(auto=True, izin=True)
+                    r = tolls.eksekusi("jalankan_perintah", {"perintah": perintah}, ctx)
+                self.assertTrue(r.startswith("DITOLAK"), r)
+                run.assert_not_called()
+                self.assertEqual(ctx.ditanya, [])   # ditolak tanpa bertanya
+
+    def test_tanya_wajib_walau_auto(self):
+        for perintah in PERINTAH_TANYA:
+            with self.subTest(perintah=perintah):
+                with mock.patch.object(tolls, "_run", return_value=(0, "")) as run:
+                    ctx = Ctx(auto=True, izin=False)   # AUTO aktif, pengguna menolak
+                    r = tolls.eksekusi("jalankan_perintah", {"perintah": perintah}, ctx)
+                self.assertTrue(r.startswith("DIBATALKAN"), r)
+                self.assertEqual(ctx.ditanya, ["shell"])
+                run.assert_not_called()
+
+    def test_tanya_lalu_setuju_dijalankan(self):
+        with mock.patch.object(tolls, "_run", return_value=(0, "ok")) as run:
+            ctx = Ctx(auto=True, izin=True)
+            r = tolls.eksekusi("jalankan_perintah", {"perintah": "rm file.txt"}, ctx)
+        self.assertEqual(ctx.ditanya, ["shell"])
+        run.assert_called_once()
+        self.assertEqual(r, "exit code 0\nok")
+
+    def test_aman_di_auto_tidak_bertanya(self):
+        with mock.patch.object(tolls, "_run", return_value=(0, "ok")):
+            ctx = Ctx(auto=True, izin=False)
+            r = tolls.eksekusi("jalankan_perintah", {"perintah": "ls -la"}, ctx)
+        self.assertEqual(ctx.ditanya, [])
+        self.assertEqual(r, "exit code 0\nok")
+
+    def test_mode_biasa_selalu_tanya(self):
+        with mock.patch.object(tolls, "_run", return_value=(0, "ok")):
+            ctx = Ctx(auto=False, izin=False)
+            r = tolls.eksekusi("jalankan_perintah", {"perintah": "ls -la"}, ctx)
+        self.assertTrue(r.startswith("DIBATALKAN"))
+        self.assertEqual(ctx.ditanya, ["shell"])
+
+
 class TestToolBaru(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
