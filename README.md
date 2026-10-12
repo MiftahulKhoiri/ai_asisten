@@ -345,15 +345,17 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 - Semua `/api` wajib **token** (`.token`, izin 600). Jangan bagikan alamat berisi token.
 - Server memakai HTTP biasa di jaringan lokal. Jangan buka port 8090 ke internet.
   Untuk akses dari luar rumah, pakai VPN seperti Tailscale.
-- Perintah dengan `sudo` dan instal/hapus paket (`apt`, `pip`, `npm`) **selalu** minta izin.
-- `hapus`, `git push`, dan `matikan_proses` **selalu** minta izin, juga di mode AUTO.
+- Perintah berikut **selalu** minta izin, juga di mode AUTO, baik lewat tool khusus maupun lewat `jalankan_perintah`:
+  `sudo`; instal/hapus paket (`apt`, `pip`, `npm`, dll.); `rm`; `find ... -delete`; `kill`/`pkill`/`killall`; `git push`;
+  `chmod`/`chown -R`; dan perintah yang mengeksekusi teks lain (`| sh`, `bash -c`, `eval`, `base64 -d`, `$(curl ...)`).
+- `hapus` dan `matikan_proses` juga selalu minta izin.
 - Tool pengubah file hanya boleh bekerja di home dan `/tmp` (tambah lewat `ASISTEN_AKAR_TULIS=/a:/b`), tidak di `~/.ssh`.
 - `.token` dan kunci pribadi SSH tidak bisa dibaca lewat tool file.
 - Tool Web hanya-baca dan hanya ke alamat publik; hasil pencarian bisa berisi instruksi
   jahat, jadi jangan gabungkan Web dengan **Kompleks** + mode AUTO untuk situs yang tidak dipercaya.
-- Perintah berbahaya (`rm -rf /`, `mkfs`, `dd of=/dev/...`, `reboot`, dll.) **selalu diblokir**.
+- Perintah berbahaya **selalu diblokir**, termasuk yang dibungkus (`bash -c 'rm -rf /'`) atau diberi tanda kutip/backslash: menghapus `/`, home, atau folder sistem (`rm`, `mv`, `find -delete`), `chmod/chown -R` di sana, `mkfs`, `dd of=/dev/...`, `reboot`/`shutdown`, `kill -9 -1`, *fork bomb*, serta `git push --force`, `git reset --hard`, dan `git clean -f` lewat shell.
 - Semua aksi tool dicatat di `aksi.log`.
-- Daftar blokir hanya pengaman dasar. Baca perintah sebelum menekan Ya.
+- Daftar blokir hanya pengaman dasar berbasis pola. Perintah yang disamarkan lewat variabel, *brace expansion* (`{rm,-rf,/}`), atau `python3 -c` masih bisa lolos. Baca perintah sebelum menekan Ya.
 - Model kecil bisa salah mengerti perintah. Untuk pemula, biarkan mode AUTO **mati**.
 
 ## Berkas
