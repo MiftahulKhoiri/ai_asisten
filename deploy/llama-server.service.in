@@ -1,0 +1,12 @@
+[Unit]
+Description=llama-server (llama.cpp) untuk AI Asisten
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@LLAMA_BIN@ --models-dir @MODELS_DIR@ --host 127.0.0.1 --port @PORT@ -c @CTX@ --jinja
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
