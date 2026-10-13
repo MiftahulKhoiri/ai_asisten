@@ -1,5 +1,7 @@
 # ai_asisten
 
+[![tests](https://github.com/MiftahulKhoiri/ai_asisten/actions/workflows/tests.yml/badge.svg)](https://github.com/MiftahulKhoiri/ai_asisten/actions/workflows/tests.yml)
+
 Asisten AI lokal dengan tampilan chat web yang bisa dibuka dari HP. Otaknya model
 `.gguf` yang dijalankan oleh `llama-server` (llama.cpp) di Raspberry Pi 5. Ia bisa
 menjalankan perintah, membaca/menulis file, melihat folder, dan mencari informasi di
@@ -212,7 +214,56 @@ Lupa IP Pi-nya? Jalankan `hostname -I` di Pi.
 
 ## Menjalankan sehari-hari
 
-Setiap kali Pi baru menyala, jalankan dua hal ini (di dua terminal, atau pakai `tmux`):
+Ada tiga cara menjalankannya. Pilih salah satu.
+
+### Cara 1: `start.sh` (paling mudah)
+
+```bash
+cd ~/ai_asisten
+./start.sh
+```
+
+Skrip ini menyalakan `llama-server` bila belum hidup, menunggu sampai siap, lalu menjalankan
+`asisten.py`. Tekan Ctrl+C untuk berhenti: asisten menutup diri dulu (model dibongkar), baru
+llama-server ikut dihentikan, dan hanya bila skrip ini yang menyalakannya. Opsi `asisten.py`
+bisa ditambahkan di belakangnya, misalnya `./start.sh --port 8091 --idle 10`. Log llama-server
+ada di `llama-server.log`.
+
+Pengaturan lewat variabel lingkungan, contoh:
+`LLAMA_BIN=/opt/llama/llama-server ASISTEN_MODELS_DIR=/mnt/models ./start.sh`
+(daftar lengkap di [Pengaturan](#pengaturan-variabel-lingkungan)).
+Kalau muncul `Permission denied`, jalankan `chmod +x start.sh` sekali, atau pakai `bash start.sh`.
+
+### Cara 2: otomatis saat Pi menyala (systemd)
+
+```bash
+cd ~/ai_asisten
+./deploy/pasang-layanan.sh
+```
+
+Skrip memasang dua layanan systemd tingkat-pengguna (tanpa sudo): `llama-server` dan
+`ai-asisten`. Keduanya langsung menyala dan aktif setiap Pi boot, bahkan sebelum kamu login
+(lewat `loginctl enable-linger`; bila gagal, skrip menampilkan perintah `sudo` yang perlu dijalankan).
+
+| Perintah | Fungsi |
+|---|---|
+| `systemctl --user status ai-asisten llama-server` | lihat status |
+| `journalctl --user -u ai-asisten -f` | lihat log asisten |
+| `cat ~/ai_asisten/.token` | lihat token untuk alamat `http://IP-PI:8090/?token=...` |
+| `systemctl --user restart ai-asisten` | mulai ulang asisten |
+| `systemctl --user stop ai-asisten llama-server` | hentikan (model dibongkar dulu) |
+| `./deploy/pasang-layanan.sh --hapus` | hentikan dan hapus layanan |
+
+Pengaturan tambahan (misalnya `ASISTEN_LOG_MAKS_KB` atau `ASISTEN_TOOLS`) ditaruh di
+`~/.config/ai_asisten.env`, satu baris `NAMA=nilai`, lalu `systemctl --user restart ai-asisten`.
+
+Catatan: jalur proyek, llama-server, dan folder model tidak boleh mengandung spasi; pasang ulang
+bila jalurnya berubah. Jangan menjalankan `start.sh` bersamaan dengan layanan (port bentrok):
+hentikan layanan dulu.
+
+### Cara 3: manual (dua terminal)
+
+Jalankan dua hal ini (di dua terminal, atau pakai `tmux`):
 
 ```bash
 # terminal 1
@@ -230,7 +281,7 @@ tmux new -s ai        # lalu jalankan kedua perintah di jendela terpisah (Ctrl+b
 # lepas dengan Ctrl+b lalu d, kembali dengan: tmux attach -t ai
 ```
 
-Opsi `asisten.py`:
+### Opsi `asisten.py`
 
 | Opsi | Fungsi |
 |---|---|
@@ -340,8 +391,23 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 | `ASISTEN_CTX` | `8192` | ukuran konteks; samakan dengan `-c` di llama-server |
 | `ASISTEN_TOOLS` | `kompleks` | skill bawaan bila web belum memilih (`dasar` = 4 tool inti) |
 | `ASISTEN_AKAR_TULIS` | home dan `/tmp` | folder yang boleh diubah tool, pisahkan dengan `:` (`/a:/b`) |
+| `ASISTEN_LOG_MAKS_KB` | `1024` | batas ukuran `aksi.log` sebelum diputar menjadi `aksi.log.1` .. `.3` (0 = tanpa rotasi) |
 | `ASISTEN_GERBANG` | `1` | `0` mematikan gerbang yang membatasi tool pada permintaan yang tampak butuh akses sistem |
 | `ASISTEN_MODEL` | `Qwen_Qwen3-1.7B-Q4_K_M` | model bawaan untuk `cli_lama.py` |
+
+Khusus `start.sh` (dan sebagian `deploy/pasang-layanan.sh`):
+
+| Variabel | Bawaan | Fungsi |
+|---|---|---|
+| `LLAMA_BIN` | `~/llama.cpp/build/bin/llama-server` | lokasi llama-server (juga dipakai `pasang-layanan.sh`) |
+| `LLAMA_PORT` | `8080` | port llama-server yang dinyalakan (juga dipakai `pasang-layanan.sh`) |
+| `LLAMA_ARGS` | kosong | opsi tambahan untuk llama-server, mis. `"-t 4"` (hanya `start.sh`) |
+| `LLAMA_TUNGGU` | `120` | detik menunggu llama-server siap (hanya `start.sh`) |
+| `LLAMA_LOG` | `llama-server.log` di folder proyek | berkas log llama-server (hanya `start.sh`) |
+
+`ASISTEN_MODELS_DIR` dan `ASISTEN_CTX` juga dipakai skrip ini untuk `--models-dir` dan `-c`, jadi
+nilainya otomatis sama dengan asisten. Bila `LLAMA_BASE_URL` diisi, `start.sh` memakai llama-server
+di alamat itu dan tidak menyalakan yang lokal.
 
 ## Keamanan
 
@@ -357,7 +423,7 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 - Tool Web hanya-baca dan hanya ke alamat publik; hasil pencarian bisa berisi instruksi
   jahat, jadi jangan gabungkan Web dengan **Kompleks** + mode AUTO untuk situs yang tidak dipercaya.
 - Perintah berbahaya **selalu diblokir**, termasuk yang dibungkus (`bash -c 'rm -rf /'`) atau diberi tanda kutip/backslash: menghapus `/`, home, atau folder sistem (`rm`, `mv`, `find -delete`), `chmod/chown -R` di sana, `mkfs`, `dd of=/dev/...`, `reboot`/`shutdown`, `kill -9 -1`, *fork bomb*, serta `git push --force`, `git reset --hard`, dan `git clean -f` lewat shell.
-- Semua aksi tool dicatat di `aksi.log`.
+- Semua aksi tool dicatat di `aksi.log`. Berkas ini diputar otomatis pada 1 MB (maksimal 3 salinan lama), jadi tidak membesar tanpa batas.
 - Daftar blokir hanya pengaman dasar berbasis pola. Perintah yang disamarkan lewat variabel, *brace expansion* (`{rm,-rf,/}`), atau `python3 -c` masih bisa lolos. Baca perintah sebelum menekan Ya.
 - Model kecil bisa salah mengerti perintah. Untuk pemula, biarkan mode AUTO **mati**.
 
@@ -375,11 +441,15 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 | `src/tool_telusur.py` | tool hanya-baca: daftar, cari, dan info folder/file |
 | `src/tool_sistem.py` | perintah shell, info sistem, proses, git |
 | `src/tool_web.py` | `ambil_url`, `baca_halaman`, `berita`, `cari_web` |
+| `src/aksilog.py` | penulisan `aksi.log` dengan rotasi |
 | `src/tool_lain.py` | kalkulator dan waktu (tempat termudah untuk tool baru) |
 | `web/index.html`, `index.css`, `index.js` | tampilan chat |
+| `start.sh` | menyalakan llama-server (bila belum hidup) lalu asisten, dengan satu perintah |
+| `deploy/` | `pasang-layanan.sh` dan templat unit systemd (`*.service.in`) |
+| `.github/workflows/tests.yml` | CI GitHub: menjalankan pengujian di Python 3.9, 3.11, 3.13 |
 | `tests/` | pengujian otomatis (`unittest`) |
 | `cli_lama.py` | versi CLI lama (tanpa web), masih bisa dipakai, dan memakai pengaman perintah yang sama. Contoh: `python3 cli_lama.py "cek suhu CPU"` |
-| `riwayat/`, `.token`, `aksi.log` | data (dibuat otomatis, tidak ikut git) |
+| `riwayat/`, `.token`, `aksi.log*`, `llama-server.log` | data (dibuat otomatis, tidak ikut git) |
 
 ## Pengujian
 
@@ -392,7 +462,12 @@ Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`),
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
 agen dan skill (`tests/test_agen.py`, memakai model palsu),
 serta pemeriksaan tampilan web (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang).
+rotasi `aksi.log` (`tests/test_aksilog.py`), serta `start.sh` dan `deploy/pasang-layanan.sh`
+(`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).
 Tidak butuh model termuat dan tidak butuh llama-server menyala.
+
+Setiap push ke GitHub menjalankan pengujian yang sama lewat GitHub Actions
+(`.github/workflows/tests.yml`, Python 3.9, 3.11, dan 3.13).
 
 ## Pemecahan masalah
 
@@ -409,6 +484,12 @@ Tidak butuh model termuat dan tidak butuh llama-server menyala.
 | HP tidak bisa membuka alamatnya | HP dan Pi harus satu Wi-Fi, IP bisa berubah (cek `hostname -I`), dan `asisten.py` jangan dijalankan dengan `--host 127.0.0.1` |
 | Model langsung memanggil tool untuk sapaan, atau jawabannya ngawur | Model terlalu kecil/tidak cocok untuk tool calling. Coba skill **Tanpa skill**, atau ganti model. Pastikan llama-server memakai `--jinja` |
 | Jawaban terpotong atau riwayat terasa dilupakan | Konteks 8192 token terbatas, riwayat lama dipangkas saat dikirim ke model |
+| `./start.sh`: `Permission denied` | `chmod +x start.sh deploy/pasang-layanan.sh`, atau jalankan dengan `bash start.sh` |
+| `./start.sh`: `llama-server tidak ditemukan` | Belum dibangun, atau jalurnya lain. Bangun ([langkah 2](#2-pasang-llamacpp-llama-server)) atau isi `LLAMA_BIN=/jalur/ke/llama-server ./start.sh` |
+| `./start.sh`: `llama-server berhenti saat dinyalakan` | Baca 20 baris log yang ditampilkan (lengkapnya di `llama-server.log`). Umumnya ada opsi yang tidak dikenal versi llama.cpp-mu, atau port 8080 dipakai program lain (coba `LLAMA_PORT=8081 ./start.sh`) |
+| Layanan systemd tidak menyala setelah Pi reboot | Jalankan `sudo loginctl enable-linger $USER`, lalu reboot. Periksa `systemctl --user status ai-asisten llama-server` |
+| `ai-asisten` sempat gagal lalu menyala sendiri saat boot | Normal: ia menunggu llama-server siap dan mencoba lagi tiap 5 detik. Lihat `journalctl --user -u ai-asisten` |
+| `aksi.log` terlalu besar | Diputar otomatis pada 1 MB. Ubah batasnya dengan `ASISTEN_LOG_MAKS_KB` (0 = tanpa rotasi) |
 | Suhu CPU atau status throttling tidak tampil | Suhu dibaca dari `/sys/class/thermal/thermal_zone0/temp` (tidak ada di semua perangkat). Status throttling butuh `vcgencmd`, yang hanya ada di Raspberry Pi |
 
 ## Batasan
@@ -417,4 +498,3 @@ Model kecil cukup untuk tugas sederhana (lihat folder, baca file, cek status) te
 sering salah di tugas berlangkah banyak. Konteks server 8192 token, jadi riwayat lama
 dipangkas saat dikirim ke model (riwayat di disk tetap utuh). Hanya satu proses
 generasi berjalan pada satu waktu.
- 
