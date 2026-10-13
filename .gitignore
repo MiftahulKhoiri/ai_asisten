@@ -1,0 +1,7 @@
+.token
+riwayat/
+aksi.log
+__pycache__/
+*.bak
+aksi.log.*
+llama-server.log
