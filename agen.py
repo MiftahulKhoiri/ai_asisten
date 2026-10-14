@@ -2,7 +2,7 @@
 """agen.py - inti agen AI Asisten.
 
 Berisi: klien llama-server dengan streaming, riwayat, dan loop agen
-(function calling). Semua tool ada di src/tolls.py. Hanya library standar Python.
+(function calling). Semua tool ada di paket src/ (pintu masuknya src/tolls.py). Hanya library standar Python.
 Dipakai oleh asisten.py (server web).
 """
 import json
