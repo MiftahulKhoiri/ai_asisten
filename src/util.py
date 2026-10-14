@@ -1,4 +1,12 @@
-"""util.py - konstanta dan fungsi bantu bersama semua tool (path, izin, proses, format)."""
+"""util.py - konstanta dan fungsi bantu bersama semua tool (path, izin, proses, format).
+
+Tiga lapis perlindungan jalur file:
+  _rahasia   file kredensial: TIDAK boleh dibaca model (baca/cari/arsip/salin).
+  _boleh_tulis  batas folder yang boleh diubah (home, /tmp, ASISTEN_AKAR_TULIS).
+  _sensitif  jalur yang bisa mengubah perilaku sistem atau asisten sendiri (.bashrc,
+             unit systemd user, .git/hooks, kode asisten, kredensial). Mengubahnya
+             SELALU minta izin, juga di mode AUTO (lihat _izin_jalur).
+"""
 
 import os
 import signal
@@ -9,6 +17,7 @@ from pathlib import Path
 MAX_OUTPUT = 2000   # karakter maksimum hasil tool yang dikirim balik ke model
 CMD_TIMEOUT = 60    # detik, batas waktu satu perintah shell
 HOME = Path.home()
+APP_DIR = Path(__file__).resolve().parent.parent   # folder proyek (asisten.py, src/, web/)
 TEMPAT_SAMPAH = HOME / ".sampah_asisten"
 NOISE = {".git", "__pycache__", "node_modules", ".venv", "venv", ".cache",
          ".mypy_cache", ".pytest_cache"}
@@ -23,15 +32,84 @@ def _p(path):
     return p if p.is_absolute() else HOME / p
 
 
-def _rahasia(p):
+def _resolve(p):
     try:
-        r = p.resolve()
+        return p.resolve()
     except OSError:
-        r = p
+        return p
+
+
+_NAMA_RAHASIA = {".token", ".git-credentials", ".netrc", "_netrc", ".pgpass", ".my.cnf",
+                 ".pypirc", ".npmrc", ".bash_history", ".zsh_history", ".python_history",
+                 ".mysql_history", ".psql_history", "ai_asisten.env"}
+_CONTOH_ENV = (".example", ".sample", ".template", ".dist")
+_BAGIAN_RAHASIA = ("/.aws/", "/.gnupg/", "/.kube/", "/.azure/", "/.docker/",
+                   "/.config/gh/", "/.config/gcloud/", "/.config/rclone/")
+
+
+def _rahasia_inti(r):
+    """Inti: token asisten dan kunci pribadi ~/.ssh. `r` sudah di-resolve."""
     if r.name == ".token":
         return True
     return (".ssh" in r.parts and not r.name.endswith(".pub")
             and r.name not in ("known_hosts", "config"))
+
+
+def _kredensial(r):
+    """File kredensial lain: .env, .git-credentials, .netrc, ~/.aws, ~/.config/gh, dst."""
+    n = r.name
+    if n in _NAMA_RAHASIA or n == ".env":
+        return True
+    if n.startswith(".env.") and not n.endswith(_CONTOH_ENV):
+        return True
+    s = "/" + "/".join(x for x in r.parts if x != "/") + "/"
+    return any(b in s for b in _BAGIAN_RAHASIA)
+
+
+def _rahasia(p):
+    """True bila file berisi rahasia yang tidak boleh dibaca model."""
+    r = _resolve(p)
+    return _rahasia_inti(r) or _kredensial(r)
+
+
+_RC_HOME = {".bashrc", ".bash_profile", ".bash_login", ".bash_logout", ".profile",
+            ".zshrc", ".zprofile", ".zshenv", ".zlogin", ".xprofile", ".xsession",
+            ".pam_environment", ".inputrc", ".gitconfig"}
+_DIR_SENSITIF = (".config/systemd", ".config/autostart", ".config/environment.d",
+                 ".config/git", ".local/bin", "bin")
+
+
+def _sensitif(p):
+    """True bila mengubah `p` bisa mengubah perilaku sistem atau asisten sendiri.
+
+    Dicek pada jalur asli dan jalur setelah link diikuti: skrip login (~/.bashrc, ...),
+    unit systemd/autostart, ~/.local/bin, .git/hooks dan .git/config, kode asisten
+    sendiri (kecuali riwayat/), serta semua file kredensial.
+    """
+    kandidat = {_resolve(p)}
+    try:
+        kandidat.add(p.parent.resolve() / p.name)
+    except OSError:
+        pass
+    home = _resolve(HOME)
+    app = _resolve(APP_DIR)
+    for r in kandidat:
+        if _rahasia_inti(r) or _kredensial(r):
+            return True
+        if r.parent == home and r.name in _RC_HOME:
+            return True
+        for d in _DIR_SENSITIF:
+            akar = home / d
+            if r == akar or akar in r.parents:
+                return True
+        bag = r.parts
+        if any(x == ".git" and i + 1 < len(bag) and bag[i + 1] in ("hooks", "config")
+               for i, x in enumerate(bag)):
+            return True
+        if r == app or app in r.parents:
+            if r.relative_to(app).parts[:1] != ("riwayat",):
+                return True
+    return False
 
 
 def _boleh_tulis(p, ikuti_link=True):
@@ -39,7 +117,7 @@ def _boleh_tulis(p, ikuti_link=True):
         r = p.resolve() if ikuti_link else p.parent.resolve() / p.name
     except OSError:
         return False
-    if _rahasia(r) or ".ssh" in r.parts:
+    if _rahasia_inti(r) or ".ssh" in r.parts:
         return False
     for akar in AKAR_TULIS:
         if r == akar:
@@ -60,6 +138,14 @@ def _izin(ctx, jenis, ringkas_, detail="", selalu=False):
         if not ctx.konfirmasi(jenis, ringkas_, detail):
             return "DIBATALKAN: pengguna tidak mengizinkan tindakan ini."
     return None
+
+
+def _izin_jalur(ctx, jenis, ringkas_, detail="", *jalur):
+    """Seperti _izin, tetapi SELALU bertanya (juga di mode AUTO) bila ada jalur sensitif."""
+    sens = any(_sensitif(j) for j in jalur)
+    if sens:
+        ringkas_ += "   [LOKASI SENSITIF]"
+    return _izin(ctx, jenis, ringkas_, detail, selalu=sens)
 
 
 def _run(cmd, timeout=15, cwd=None, env=None, shell=False):
