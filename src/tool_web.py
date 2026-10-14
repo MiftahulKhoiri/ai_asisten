@@ -12,17 +12,21 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 
 from .registri import tool
-from .util import MAX_OUTPUT, _boleh_tulis, _fmt, _izin, _p, _tolak_tulis
+from .util import MAX_OUTPUT, _boleh_tulis, _fmt, _izin_jalur, _p, _tolak_tulis
 
 
-@tool("ambil_url", "Ambil teks halaman web (http/https); simpan_ke = unduh jadi file.",
+@tool("ambil_url", "Ambil teks halaman web publik (http/https); simpan_ke = unduh jadi file.",
       {"url": ("string", "alamat"),
        "simpan_ke": ("string", "(opsional) path file")},
       wajib=["url"], ringkas=lambda a: f"ambil {a.get('url', '')}")
 def ambil_url(ctx, url, simpan_ke=""):
-    if not re.match(r"^https?://", url.strip(), re.I):
-        return "ERROR: hanya alamat http/https yang didukung."
     url = url.strip()
+    if not re.match(r"^https?://", url, re.I):
+        return "ERROR: hanya alamat http/https yang didukung."
+    try:
+        _cek_publik(url)   # sama seperti baca_halaman: alamat lokal/privat ditolak
+    except ValueError as e:
+        return f"ERROR: {e}"
     dst = None
     if simpan_ke:
         dst = _p(simpan_ke)
@@ -30,33 +34,37 @@ def ambil_url(ctx, url, simpan_ke=""):
             return f"ERROR: file tujuan sudah ada: {dst}"
         if not _boleh_tulis(dst):
             return _tolak_tulis(dst)
-    t = _izin(ctx, "jaringan", f"GET {url}" + (f"\nsimpan ke {dst}" if dst else ""))
+    t = _izin_jalur(ctx, "jaringan", f"GET {url}" + (f"\nsimpan ke {dst}" if dst else ""),
+                    "", *([dst] if dst else []))
     if t:
         return t
     req = urllib.request.Request(url, headers={"User-Agent": "ai_asisten/1.0"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        if dst:
-            batas, total = 50 * 1024 * 1024, 0
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            sementara = dst.with_name(dst.name + ".part")
-            try:
-                with open(sementara, "wb") as f:
-                    while True:
-                        potong_ = r.read(65536)
-                        if not potong_:
-                            break
-                        total += len(potong_)
-                        if total > batas:
-                            raise ValueError("file lebih dari 50 MB, dibatalkan")
-                        f.write(potong_)
-                sementara.rename(dst)
-            finally:
-                if sementara.exists():
-                    sementara.unlink()
-            return f"Terunduh: {dst} ({_fmt(total)})"
-        ctype = r.headers.get("Content-Type", "")
-        data = r.read(200_000)
-        teks = data.decode(r.headers.get_content_charset() or "utf-8", errors="replace")
+    try:
+        with _OPENER.open(req, timeout=20) as r:   # pengalihan ke alamat lokal juga ditolak
+            if dst:
+                batas, total = 50 * 1024 * 1024, 0
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                sementara = dst.with_name(dst.name + ".part")
+                try:
+                    with open(sementara, "wb") as f:
+                        while True:
+                            potong_ = r.read(65536)
+                            if not potong_:
+                                break
+                            total += len(potong_)
+                            if total > batas:
+                                raise ValueError("file lebih dari 50 MB, dibatalkan")
+                            f.write(potong_)
+                    sementara.rename(dst)
+                finally:
+                    if sementara.exists():
+                        sementara.unlink()
+                return f"Terunduh: {dst} ({_fmt(total)})"
+            ctype = r.headers.get("Content-Type", "")
+            data = r.read(200_000)
+            teks = data.decode(r.headers.get_content_charset() or "utf-8", errors="replace")
+    except ValueError as e:
+        return f"ERROR: {e}"
     if "html" in ctype.lower() or teks.lstrip().lower().startswith(("<!doctype", "<html")):
         teks = re.sub(r"(?is)<(script|style|noscript).*?</\1>", " ", teks)
         teks = re.sub(r"(?s)<[^>]+>", " ", teks)
