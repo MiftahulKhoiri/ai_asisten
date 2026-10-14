@@ -159,8 +159,8 @@ def cari_teks(ctx, teks, path=".", pola_file="*", maks=30):
 
     def periksa(fp):
         try:
-            if fp.stat().st_size > 1_000_000:
-                return
+            if _rahasia(fp) or fp.stat().st_size > 1_000_000:
+                return   # file rahasia tidak ikut dicari
             with open(fp, "rb") as f:
                 awal = f.read(1024)
                 if _teks_biner(awal):
