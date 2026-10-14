@@ -50,6 +50,16 @@ def port_bebas(selain=()):
             return port
 
 
+def fs_mendukung_izin_eksekusi(folder):
+    """False pada sistem berkas yang tidak menyimpan izin eksekusi (mis. penyimpanan bersama Android)."""
+    try:
+        with tempfile.NamedTemporaryFile(dir=folder) as f:
+            os.chmod(f.name, 0o755)
+            return bool(os.stat(f.name).st_mode & 0o111) and os.access(f.name, os.X_OK)
+    except OSError:
+        return False
+
+
 def hidup(pid):
     try:
         os.kill(pid, 0)
@@ -67,8 +77,13 @@ class TestSintaks(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_bisa_dieksekusi(self):
+        if not fs_mendukung_izin_eksekusi(ROOT):
+            self.skipTest("sistem berkas ini tidak menyimpan izin eksekusi")
         for f in (START, PASANG):
-            self.assertTrue(os.access(f, os.X_OK), f"{f.name} belum chmod +x")
+            self.assertTrue(
+                os.access(f, os.X_OK),
+                f"{f.name} belum bisa dieksekusi. Jalankan: chmod +x start.sh deploy/pasang-layanan.sh "
+                "(dan, bila repo di-git: git update-index --chmod=+x start.sh deploy/pasang-layanan.sh)")
 
 
 @unittest.skipUnless(BASH and sys.platform != "win32", "butuh bash di Linux/macOS")
@@ -200,6 +215,8 @@ class TestStart(unittest.TestCase):
         finally:
             if p.poll() is None:
                 p.kill()
+                p.wait(timeout=10)
+            p.stdout.close()
         self.assertIn("Selesai", sisa)                 # asisten.py menutup diri dengan rapi
         self.assertIn("llama-server dihentikan", sisa)
         self.assertLess(sisa.index("Selesai"), sisa.index("llama-server dihentikan"))
