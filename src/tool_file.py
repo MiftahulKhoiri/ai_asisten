@@ -7,7 +7,8 @@ from datetime import datetime
 from pathlib import Path
 
 from .registri import tool
-from .util import MAX_OUTPUT, TEMPAT_SAMPAH, _boleh_tulis, _fmt, _izin, _p, _rahasia, _teks_biner, _tolak_tulis
+from .util import (MAX_OUTPUT, TEMPAT_SAMPAH, _boleh_tulis, _fmt, _izin, _izin_jalur, _p, _rahasia,
+                   _teks_biner, _tolak_tulis)
 
 
 @tool("baca_file", "Baca file teks. dari_baris/sampai_baris untuk bagian tertentu (bernomor).",
@@ -75,7 +76,7 @@ def tulis_file(ctx, path, isi, tambah=False):
         return f"ERROR: bukan file: {p}"
     info = ("menambah di akhir file" if tambah and ada
             else "menimpa file lama" if ada else "file baru")
-    t = _izin(ctx, "tulis", f"{p} ({len(isi)} karakter, {info})", isi[:600])
+    t = _izin_jalur(ctx, "tulis", f"{p} ({len(isi)} karakter, {info})", isi[:600], p)
     if t:
         return t
     if ada and not tambah:
@@ -109,7 +110,7 @@ def edit_file(ctx, path, lama, baru=""):
         return "ERROR: teks 'lama' tidak ditemukan (harus sama persis, termasuk spasi)."
     if n > 1:
         return f"ERROR: teks 'lama' muncul {n} kali; tambahkan baris di sekitarnya agar unik."
-    t = _izin(ctx, "ubah", f"edit {p}", f"- {lama[:300]}\n+ {baru[:300]}")
+    t = _izin_jalur(ctx, "ubah", f"edit {p}", f"- {lama[:300]}\n+ {baru[:300]}", p)
     if t:
         return t
     shutil.copy2(p, str(p) + ".bak")
@@ -128,7 +129,7 @@ def buat_folder(ctx, path):
         return f"ERROR: sudah ada file dengan nama itu: {p}"
     if not _boleh_tulis(p):
         return _tolak_tulis(p)
-    t = _izin(ctx, "ubah", f"buat folder {p}")
+    t = _izin_jalur(ctx, "ubah", f"buat folder {p}", "", p)
     if t:
         return t
     p.mkdir(parents=True)
@@ -156,7 +157,7 @@ def salin_pindah(ctx, aksi, sumber, tujuan):
         return _tolak_tulis(d)
     if aksi == "pindah" and not _boleh_tulis(s, ikuti_link=False):
         return _tolak_tulis(s)
-    t = _izin(ctx, "ubah", f"{aksi} {s} -> {d}")
+    t = _izin_jalur(ctx, "ubah", f"{aksi} {s} -> {d}", "", d, *([s] if aksi == "pindah" else []))
     if t:
         return t
     d.parent.mkdir(parents=True, exist_ok=True)
@@ -248,7 +249,7 @@ def arsip(ctx, aksi, path, tujuan=""):
         total = sum(f.stat().st_size for f in berkas if f.exists())
         if total > _ZIP_MAKS_BYTE:
             return f"ERROR: ukuran total terlalu besar ({_fmt(total)})."
-        t = _izin(ctx, "ubah", f"buat zip {d} dari {p} ({len(berkas)} file, {_fmt(total)})")
+        t = _izin_jalur(ctx, "ubah", f"buat zip {d} dari {p} ({len(berkas)} file, {_fmt(total)})", "", d)
         if t:
             return t
         d.parent.mkdir(parents=True, exist_ok=True)
@@ -275,7 +276,7 @@ def arsip(ctx, aksi, path, tujuan=""):
                 tgt = (akar / i.filename).resolve()
                 if tgt != akar and akar not in tgt.parents:
                     return f"DITOLAK: zip berisi path berbahaya: {i.filename}"
-            t = _izin(ctx, "ubah", f"ekstrak {p} -> {d} ({len(info)} entri)")
+            t = _izin_jalur(ctx, "ubah", f"ekstrak {p} -> {d} ({len(info)} entri)", "", d)
             if t:
                 return t
             d.mkdir(parents=True, exist_ok=True)
