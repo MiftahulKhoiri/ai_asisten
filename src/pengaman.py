@@ -38,6 +38,28 @@ BAHAYA = [
 ]
 
 
+# ---- Pola tambahan untuk KONFIRMASI_SELALU (mode AUTO tetap bertanya) -------------------
+# Interpreter yang menjalankan kode dari teks perintah itu sendiri (-c, -e, heredoc, pipa).
+_INTERP = r"(?:python[\d.]*|pypy\d*|perl|ruby|lua|php|node(?:js)?|bun|deno)"
+# File rahasia: dibaca lewat shell (cat ~/.ssh/id_x, grep KEY .env, tar ... ~/.aws).
+_RAHASIA_SHELL = (
+    r"(?:\.ssh/(?!known_hosts|config\b|\S*\.pub)\S|\.token\b|\.git-credentials|\.netrc\b|"
+    r"\.pgpass|\.aws(?:/|(?=\s|$))|\.gnupg\b|\.kube/config|\.config/gh/|\.docker/config\.json|"
+    r"ai_asisten\.env|/etc/shadow|/etc/sudoers|\.(?:bash|zsh|python)_history|"
+    r"(?<![\w.-])\.env(?:\.(?!example|sample|template|dist)\w+)?(?=\s|$|[;&|)<>]))")
+_BACA = (r"(?:\b(?:cat|tac|nl|less|more|head|tail|bat|cp|mv|scp|rsync|curl|wget|base64|xxd|od|"
+         r"hexdump|strings|grep|egrep|fgrep|rg|ag|awk|sed|cut|sort|uniq|tar|zip|7z|gzip|source|"
+         r"export)\b|(?:^|[;&|(`\n]\s*)\.(?=\s))")
+# Skrip login, unit systemd/autostart, ~/.local/bin, .git/hooks: tempat menanam persistensi.
+_STARTUP = (
+    r"(?:(?<![\w.-])\.(?:bashrc|bash_profile|bash_login|bash_logout|profile|zshrc|zprofile|"
+    r"zshenv|zlogin|xprofile|xsession|pam_environment|inputrc|gitconfig)(?![\w.-])|"
+    r"\.config/(?:systemd|autostart|environment\.d|git)/|\.ssh/authorized_keys|\.git/hooks/|"
+    r"\.local/bin/|(?:~|\$HOME|\$\{HOME\})/bin/)")
+_TULIS = (r"(?:>|\b(?:tee|cp|mv|ln|truncate|install|rsync|"
+          r"(?:sed|perl)\s+(?:-\S+\s+)*-\S*i\S*)\b)")
+
+
 KONFIRMASI_SELALU = [
     r"\bsudo\b",
     r"\b(?:apt|apt-get)\s+(?:-\S+\s+)*(?:install|remove|purge|upgrade|dist-upgrade|"
@@ -55,6 +77,22 @@ KONFIRMASI_SELALU = [
     r"\beval\b",
     r"\bsource\s+<\(",
     r"\bbase64\b[^;&|]*\s(?:-d|-D|--decode)\b",
+    # --- kode inline lewat interpreter ---
+    r"\b" + _INTERP + r"\s+(?:-\S+\s+)*(?:-[A-Za-z]*[cerE]\S*|--(?:eval|print|command)\b)",
+    r"\b" + _INTERP + r"\b(?:\s+-)?\s*<(?!\()",           # heredoc / < file
+    r"\|\s*(?:sudo\s+)?(?:\S*/)?" + _INTERP + r"(?:\s+-)?(?=\s*(?:$|[;&|)]))",   # ... | python3
+    # --- baca file rahasia lewat shell ---
+    _BACA + r"[^;&|\n]*" + _RAHASIA_SHELL,
+    r"<\s*\S*" + _RAHASIA_SHELL,
+    # --- persistensi: skrip login, cron, systemd, soket balik ---
+    _TULIS + r"[^;&|\n]*" + _STARTUP,
+    r"\bcrontab\b(?!\s+-l\b)",
+    r"\bsystemctl\b[^;&|\n]*\b(?:enable|disable|start|stop|restart|reload|mask|unmask|link|edit|"
+    r"set-default|daemon-reload|kill|reset-failed)\b",
+    r"\bsystemd-run\b",
+    r"\bloginctl\b[^;&|\n]*\b(?:enable-linger|disable-linger|terminate-\w+|kill-\w+)\b",
+    r"\b(?:nc|ncat|netcat|socat)\b[^;&|\n]*\s(?:-\w*[ec]\b|--(?:exec|sh-exec)\b|EXEC:|exec:)",
+    r"/dev/(?:tcp|udp)/",
 ]
 
 
