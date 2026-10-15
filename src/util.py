@@ -133,8 +133,15 @@ def _tolak_tulis(p):
 
 
 def _izin(ctx, jenis, ringkas_, detail="", selalu=False):
-    """None jika diizinkan; pesan DIBATALKAN jika pengguna menolak."""
-    if selalu or not ctx.auto:
+    """None jika diizinkan; pesan DIBATALKAN jika pengguna menolak.
+
+    Mode AUTO tidak berlaku (selalu bertanya) bila ctx.tercemar: obrolan sudah memakai tool
+    web, jadi teks dari internet bisa saja berisi perintah terselubung (prompt injection).
+    """
+    tercemar = bool(getattr(ctx, "tercemar", False))
+    if selalu or tercemar or not ctx.auto:
+        if tercemar and ctx.auto and not selalu:
+            ringkas_ += "   [setelah tool web: izin wajib walau AUTO]"
         if not ctx.konfirmasi(jenis, ringkas_, detail):
             return "DIBATALKAN: pengguna tidak mengizinkan tindakan ini."
     return None
