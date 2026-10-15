@@ -29,11 +29,15 @@ Kebijakan izin (ctx datang dari asisten.py):
   tool hanya-baca  -> tanpa izin
   tool pengubah    -> _izin(...)             : tanya kecuali mode AUTO
   tool berisiko    -> _izin(..., selalu=True): tanya SELALU, juga di mode AUTO
+  tool yang menyentuh jalur -> _izin_jalur(...): SELALU tanya bila jalurnya sensitif (util._sensitif)
+  Setelah tool sumber luar (@tool(..., luar=True), mis. web) dipakai di sebuah obrolan, ctx.tercemar
+  menjadi True dan _izin selalu bertanya walau mode AUTO (lindungan prompt injection).
 
 Variabel lingkungan (opsional):
   ASISTEN_TOOLS=dasar        skill bawaan: hanya 4 tool inti (hemat konteks model)
                              (di web, skill dipilih saat memilih model; boleh lebih dari satu)
   ASISTEN_AKAR_TULIS=/a:/b   folder tambahan yang boleh ditulis/dihapus
+  ASISTEN_CTX / ASISTEN_MAX_TOKENS   ukuran konteks dan batas token jawaban (lihat agen.py)
 
 Skill (bisa digabung): tanpa (chat saja), web (cari info/berita di internet),
 dasar (4 tool inti), kompleks (semua tool), kritis (periksa & perbaiki jawaban).
