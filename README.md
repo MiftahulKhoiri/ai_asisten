@@ -341,7 +341,8 @@ Halaman yang butuh JavaScript (mis. harga emas dinamis) bisa terbaca kosong.
 - Tombol **Salin** di setiap blok kode dan hasil tool.
 - Tombol **Stop** menghentikan jawaban yang sedang berjalan.
 - Kartu izin (Ya/Tolak) sebelum perintah shell atau penulisan file.
-- Mode **AUTO** (di menu): tanpa konfirmasi, kecuali `sudo` dan instal paket.
+- Mode **AUTO** (di menu): tanpa konfirmasi, kecuali hal berisiko (`sudo`, instal paket, lokasi sensitif,
+  lihat [Keamanan](#keamanan)) dan setelah tool Web dipakai di obrolan itu.
 
 ## Tools
 
@@ -388,7 +389,8 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 |---|---|---|
 | `LLAMA_BASE_URL` | `http://127.0.0.1:8080` | alamat llama-server (boleh berakhiran `/v1`) |
 | `ASISTEN_MODELS_DIR` | `~/models` | folder file `.gguf`, dipakai untuk menampilkan ukuran model. Harus sama dengan `--models-dir` llama-server |
-| `ASISTEN_CTX` | `8192` | ukuran konteks; samakan dengan `-c` di llama-server |
+| `ASISTEN_CTX` | `8192` | ukuran konteks; samakan dengan `-c` di llama-server. Juga menentukan seberapa banyak riwayat yang dikirim ke model |
+| `ASISTEN_MAX_TOKENS` | `700` | batas token satu jawaban. Naikkan bila jawaban atau isi file sering terpotong (makin besar, makin sedikit riwayat yang muat) |
 | `ASISTEN_TOOLS` | `kompleks` | skill bawaan bila web belum memilih (`dasar` = 4 tool inti) |
 | `ASISTEN_AKAR_TULIS` | home dan `/tmp` | folder yang boleh diubah tool, pisahkan dengan `:` (`/a:/b`) |
 | `ASISTEN_LOG_MAKS_KB` | `1024` | batas ukuran `aksi.log` sebelum diputar menjadi `aksi.log.1` .. `.3` (0 = tanpa rotasi) |
@@ -417,14 +419,24 @@ di alamat itu dan tidak menyalakan yang lokal.
 - Perintah berikut **selalu** minta izin, juga di mode AUTO, baik lewat tool khusus maupun lewat `jalankan_perintah`:
   `sudo`; instal/hapus paket (`apt`, `pip`, `npm`, dll.); `rm`; `find ... -delete`; `kill`/`pkill`/`killall`; `git push`;
   `chmod`/`chown -R`; dan perintah yang mengeksekusi teks lain (`| sh`, `bash -c`, `eval`, `base64 -d`, `$(curl ...)`).
+- Selalu minta izin juga (walau AUTO): kode inline lewat interpreter (`python3 -c`, `perl -e`, `node -e`, heredoc, `| python3`);
+  membaca file rahasia lewat shell (`cat ~/.ssh/id_*`, `.env`, `.git-credentials`); menulis ke skrip login (`~/.bashrc`, `.profile`);
+  `crontab`, `systemctl enable/start/stop`, `.git/hooks`, dan soket balik (`nc -e`, `/dev/tcp`).
 - `hapus` dan `matikan_proses` juga selalu minta izin.
+- **Lokasi sensitif** juga selalu minta izin untuk tulis/edit/salin/pindah/arsip/unduh, di mode AUTO sekalipun:
+  skrip login (`~/.bashrc`, `.profile`, `.zshrc`), `~/.config/systemd`, `~/.config/autostart`, `~/.local/bin`, `.git/hooks`,
+  kode asisten sendiri (kecuali `riwayat/`), dan file kredensial. Kartu izin diberi tanda `[LOKASI SENSITIF]`.
+  Konsekuensinya, mengedit kode di `~/ai_asisten` lewat asisten selalu bertanya dulu.
 - Tool pengubah file hanya boleh bekerja di home dan `/tmp` (tambah lewat `ASISTEN_AKAR_TULIS=/a:/b`), tidak di `~/.ssh`.
-- `.token` dan kunci pribadi SSH tidak bisa dibaca lewat tool file.
-- Tool Web hanya-baca dan hanya ke alamat publik; hasil pencarian bisa berisi instruksi
-  jahat, jadi jangan gabungkan Web dengan **Kompleks** + mode AUTO untuk situs yang tidak dipercaya.
+- File rahasia tidak bisa dibaca atau dicari lewat tool file: `.token`, kunci pribadi SSH, `.env` (`.env.example` boleh),
+  `.git-credentials`, `.netrc`, `~/.aws`, `~/.config/gh`, `~/.gnupg`, `.bash_history`, dan sejenisnya.
+- Tool Web (termasuk `ambil_url`) hanya ke alamat publik; alamat lokal/privat dan pengalihan ke sana ditolak.
+  Hasil web bisa berisi instruksi jahat (*prompt injection*), jadi **setelah tool Web dipakai dalam sebuah obrolan, mode AUTO
+  tidak berlaku lagi di obrolan itu**: setiap aksi pengubah dan perintah shell minta izin (kartu diberi tanda
+  `[setelah tool web ...]`). Obrolan baru mulai bersih. File yang diunduh dari web lalu dibaca belum dilindungi seperti ini.
 - Perintah berbahaya **selalu diblokir**, termasuk yang dibungkus (`bash -c 'rm -rf /'`) atau diberi tanda kutip/backslash: menghapus `/`, home, atau folder sistem (`rm`, `mv`, `find -delete`), `chmod/chown -R` di sana, `mkfs`, `dd of=/dev/...`, `reboot`/`shutdown`, `kill -9 -1`, *fork bomb*, serta `git push --force`, `git reset --hard`, dan `git clean -f` lewat shell.
 - Semua aksi tool dicatat di `aksi.log`. Berkas ini diputar otomatis pada 1 MB (maksimal 3 salinan lama), jadi tidak membesar tanpa batas.
-- Daftar blokir hanya pengaman dasar berbasis pola. Perintah yang disamarkan lewat variabel, *brace expansion* (`{rm,-rf,/}`), atau `python3 -c` masih bisa lolos. Baca perintah sebelum menekan Ya.
+- Daftar blokir hanya pengaman dasar berbasis pola. Perintah yang disamarkan lewat variabel atau *brace expansion* (`{rm,-rf,/}`) masih bisa lolos dari pola-polanya. Baca perintah sebelum menekan Ya.
 - Model kecil bisa salah mengerti perintah. Untuk pemula, biarkan mode AUTO **mati**.
 
 ## Berkas
@@ -461,6 +473,8 @@ python3 -m unittest discover -s tests -v
 Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
 agen dan skill (`tests/test_agen.py`, memakai model palsu),
+keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
+kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 serta pemeriksaan tampilan web (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang).
 rotasi `aksi.log` (`tests/test_aksilog.py`), serta `start.sh` dan `deploy/pasang-layanan.sh`
 (`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).
@@ -483,7 +497,8 @@ Setiap push ke GitHub menjalankan pengujian yang sama lewat GitHub Actions
 | Halaman web menolak / "Akses ditolak (token salah)" | Buka lagi alamat lengkap yang berisi `?token=...` dari terminal. Token hilang? Jalankan `python3 asisten.py --token-baru` |
 | HP tidak bisa membuka alamatnya | HP dan Pi harus satu Wi-Fi, IP bisa berubah (cek `hostname -I`), dan `asisten.py` jangan dijalankan dengan `--host 127.0.0.1` |
 | Model langsung memanggil tool untuk sapaan, atau jawabannya ngawur | Model terlalu kecil/tidak cocok untuk tool calling. Coba skill **Tanpa skill**, atau ganti model. Pastikan llama-server memakai `--jinja` |
-| Jawaban terpotong atau riwayat terasa dilupakan | Konteks 8192 token terbatas, riwayat lama dipangkas saat dikirim ke model |
+| Jawaban berakhir dengan `[Jawaban terpotong ...]`, atau `tulis_file` gagal dengan pesan terpotong | Batas token satu jawaban (`ASISTEN_MAX_TOKENS`, bawaan 700) tercapai. Ketik `lanjut`, naikkan nilainya, atau minta file ditulis bertahap (`tambah=true`) |
+| Riwayat terasa dilupakan | Konteks terbatas (`ASISTEN_CTX`), riwayat lama dipangkas saat dikirim ke model. Pastikan nilainya sama dengan `-c` di llama-server |
 | `./start.sh`: `Permission denied` | `chmod +x start.sh deploy/pasang-layanan.sh`, atau jalankan dengan `bash start.sh` |
 | `./start.sh`: `llama-server tidak ditemukan` | Belum dibangun, atau jalurnya lain. Bangun ([langkah 2](#2-pasang-llamacpp-llama-server)) atau isi `LLAMA_BIN=/jalur/ke/llama-server ./start.sh` |
 | `./start.sh`: `llama-server berhenti saat dinyalakan` | Baca 20 baris log yang ditampilkan (lengkapnya di `llama-server.log`). Umumnya ada opsi yang tidak dikenal versi llama.cpp-mu, atau port 8080 dipakai program lain (coba `LLAMA_PORT=8081 ./start.sh`) |
