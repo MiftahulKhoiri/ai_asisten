@@ -84,8 +84,26 @@ SYSTEM_CHAT = (
 # tampak butuh akses sistem. Matikan dengan ASISTEN_GERBANG=0.
 GERBANG = os.environ.get("ASISTEN_GERBANG", "1") != "0"
 
-# Ukuran konteks model (samakan dengan -c di llama-server), untuk indikator pemakaian.
-CTX_MAKS = int(os.environ.get("ASISTEN_CTX", "8192"))
+
+
+def _env_int(nama, bawaan, minimum=1):
+    """Baca bilangan bulat dari variabel lingkungan; nilai rusak -> bawaan."""
+    try:
+        return max(minimum, int(os.environ.get(nama, bawaan)))
+    except ValueError:
+        return bawaan
+
+
+# Ukuran konteks model (samakan dengan -c di llama-server): dipakai untuk indikator pemakaian
+# dan untuk menentukan seberapa banyak riwayat yang dikirim (lihat max_history).
+CTX_MAKS = _env_int("ASISTEN_CTX", 8192, 512)
+# Batas token satu jawaban/putaran. Terlalu kecil memotong jawaban dan isi file panjang.
+MAX_TOKENS = _env_int("ASISTEN_MAX_TOKENS", 700, 64)
+CATATAN_TERPOTONG = ('\n\n[Jawaban terpotong: batas token tercapai. Ketik "lanjut" untuk '
+                     'meneruskan, atau naikkan ASISTEN_MAX_TOKENS.]')
+PESAN_TOOL_TERPOTONG = ("ERROR: panggilan tool terpotong karena batas token jawaban tercapai. "
+                        "Ulangi dengan isi lebih pendek. Untuk file panjang, tulis bertahap: "
+                        "tulis_file lalu tulis_file berikutnya dengan tambah=true.")
 KATA_TOOL = re.compile(
     r"\b(file|berkas|folder|direktori|path|baca|buka|tulis|buat|edit|ubah|ganti|"
     r"hapus|salin|pindah|cari|temukan|jalankan|eksekusi|perintah|cek|periksa|"
@@ -164,10 +182,16 @@ def mode_dari(ctx):
 
 
 def max_history(tools):
-    """Konteks 8192 token ~ 24000 karakter. Riwayat dibatasi menyesuaikan ukuran
-    skema tool (makin banyak tool aktif, makin sedikit ruang riwayat), disisakan
-    ruang untuk system prompt, jawaban (max_tokens 700), dan margin."""
-    return max(5000, min(12000, 24000 - 1800 - len(json.dumps(tools)) - 2100 - 3000))
+    """Jatah karakter riwayat yang dikirim ke model.
+
+    Patokan: konteks 8192 token ~ 24000 karakter, diskalakan mengikuti CTX_MAKS
+    (ASISTEN_CTX). Dikurangi system prompt, skema tool aktif (makin banyak tool, makin
+    sedikit ruang riwayat), ruang jawaban (MAX_TOKENS) dan margin. Dengan nilai bawaan hasilnya
+    sama seperti sebelumnya: antara 5000 dan 12000 karakter.
+    """
+    total = int(CTX_MAKS * 24000 / 8192)
+    sisa = total - 1800 - len(json.dumps(tools)) - MAX_TOKENS * 3 - 3000
+    return max(total * 5 // 24, min(total // 2, sisa))
 
 
 # --------------------------------------------------------------------------
@@ -230,7 +254,7 @@ def llama(path, data=None, timeout=300):
 def stream_chat(model, pesan, batal, tools=None):
     """Generator potongan JSON dari llama-server (stream SSE)."""
     body = {"model": model, "messages": pesan, "temperature": 0.3,
-            "max_tokens": 700, "stream": True,
+            "max_tokens": MAX_TOKENS, "stream": True,
             "chat_template_kwargs": {"enable_thinking": False}}
     if tools:
         body["tools"] = tools
@@ -381,12 +405,14 @@ def _kritik(model, pesan_riwayat, batas, tools, skill, ringkasan, draf, ctx):
              + siapkan(pesan_riwayat, max(3000, batas - 3500), not tools)
              + [{"role": "assistant", "content": draf},
                 {"role": "user", "content": PROMPT_KRITIK}])
-    akhir, timings = "", None
+    akhir, timings, selesai = "", None, None
     try:
         for ch in stream_chat(model, pesan, ctx.batal, None):
             if ch.get("timings"):
                 timings = ch["timings"]
-            d = (ch.get("choices") or [{}])[0].get("delta") or {}
+            pil = (ch.get("choices") or [{}])[0]
+            selesai = pil.get("finish_reason") or selesai
+            d = pil.get("delta") or {}
             if d.get("reasoning_content"):
                 yield {"t": "pikir", "d": d["reasoning_content"]}
             akhir += d.get("content") or ""
@@ -398,6 +424,9 @@ def _kritik(model, pesan_riwayat, batas, tools, skill, ringkasan, draf, ctx):
         yield {"t": "info", "tok_s": round(timings.get("predicted_per_second") or 0, 1),
                "tok": gen, "pakai": pakai, "maks": CTX_MAKS}
     akhir = _bersih_final(akhir, draf)
+    if selesai == "length":
+        yield {"t": "terpotong"}
+        akhir += CATATAN_TERPOTONG
     yield {"t": "token", "d": akhir}
     return akhir
 
@@ -420,14 +449,16 @@ def _baca_stream(model, kirim, ctx, tools, kritis):
     """Baca satu putaran jawaban model dari stream.
 
     Menghasilkan event pikir/token. Nilai akhir (lewat `yield from`) adalah
-    (teks, calls, timings), atau None bila terjadi error (event error sudah dikirim).
+    (teks, calls, timings, selesai), atau None bila terjadi error (event error sudah dikirim).
+    `selesai` adalah finish_reason dari llama-server; "length" = jawaban terpotong batas token.
     """
-    teks, calls, timings = "", {}, None
+    teks, calls, timings, selesai = "", {}, None, None
     try:
         for ch in stream_chat(model, kirim, ctx.batal, tools):
             if ch.get("timings"):
                 timings = ch["timings"]
             pil = (ch.get("choices") or [{}])[0]
+            selesai = pil.get("finish_reason") or selesai
             d = pil.get("delta") or {}
             pikir = d.get("reasoning_content")
             if pikir:
@@ -446,7 +477,7 @@ def _baca_stream(model, kirim, ctx, tools, kritis):
     except Exception as e:  # noqa: BLE001
         yield {"t": "error", "d": f"{type(e).__name__}: {e}"}
         return None
-    return teks, calls, timings
+    return teks, calls, timings, selesai
 
 
 def _event_info(timings):
@@ -470,10 +501,24 @@ def _urut_tool_calls(calls, langkah):
     return daftar
 
 
-def _jalankan_tool_calls(daftar, riwayat, ctx, sudah):
+def _luar(nama):
+    """True bila tool mengambil teks dari luar (web) yang tidak dipercaya."""
+    return bool(tolls.REGISTRY.get(nama, {}).get("luar"))
+
+
+def _riwayat_tercemar(riwayat):
+    """True bila obrolan ini pernah memanggil tool sumber luar (hasilnya ada di riwayat)."""
+    return any(_luar((c.get("function") or {}).get("name"))
+               for m in riwayat for c in (m.get("tool_calls") or []))
+
+
+def _jalankan_tool_calls(daftar, riwayat, ctx, sudah, terpotong=False):
     """Jalankan tiap tool call: kirim event tool/hasil, lalu catat hasilnya di riwayat.
 
-    `sudah` berisi kunci tool+argumen yang pernah dijalankan (anti-loop).
+    `sudah` berisi kunci tool+argumen yang pernah dijalankan (anti-loop). `terpotong`: putaran
+    ini berhenti karena batas token, jadi argumen yang tidak valid berarti terpotong.
+    Memakai tool sumber luar menandai ctx.tercemar: sesudah itu aksi pengubah selalu minta
+    izin walau mode AUTO (lindungan terhadap prompt injection dari halaman web).
     """
     for c in daftar:
         nama = c["function"]["name"]
@@ -486,7 +531,7 @@ def _jalankan_tool_calls(daftar, riwayat, ctx, sudah):
         if ctx.batal.is_set():
             hasil = "DIBATALKAN oleh pengguna."
         elif not isinstance(args, dict):
-            hasil = "ERROR: argumen bukan JSON object yang valid."
+            hasil = PESAN_TOOL_TERPOTONG if terpotong else "ERROR: argumen bukan JSON object yang valid."
         else:
             kunci = nama + json.dumps(args, sort_keys=True, ensure_ascii=False)
             if kunci in sudah:
@@ -495,6 +540,8 @@ def _jalankan_tool_calls(daftar, riwayat, ctx, sudah):
             else:
                 sudah.add(kunci)
                 hasil = eksekusi(nama, args, ctx)
+                if _luar(nama):
+                    ctx.tercemar = True
         hasil = potong(hasil)
         catat(nama, args if isinstance(args, dict) else {}, hasil)
         yield {"t": "hasil", "id": c["id"], "d": hasil}
@@ -508,7 +555,8 @@ def giliran(riwayat, model, ctx, memori=None):
     ctx: .auto, .batal (threading.Event), .konfirmasi(jenis, ringkas, detail)
     memori: dict obrolan (opsional); jika diberikan, pesan lama diringkas otomatis
             dan ringkasannya disimpan di memori["ringkasan"].
-    Event: ringkas, kritik, pikir, token, info, tool, hasil, error, batal, batas, selesai.
+    Event: ringkas, kritik, pikir, token, info, tool, hasil, error, batal, batas, selesai,
+    terpotong (jawaban/tool terpotong batas token).
     """
     if memori is not None:
         yield from ringkas_bila_perlu(riwayat, model, memori, ctx)
@@ -520,6 +568,8 @@ def giliran(riwayat, model, ctx, memori=None):
     kritis = "kritis" in skill
     batas = max_history(tools)
     tool_aktif = bool(tools) and perlu_tool(teks_user, riwayat, skill)
+    if _riwayat_tercemar(riwayat):   # tool web sudah dipakai di obrolan ini
+        ctx.tercemar = True
     for langkah in range(MAX_STEPS):
         if ctx.batal.is_set():
             yield {"t": "batal"}
@@ -534,7 +584,8 @@ def giliran(riwayat, model, ctx, memori=None):
                                           tools if tool_aktif else None, kritis)
         if putaran is None:       # error sudah dilaporkan
             return
-        teks, calls, timings = putaran
+        teks, calls, timings, selesai = putaran
+        terpotong = selesai == "length"
         info = _event_info(timings)
         if info:
             yield info
@@ -546,6 +597,10 @@ def giliran(riwayat, model, ctx, memori=None):
         elif kritis and teks.strip() and not ctx.batal.is_set():
             entri["content"] = yield from _kritik(
                 model, riwayat[mulai:], batas, tools, skill, ringk, teks, ctx)
+        elif terpotong and teks.strip():
+            yield {"t": "terpotong"}
+            yield {"t": "token", "d": CATATAN_TERPOTONG}
+            entri["content"] = teks + CATATAN_TERPOTONG
         if entri["content"] or daftar:
             riwayat.append(entri)
 
@@ -558,7 +613,9 @@ def giliran(riwayat, model, ctx, memori=None):
                 yield {"t": "selesai"}
             return
 
-        yield from _jalankan_tool_calls(daftar, riwayat, ctx, sudah)
+        if terpotong:
+            yield {"t": "terpotong"}
+        yield from _jalankan_tool_calls(daftar, riwayat, ctx, sudah, terpotong)
 
         if ctx.batal.is_set():
             yield {"t": "batal"}
