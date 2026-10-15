@@ -301,6 +301,7 @@ class Ctx:
     def __init__(self, q, batal):
         self.q = q
         self.batal = batal
+        self.tercemar = False   # True setelah tool web dipakai: AUTO tidak berlaku (lihat util._izin)
 
     @property
     def auto(self):
@@ -501,24 +502,37 @@ class H(BaseHTTPRequestHandler):
             return self._json(400, {"error": "Pesan kosong"})
         if not GEN_LOCK.acquire(blocking=False):
             return self._json(409, {"error": "Masih ada proses berjalan"})
+        # Kunci generasi dipegang mulai dari sini. Bila ada yang gagal sebelum thread kerja()
+        # berjalan (disk penuh saat menyimpan, thread tak bisa dibuat, dst.), kunci HARUS
+        # dilepas; kalau tidak, semua pesan berikutnya ditolak 409 sampai aplikasi dimulai ulang.
+        diserahkan = False   # True setelah kerja() berjalan: dialah yang melepas kunci
         try:
-            chat = baca_chat(cid)
-        except Exception:  # noqa: BLE001
-            GEN_LOCK.release()
-            return self._json(404, {"error": "Obrolan tidak ditemukan"})
-        chat["model"] = model
-        chat["pesan"].append({"role": "user", "content": teks})
-        if chat.get("judul") in (None, "", "Obrolan baru"):
-            chat["judul"] = teks[:40]
-        simpan_chat(chat)
-        sentuh()
-        log("CHAT", f"kamu: {teks[:100]}")
+            try:
+                chat = baca_chat(cid)
+            except Exception:  # noqa: BLE001
+                return self._json(404, {"error": "Obrolan tidak ditemukan"})
+            chat["model"] = model
+            chat["pesan"].append({"role": "user", "content": teks})
+            if chat.get("judul") in (None, "", "Obrolan baru"):
+                chat["judul"] = teks[:40]
+            simpan_chat(chat)
+            sentuh()
+            log("CHAT", f"kamu: {teks[:100]}")
 
-        q = queue.Queue()
-        ctx = Ctx(q, threading.Event())
-        ctx.skill = skill
-        AKTIF["ctx"] = ctx
+            q = queue.Queue()
+            ctx = Ctx(q, threading.Event())
+            ctx.skill = skill
+            AKTIF["ctx"] = ctx
+            self._mulai_kerja(chat, model, ctx, q)
+            diserahkan = True
+        finally:
+            if not diserahkan:
+                AKTIF["ctx"] = None
+                GEN_LOCK.release()
+        self.alirkan(q, ctx)
 
+    def _mulai_kerja(self, chat, model, ctx, q):
+        """Jalankan giliran agen di thread sendiri; thread itu yang melepas GEN_LOCK."""
         def kerja():
             try:
                 for ev in agen.giliran(chat["pesan"], model, ctx, chat):
@@ -536,7 +550,6 @@ class H(BaseHTTPRequestHandler):
                 q.put(None)
 
         threading.Thread(target=kerja, daemon=True).start()
-        self.alirkan(q, ctx)
 
     def alirkan(self, q, ctx):
         self.send_response(200)
@@ -579,6 +592,8 @@ def catat_event(ev):
         log("WARN", "proses dibatalkan")
     elif t == "batas":
         log("WARN", "batas langkah tercapai")
+    elif t == "terpotong":
+        log("WARN", "jawaban terpotong: batas token tercapai (naikkan ASISTEN_MAX_TOKENS)")
 
 
 # --------------------------------------------------------------------------
