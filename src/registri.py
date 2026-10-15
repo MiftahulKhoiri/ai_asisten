@@ -7,7 +7,10 @@ import re
 REGISTRY = {}
 
 
-def tool(nama, deskripsi, params=None, wajib=(), ringkas=None, dasar=False, web=False):
+def tool(nama, deskripsi, params=None, wajib=(), ringkas=None, dasar=False, web=False,
+         luar=False):
+    """luar=True: hasil tool berisi teks dari luar (web) yang tidak dipercaya; sesudah tool ini
+    dipakai dalam sebuah obrolan, aksi pengubah selalu minta izin walau mode AUTO."""
     params = params or {}
     props = {}
     for k, spec in params.items():
@@ -23,7 +26,7 @@ def tool(nama, deskripsi, params=None, wajib=(), ringkas=None, dasar=False, web=
     def dekor(fn):
         REGISTRY[nama] = {"fn": fn, "skema": skema_, "params": params,
                           "wajib": list(wajib), "ringkas": ringkas, "dasar": dasar,
-                          "web": web}
+                          "web": web, "luar": luar}
         return fn
     return dekor
 
