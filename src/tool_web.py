@@ -18,7 +18,7 @@ from .util import MAX_OUTPUT, _boleh_tulis, _fmt, _izin_jalur, _p, _tolak_tulis
 @tool("ambil_url", "Ambil teks halaman web publik (http/https); simpan_ke = unduh jadi file.",
       {"url": ("string", "alamat"),
        "simpan_ke": ("string", "(opsional) path file")},
-      wajib=["url"], ringkas=lambda a: f"ambil {a.get('url', '')}")
+      wajib=["url"], luar=True, ringkas=lambda a: f"ambil {a.get('url', '')}")
 def ambil_url(ctx, url, simpan_ke=""):
     url = url.strip()
     if not re.match(r"^https?://", url, re.I):
@@ -160,7 +160,7 @@ def _html_ke_teks(h):
       "Baca isi teks satu halaman web publik (hanya baca). mulai = lanjut dari karakter ke-N.",
       {"url": ("string", "alamat http/https"),
        "mulai": ("integer", "mulai dari karakter ke-N, default 0")},
-      wajib=["url"], web=True, ringkas=lambda a: f"baca halaman {a.get('url', '')}")
+      wajib=["url"], web=True, luar=True, ringkas=lambda a: f"baca halaman {a.get('url', '')}")
 def baca_halaman(ctx, url, mulai=0):
     try:
         ctype, isi = _unduh(url)
@@ -271,7 +271,7 @@ def _format_berita(item):
        "periode": ("string", "rentang waktu, default hari_ini",
                    ["hari_ini", "minggu_ini", "bulan_ini", "semua"]),
        "maks": ("integer", "jumlah berita, default 8, maks 12")},
-      web=True, ringkas=lambda a: "berita " + (a.get("topik") or "terbaru"))
+      web=True, luar=True, ringkas=lambda a: "berita " + (a.get("topik") or "terbaru"))
 def berita(ctx, topik="", periode="hari_ini", maks=8):
     maks = max(1, min(int(maks), 12))
     periode = periode if periode in _PERIODE else "hari_ini"
@@ -293,7 +293,7 @@ def berita(ctx, topik="", periode="hari_ini", maks=8):
       "Cari informasi di internet. Hasil: judul, tautan, cuplikan. Untuk berita terbaru pakai tool berita.",
       {"kueri": ("string", "kata kunci pencarian"),
        "maks": ("integer", "jumlah hasil, default 5, maks 8")},
-      wajib=["kueri"], web=True, ringkas=lambda a: f"cari web: {a.get('kueri', '')}")
+      wajib=["kueri"], web=True, luar=True, ringkas=lambda a: f"cari web: {a.get('kueri', '')}")
 def cari_web(ctx, kueri, maks=5):
     kueri = (kueri or "").strip()
     if not kueri:
