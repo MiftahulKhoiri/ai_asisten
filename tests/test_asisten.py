@@ -53,6 +53,28 @@ class TestRiwayat(unittest.TestCase):
         self.assertEqual([c["id"] for c in asisten.daftar_chat()], [a["id"]])
 
 
+class TestBerkasBelumDikenal(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._lama = asisten.MODELS_DIR
+        asisten.MODELS_DIR = Path(self._tmp.name)
+
+    def tearDown(self):
+        asisten.MODELS_DIR = self._lama
+        self._tmp.cleanup()
+
+    def test_deteksi(self):
+        for n in ("lama.gguf", "baru.gguf", "mmproj-x.gguf", "besar-00001-of-00002.gguf",
+                  "besar-00002-of-00002.gguf", "catatan.txt"):
+            (Path(self._tmp.name) / n).write_bytes(b"x")
+        hasil = asisten.berkas_belum_dikenal(["lama"])
+        self.assertEqual(hasil, ["baru", "besar-00001-of-00002"])
+
+    def test_folder_hilang(self):
+        asisten.MODELS_DIR = Path(self._tmp.name) / "tidak-ada"
+        self.assertEqual(asisten.berkas_belum_dikenal([]), [])
+
+
 class TestServer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -111,6 +133,33 @@ class TestServer(unittest.TestCase):
         self.assertGreater(d["skills"]["kompleks"], 4)
         self.assertIn("cari_web", d["skill_tools"]["web"])
         self.assertEqual(len(d["skill_tools"]["kompleks"]), d["skills"]["kompleks"])
+
+    def test_muat_ulang_model_butuh_token(self):
+        self.assertEqual(self.req("POST", "/api/model/muat-ulang", {}, token=None)[0], 401)
+
+    def test_muat_ulang_model(self):
+        asli = asisten.daftar_model
+        asisten.daftar_model = lambda: [{"id": "m1", "mb": 10, "llama": "unloaded"}]
+        try:
+            kode, d = self.j("POST", "/api/model/muat-ulang", {})
+        finally:
+            asisten.daftar_model = asli
+        self.assertEqual(kode, 200)
+        self.assertEqual([m["id"] for m in d["models"]], ["m1"])
+        self.assertIsInstance(d["belum_dikenal"], list)
+
+    def test_muat_ulang_model_llama_mati(self):
+        asli = asisten.daftar_model
+
+        def rusak():
+            raise OSError("llama-server mati")
+        asisten.daftar_model = rusak
+        try:
+            kode, d = self.j("POST", "/api/model/muat-ulang", {})
+        finally:
+            asisten.daftar_model = asli
+        self.assertEqual(kode, 502)
+        self.assertIn("error", d)
 
     def test_siklus_chat(self):
         kode, c = self.j("POST", "/api/chat/baru", {})
