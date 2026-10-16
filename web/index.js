@@ -196,6 +196,11 @@
     }
     if (!skill) skill = rapikanSkill(s.skill_bawaan) || ['kompleks'];
     setSkill(skill, false);
+    const bd = s.belum_dikenal || [];
+    $('modelInfo').textContent = bd.length
+      ? 'Berkas baru belum dikenali llama-server: ' + bd.join(', ') + '. Jalankan ulang llama-server (mis. ./start.sh) agar muncul.'
+      : '';
+    $('btnMuatUlang').disabled = s.status === 'memuat';
     box.innerHTML = '';
     for (const m of (s.models || [])) {
       const b = document.createElement('button'); b.className = 'model';
@@ -214,6 +219,17 @@
     $('daftarModel').className = 'mati'; $('seg').className = 'seg mati';
     setPoll(1500); cekStatus();
   }
+  async function muatUlangModel() {
+    const b = $('btnMuatUlang'); b.disabled = true;
+    try {
+      const r = await apij('/api/model/muat-ulang', {method: 'POST', body: {}});
+      const n = (r.models || []).length, bd = r.belum_dikenal || [];
+      toast(n + ' model terbaca' + (bd.length ? ', ' + bd.length + ' berkas belum dikenali' : ''));
+    } catch (e) { if (e.message !== '401') toast(e.message); }
+    b.disabled = false;
+    cekStatus();
+  }
+  $('btnMuatUlang').onclick = muatUlangModel;
   async function selesai() {
     if (!confirm('Akhiri sesi dan bongkar model dari memori?')) return;
     try { await apij('/api/model/selesai', {method: 'POST', body: {}}); } catch (e) { toast(e.message); return; }
