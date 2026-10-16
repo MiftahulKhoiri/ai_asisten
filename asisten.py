@@ -109,6 +109,33 @@ def daftar_model():
     return hasil
 
 
+_POTONGAN_GGUF = re.compile(r"-(\d+)-of-\d+$")
+
+
+def berkas_belum_dikenal(ids):
+    """Nama berkas .gguf di MODELS_DIR yang belum terdaftar di llama-server.
+
+    llama-server (mode router) membaca folder model saat dinyalakan, jadi berkas yang
+    ditambahkan sesudahnya baru muncul setelah llama-server dijalankan ulang.
+    """
+    dikenal = set(ids)
+    try:
+        berkas = sorted(MODELS_DIR.glob("*.gguf"))
+    except OSError:
+        return []
+    hasil = []
+    for f in berkas:
+        nama = f.stem
+        if nama.lower().startswith("mmproj"):   # berkas pendamping gambar, bukan model
+            continue
+        m = _POTONGAN_GGUF.search(nama)
+        if m and int(m.group(1)) != 1:          # potongan ke-2 dst. dari model terbelah
+            continue
+        if nama not in dikenal:
+            hasil.append(nama)
+    return hasil
+
+
 def status_llama(nama):
     for m in daftar_model():
         if m["id"] == nama:
@@ -334,8 +361,10 @@ def status_json():
     if d["status"] != "siap":
         try:
             d["models"] = daftar_model()
+            d["belum_dikenal"] = berkas_belum_dikenal([m["id"] for m in d["models"]])
         except Exception:  # noqa: BLE001
             d["models"] = []
+            d["belum_dikenal"] = []
             d["pesan"] = d["pesan"] or "Tidak bisa menghubungi llama-server"
     return d
 
@@ -441,6 +470,16 @@ class H(BaseHTTPRequestHandler):
                 log("INFO", "Sesi diakhiri dari web")
                 selesai_sesi()
                 return self._json(200, {"ok": True})
+            if path == "/api/model/muat-ulang":
+                try:
+                    models = daftar_model()
+                except Exception as e:  # noqa: BLE001
+                    log("ERR", f"Muat ulang daftar model gagal: {e}")
+                    return self._json(502, {"error": "Tidak bisa menghubungi llama-server"})
+                baru = berkas_belum_dikenal([m["id"] for m in models])
+                log("INFO", f"Daftar model dimuat ulang: {len(models)} model"
+                    + (f"; berkas belum dikenal llama-server: {', '.join(baru)}" if baru else ""))
+                return self._json(200, {"models": models, "belum_dikenal": baru})
             if path == "/api/auto":
                 S["auto"] = bool(b.get("aktif"))
                 log("WARN" if S["auto"] else "INFO",
