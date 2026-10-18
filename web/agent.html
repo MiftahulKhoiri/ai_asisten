@@ -89,12 +89,38 @@
       <span id="lanjutTeks"></span>
       <button class="btn abu" id="btnBaru" type="button">Proyek baru</button>
     </div>
-    <div id="pesan"></div>
+    <div id="isiPesan">
+      <div id="pesan"></div>
+      <button type="button" class="pil-log" id="lencanaLog" aria-haspopup="dialog" aria-label="Lihat proses yang sedang berjalan" hidden>
+        <span class="orb"></span>
+        <span class="teks"><span class="kata" id="lencanaKata" role="status" aria-live="polite"></span><small id="lencanaSub"></small></span>
+      </button>
+    </div>
     <form id="bawah" autocomplete="off">
       <textarea id="input" rows="1" placeholder="Apa yang ingin dibuat?"></textarea>
       <button class="btn" id="btnKirim" type="submit">Kirim</button>
     </form>
   </section>
+</div>
+<div id="panelLog" role="dialog" aria-modal="true" aria-labelledby="logJudul" hidden>
+  <div class="latar" id="latarLog"></div>
+  <div class="lembar">
+    <div class="kepala">
+      <div class="jd"><b id="logJudul">Proses langsung</b><small id="logRingkas"></small></div>
+      <button class="ikon" id="btnSalinLog" type="button">Salin log</button>
+      <button class="ikon" id="btnTutupLog" type="button">Tutup</button>
+    </div>
+    <div class="isi" id="logIsi">
+      <div class="seksi">Sedang terjadi</div>
+      <div id="logSekarang"></div>
+      <div class="seksi">Model</div>
+      <div id="logModel"></div>
+      <div class="seksi" id="logKeluaranJudul">Keluaran model</div>
+      <pre id="logKeluaran"></pre>
+      <div class="seksi">Riwayat proses</div>
+      <div id="logDaftar"></div>
+    </div>
+  </div>
 </div>
 <div id="toast" hidden></div>
 
