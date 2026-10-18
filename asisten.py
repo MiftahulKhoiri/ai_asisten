@@ -7,6 +7,7 @@ Lalu buka alamat yang tampil di terminal dari HP (satu jaringan Wi-Fi).
 - Terminal hanya untuk menyalakan aplikasi dan menampilkan log.
 - Model BARU dimuat setelah dipilih di tampilan web, dan otomatis dibongkar
   saat sesi diakhiri, setelah idle, atau saat aplikasi ditutup (Ctrl+C).
+- Halaman Agent (web/agent.html): beberapa model bekerja bergiliran (lihat tim_agen.py).
 - Semua endpoint /api wajib token (disimpan di .token).
 Hanya memakai library standar Python.
 """
@@ -30,6 +31,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import agen
+import tim_agen
 
 BASE = Path(__file__).resolve().parent
 WEB = BASE / "web"
@@ -369,6 +371,23 @@ def status_json():
     return d
 
 
+def agent_status():
+    """Data untuk halaman Agent: daftar model dan apakah Agent boleh dijalankan sekarang."""
+    d = {"models": [], "pesan": "", "folder": str(tim_agen.KERJA),
+         "langkah": {"min": tim_agen.LANGKAH_MIN, "maks": tim_agen.LANGKAH_MAKS,
+                     "bawaan": tim_agen.LANGKAH_BAWAAN},
+         "token_tahap": tim_agen.TOKEN_TAHAP, "uji_detik": tim_agen.UJI_DETIK}
+    try:
+        d["models"] = daftar_model()
+    except Exception:  # noqa: BLE001
+        d["pesan"] = "Tidak bisa menghubungi llama-server"
+    with S_LOCK:
+        d["chat_aktif"] = S["status"] in ("siap", "memuat")
+        d["model_chat"] = S["model"] or S["target"]
+    d["sibuk"] = GEN_LOCK.locked()
+    return d
+
+
 # --------------------------------------------------------------------------
 # HTTP
 # --------------------------------------------------------------------------
@@ -378,6 +397,10 @@ STATIS = {
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/index.css": ("index.css", "text/css; charset=utf-8"),
     "/index.js": ("index.js", "application/javascript; charset=utf-8"),
+    "/agent": ("agent.html", "text/html; charset=utf-8"),
+    "/agent.html": ("agent.html", "text/html; charset=utf-8"),
+    "/agent.css": ("agent.css", "text/css; charset=utf-8"),
+    "/agent.js": ("agent.js", "application/javascript; charset=utf-8"),
 }
 
 
@@ -450,6 +473,13 @@ class H(BaseHTTPRequestHandler):
             return self._json(200, status_json())
         if metode == "GET" and path == "/api/chat":
             return self._json(200, {"chat": daftar_chat()})
+        if metode == "GET" and path == "/api/agent/status":
+            return self._json(200, agent_status())
+        if metode == "GET" and path == "/api/agent/riwayat":
+            return self._json(200, {"run": tim_agen.daftar_run()})
+        m = re.fullmatch(r"/api/agent/run/([0-9]{8}-[0-9]{6}-[0-9a-f]{4})", path)
+        if metode == "GET" and m:
+            return self._json(200, tim_agen.baca_run(m.group(1)))
         if metode == "POST":
             b = self._body()
             if path == "/api/chat/baru":
@@ -488,6 +518,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(200, {"auto": S["auto"]})
             if path == "/api/kirim":
                 return self.kirim(b)
+            if path == "/api/agent/jalankan":
+                return self.agent_jalankan(b)
             if path == "/api/konfirmasi":
                 item = KONF.get(b.get("kid"))
                 if not item:
@@ -544,11 +576,16 @@ class H(BaseHTTPRequestHandler):
         # Kunci generasi dipegang mulai dari sini. Bila ada yang gagal sebelum thread kerja()
         # berjalan (disk penuh saat menyimpan, thread tak bisa dibuat, dst.), kunci HARUS
         # dilepas; kalau tidak, semua pesan berikutnya ditolak 409 sampai aplikasi dimulai ulang.
-        diserahkan = False   # True setelah kerja() berjalan: dialah yang melepas kunci
+        diserahkan = False   # True bila kunci tidak perlu dilepas lagi di 'finally' (kerja() yang melepas)
         try:
             try:
                 chat = baca_chat(cid)
             except Exception:  # noqa: BLE001
+                # Lepas kunci SEBELUM membalas: klien yang langsung mengirim lagi tidak boleh
+                # menabrak kunci yang belum sempat dilepas (balapan yang memunculkan 409).
+                AKTIF["ctx"] = None
+                GEN_LOCK.release()
+                diserahkan = True
                 return self._json(404, {"error": "Obrolan tidak ditemukan"})
             chat["model"] = model
             chat["pesan"].append({"role": "user", "content": teks})
@@ -589,6 +626,61 @@ class H(BaseHTTPRequestHandler):
                 q.put(None)
 
         threading.Thread(target=kerja, daemon=True).start()
+
+    def agent_jalankan(self, b):
+        """Jalankan satu proses Agent (beberapa model bergiliran) dan alirkan event-nya."""
+        tugas = (b.get("teks") or "").strip()
+        if not tugas:
+            return self._json(400, {"error": "Perintah kosong"})
+        if len(tugas) > tim_agen.MAKS_TUGAS:
+            return self._json(400, {"error": f"Perintah terlalu panjang (maks {tim_agen.MAKS_TUGAS} karakter)"})
+        lanjut = b.get("lanjut")
+        if lanjut is not None and not tim_agen.id_valid(lanjut):
+            return self._json(400, {"error": "id proyek tidak valid"})
+        try:
+            tersedia = {m["id"] for m in daftar_model()}
+        except Exception:  # noqa: BLE001
+            return self._json(502, {"error": "Tidak bisa menghubungi llama-server"})
+        cfg, err = tim_agen.siapkan_cfg(b, tersedia)
+        if err:
+            return self._json(400, {"error": err})
+        with S_LOCK:
+            if S["status"] in ("siap", "memuat"):
+                return self._json(409, {"error": "Sesi chat masih memuat model. Akhiri dulu "
+                                                 "di halaman Chat (tombol Selesai)."})
+        if not GEN_LOCK.acquire(blocking=False):
+            return self._json(409, {"error": "Masih ada proses berjalan"})
+        diserahkan = False   # True setelah thread kerja berjalan: dialah yang melepas kunci
+        try:
+            sentuh()
+            log("CHAT", f"agent: {tugas[:100]}")
+            log("INFO", f"Agent {cfg['mode']} model: perencana={cfg['model_p']}, "
+                        f"pelaksana={cfg['model_e']}, pemeriksa={cfg['model_c']}, "
+                        f"maks {cfg['maks']} putaran")
+            q = queue.Queue()
+            ctx = Ctx(q, threading.Event())
+            ctx.skill = ("tanpa",)
+            AKTIF["ctx"] = ctx
+
+            def kerja():
+                try:
+                    for ev in tim_agen.jalankan(tugas, cfg, ctx, lanjut):
+                        q.put(ev)
+                except Exception as e:  # noqa: BLE001
+                    q.put({"t": "error", "d": f"{type(e).__name__}: {e}"})
+                finally:
+                    AKTIF["ctx"] = None
+                    sentuh()
+                    GEN_LOCK.release()
+                    q.put(None)
+
+            threading.Thread(target=kerja, daemon=True).start()
+            diserahkan = True
+        finally:
+            if not diserahkan:
+                AKTIF["ctx"] = None
+                GEN_LOCK.release()
+        self.alirkan(q, ctx)
 
     def alirkan(self, q, ctx):
         self.send_response(200)
@@ -633,6 +725,29 @@ def catat_event(ev):
         log("WARN", "batas langkah tercapai")
     elif t == "terpotong":
         log("WARN", "jawaban terpotong: batas token tercapai (naikkan ASISTEN_MAX_TOKENS)")
+    elif t == "mulai":
+        log("INFO", f"Agent mulai: folder kerja {ev['dir']}")
+    elif t == "tahap":
+        n = f" (putaran {ev['putaran']})" if ev.get("putaran") else ""
+        log("INFO", f"Agent - {ev['peran']}{n}: {ev['model']}")
+    elif t == "muat_selesai":
+        log("OK", f"Model siap: {ev['model']} ({ev['detik']} dtk)")
+    elif t == "bongkar":
+        log("OK", f"Model dibongkar dari memori: {ev['model']}")
+    elif t == "berkas":
+        log("TOOL", f"agent {'membuat' if ev.get('baru') else 'mengubah'} {ev['nama']}")
+    elif t == "cek":
+        log("OK" if ev["ok"] else "WARN",
+            "pemeriksaan otomatis " + ("lolos" if ev["ok"] else "GAGAL"))
+    elif t == "nilai":
+        log("OK" if ev["ok"] else "WARN",
+            "pemeriksa: " + ("OK" if ev["ok"] else "perlu perbaikan") + " - " + ev.get("ringkas", "")[:100])
+    elif t == "putaran":
+        log("INFO", f"Agent putaran {ev['n']}/{ev['maks']}")
+    elif t == "tanya":
+        log("CHAT", "agent butuh info: " + ev["d"][:100])
+    elif t == "selesai" and ev.get("status"):
+        log("OK" if ev["status"] == "lolos" else "WARN", f"Agent selesai: {ev['teks']}")
 
 
 # --------------------------------------------------------------------------
@@ -706,6 +821,8 @@ def main():
             bongkar_model()
         except Exception as e:  # noqa: BLE001
             log("ERR", f"Gagal membongkar model saat keluar: {e}")
+        for nama in tim_agen.bongkar_sisa():
+            log("OK", f"Model Agent dibongkar dari memori: {nama}")
         server.server_close()
         log("OK", "Selesai")
 
