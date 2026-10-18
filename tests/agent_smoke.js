@@ -48,6 +48,7 @@ const document = {
   body: mk('body'), hidden: false, execCommand() { return true; },
 };
 const kirimBody = { teks: null };
+const panggilan = [];      // semua fetch DELETE/POST penghapusan riwayat
 function respon(obj, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => obj };
 }
@@ -55,7 +56,16 @@ async function fetchPalsu(url, opt) {
   if (url === '/api/agent/status') {
     return respon({models: [{id: 'A', mb: 1100}, {id: 'B', mb: 2300}], chat_aktif: false, sibuk: false});
   }
-  if (url === '/api/agent/riwayat') return respon({run: []});
+  if (url === '/api/agent/riwayat') {
+    return respon({run: [
+      {id: '20261018-100000-aaaa', judul: 'Satu', status: 'lolos', dibuat: '2026-10-18T10:00:00', putaran: 1, maks: 3},
+      {id: '20261018-110000-bbbb', judul: 'Dua', status: 'belum', dibuat: '2026-10-18T11:00:00', putaran: 3, maks: 3},
+    ]});
+  }
+  if (opt && (opt.method === 'DELETE' || url === '/api/agent/riwayat/hapus-semua')) {
+    panggilan.push((opt.method || 'GET') + ' ' + url);
+    return respon({ok: true, dihapus: 2});
+  }
   if (url === '/api/agent/jalankan') {
     kirimBody.teks = JSON.parse(opt.body);
     const enc = new TextEncoder().encode(ndjson);
@@ -71,7 +81,7 @@ const konteks = {
   document, window: {isSecureContext: false}, navigator: {}, fetch: fetchPalsu,
   localStorage: {getItem: k => (k === 'aa_token' ? 'tok' : null), setItem() {}},
   location: {search: '', pathname: '/agent.html'}, history: {replaceState() {}},
-  URLSearchParams, TextDecoder, TextEncoder, console,
+  URLSearchParams, TextDecoder, TextEncoder, console, confirm: () => true,
   setInterval: () => 0, clearInterval() {}, setTimeout, clearTimeout,
 };
 konteks.window.document = document;
@@ -94,6 +104,13 @@ vm.createContext(konteks);
   const err = semua.filter(e => /\binfo err\b/.test(e.className)).map(teksPohon);
   const model = (byId['logModel'].children || []).map(teksPohon);
   try { byId['btnTutupLog'].onclick(); } catch (e) { galat.push(String(e && e.stack || e)); }
+  // hapus riwayat: tombol per item dan 'Hapus semua'
+  try {
+    const tombolX = semua.filter(e => e.className === 'x');
+    await tombolX[tombolX.length - 1].onclick();
+    await byId['btnHapusRiwayat'].onclick();
+    await new Promise(r => setTimeout(r, 30));
+  } catch (e) { galat.push(String(e && e.stack || e)); }
   const hasil = {
     galat, err, dikirim: kirimBody.teks && kirimBody.teks.teks,
     baris_log: baris.length,
@@ -101,7 +118,7 @@ vm.createContext(konteks);
     lencana_selesai: lencana.classes.has('selesai'),
     kata: byId['lencanaKata']._text,
     teks_log: baris.map(teksPohon),
-    model,
+    model, hapus: panggilan, tombol_x: semua.filter(e => e.className === 'x').length,
     kartu: semua.filter(e => /\btahap\b/.test(e.className)).length,
   };
   console.log(JSON.stringify(hasil));
