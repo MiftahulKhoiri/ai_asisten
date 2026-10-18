@@ -73,6 +73,7 @@ STATUS_TEKS = {"lolos": "lolos pemeriksaan",
 
 _TIDUR = time.sleep          # diganti pada pengujian
 DIMUAT = set()               # model yang dimuat oleh Agent (dibongkar saat aplikasi ditutup)
+AKTIF_RUN = set()            # id proses yang sedang berjalan (tidak boleh dihapus)
 
 
 class Batal(Exception):
@@ -1140,6 +1141,7 @@ def _jalankan(tugas, cfg, ctx, lanjut=None):
 
     pemuat = Pemuat(ctx, cfg["bongkar"])
     jejak = Jejak(folder)
+    AKTIF_RUN.add(run_id)
     izin = {"nilai": None}
     akhir = {}
     status, spec = "error", None
@@ -1166,6 +1168,7 @@ def _jalankan(tugas, cfg, ctx, lanjut=None):
         status = "error"
         yield {"t": "error", "d": "%s: %s" % (type(e).__name__, e)}
     finally:
+        AKTIF_RUN.discard(run_id)
         pemuat.lepas_diam()
         meta["status"] = status
         try:
@@ -1225,6 +1228,39 @@ def daftar_run(maks=30):
         if len(hasil) >= maks:
             break
     return hasil
+
+
+def _hapus_folder(d):
+    shutil.rmtree(str(d))     # tidak mengikuti symlink di dalamnya: hanya tautannya yang terhapus
+
+
+def hapus_run(run_id):
+    """Hapus satu proses beserta berkas hasilnya.
+    FileNotFoundError bila tidak ada, PermissionError bila prosesnya masih berjalan."""
+    if not id_valid(run_id):
+        raise FileNotFoundError("id tidak valid")
+    if run_id in AKTIF_RUN:
+        raise PermissionError("Proses ini masih berjalan")
+    d = KERJA / run_id
+    if d.is_symlink() or not d.is_dir():
+        raise FileNotFoundError(run_id)
+    _hapus_folder(d)
+
+
+def hapus_semua_run():
+    """Hapus semua proses kecuali yang masih berjalan. Kembalian: jumlah yang dihapus."""
+    n = 0
+    if not KERJA.is_dir():
+        return n
+    for d in list(KERJA.iterdir()):
+        if d.is_symlink() or not d.is_dir() or not id_valid(d.name) or d.name in AKTIF_RUN:
+            continue
+        try:
+            _hapus_folder(d)
+            n += 1
+        except OSError:
+            pass
+    return n
 
 
 def baca_run(run_id):
