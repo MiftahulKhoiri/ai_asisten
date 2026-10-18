@@ -184,6 +184,34 @@ class TestUrai(unittest.TestCase):
     def test_tanpa_berkas(self):
         self.assertEqual(tim.urai_berkas("maaf saya tidak bisa"), [])
 
+    def test_pagar_nyasar_di_akhir_dibuang(self):
+        # kasus log nyata: kode ditutup dengan ``` kosong sehingga sintaks Python salah
+        teks = ('=== FILE: main.py ===\n"""Doc."""\nprint(1)\n```\n\n```\n=== END ===')
+        hasil = tim.urai_berkas(teks)
+        self.assertEqual(hasil[0][1], '"""Doc."""\nprint(1)\n')
+        import ast
+        ast.parse(hasil[0][1])
+
+    def test_pagar_berpasangan_dan_ganda(self):
+        teks = "=== FILE: a.py ===\n```python\nx = 1\n```\n```\n=== END ==="
+        self.assertEqual(tim.urai_berkas(teks)[0][1], "x = 1\n")
+
+    def test_md_boleh_berisi_pagar(self):
+        teks = "=== FILE: README.md ===\n# Judul\n```\nkode\n```\n=== END ==="
+        self.assertEqual(tim.urai_berkas(teks)[0][1], "# Judul\n```\nkode\n```\n")
+
+    def test_penanda_longgar(self):
+        for kepala, akhir in (("### FILE: a.py", "### END"), ("**FILE: a.py**", "**END**"),
+                              ("=== FILE: a.py", "=== END"), ("=== file: `a.py` ===", "=== end ===")):
+            hasil = tim.urai_berkas("%s\nx = 1\n%s\n" % (kepala, akhir))
+            self.assertEqual(hasil, [("a.py", "x = 1\n", True)], msg=kepala)
+
+    def test_seluruh_jawaban_adalah_kode_satu_berkas(self):
+        self.assertEqual(tim.urai_berkas("def f():\n    return 1\n", ["main.py"]),
+                         [("main.py", "def f():\n    return 1\n", True)])
+        self.assertEqual(tim.urai_berkas("Maaf, ini kodenya: tidak bisa", ["main.py"]), [])
+        self.assertEqual(tim.urai_berkas("print(1)", ["a.py", "b.py"]), [])
+
     def test_ambil_json(self):
         self.assertEqual(tim.ambil_json('{"a": 1}'), {"a": 1})
         self.assertEqual(tim.ambil_json('Ini:\n```json\n{"a": 2}\n```'), {"a": 2})
@@ -214,10 +242,46 @@ class TestSpec(unittest.TestCase):
             self.assertEqual(tim.rapikan_spec({"berkas": b, "jalankan": buruk}, "t")["jalankan"], [],
                              msg=repr(buruk))
 
+    def test_harapan_dan_langkah(self):
+        b = [{"nama": "main.py"}]
+        s = tim.rapikan_spec({"berkas": b, "jalankan": ["python3", "main.py"],
+                              "harapan": ["88", " 88 ", "x" * 100, 1, 2, 3, 4, 5, 6],
+                              "langkah": ["a"] * 9}, "t")
+        self.assertEqual(s["harapan"][:2], ["88", "x" * 60])
+        self.assertEqual(len(s["harapan"]), 5)
+        self.assertNotIn("langkah", tim.spec_model(s))
+        self.assertIn("harapan", tim.spec_model(s))
+        # tanpa perintah uji, harapan tidak berlaku
+        self.assertEqual(tim.rapikan_spec({"berkas": b, "harapan": ["88"]}, "t")["harapan"], [])
+
+    def test_cocok_keluaran(self):
+        self.assertEqual(tim.cocok_keluaran("0 1 1 2 88", ["88"]), (True, []))
+        self.assertEqual(tim.cocok_keluaran("188", ["88"]), (False, ["88"]))
+        self.assertEqual(tim.cocok_keluaran("88.5", ["88"]), (False, ["88"]))
+        self.assertEqual(tim.cocok_keluaran("Jumlah: 88.", ["88"]), (True, []))
+        self.assertEqual(tim.cocok_keluaran("Halo Dunia", ["halo dunia", "x"]), (False, ["x"]))
+        self.assertEqual(tim.cocok_keluaran(None, ["1"]), (False, ["1"]))
+
+    def test_penolakan_kosong_atau_halusinasi_diabaikan(self):
+        # kasus log nyata: masalah "?:? -" (kerangka kosong) bukan alasan menolak
+        n = tim.rapikan_nilai({"ok": False, "masalah": [{}], "perbaikan": "ganti jadi perkalian"})
+        self.assertTrue(n["ok"])
+        self.assertEqual(tim.rapikan_nilai({"ok": False, "masalah": ["?:? -"]})["ok"], True)
+        # kutipan "108" tidak ada di keluaran/kode: Pemeriksa berhalusinasi
+        d = {"ok": False, "masalah": ["main.py:15 - jumlah totalnya 108 bukan 88"], "dilihat": "108"}
+        n = tim.rapikan_nilai(d, sumber="0 1 1 2 3 5 8 13 21 34 88\nprint(jumlah)")
+        self.assertTrue(n["ok"])
+        self.assertIn("kemungkinan keliru", n["ringkas"])
+        # kutipan benar-benar ada: penolakan dipertahankan
+        d["dilihat"] = "print(jumlah)"
+        self.assertFalse(tim.rapikan_nilai(d, sumber="88\nprint(jumlah)")["ok"])
+        # tanpa sumber (program tidak dijalankan) kutipan tidak bisa diperiksa
+        self.assertFalse(tim.rapikan_nilai(dict(d, dilihat="108"), sumber=None)["ok"])
+
     def test_nilai_ditolak_tanpa_alasan_diterima(self):
         n = tim.rapikan_nilai({"ok": False, "ringkas": "kurang"})
         self.assertTrue(n["ok"])
-        self.assertFalse(tim.rapikan_nilai({"ok": "false", "masalah": ["x"]})["ok"])
+        self.assertFalse(tim.rapikan_nilai({"ok": "false", "masalah": ["main.py:3 - variabel salah dipakai"]})["ok"])
         self.assertTrue(tim.rapikan_nilai({"ok": "ya"})["ok"])
 
     def test_siapkan_cfg(self):
@@ -255,9 +319,10 @@ class TestPemeriksaanOtomatis(DasarAgent):
         hasil.mkdir()
         (hasil / "main.py").write_text("print('ok-jalan')\n")
         ctx, izin = CtxPalsu(True), {"nilai": None}
-        st, baris = tim.cek_jalan(hasil, self.spec(), ctx, izin, True)
+        st, baris, out = tim.cek_jalan(hasil, self.spec(), ctx, izin, True)
         self.assertEqual(st, "lolos")
         self.assertIn("ok-jalan", "\n".join(baris))
+        self.assertEqual(out.strip(), "ok-jalan")
         tim.cek_jalan(hasil, self.spec(), ctx, izin, True)
         self.assertEqual(ctx.ditanya, ["uji"])       # hanya sekali per proses
 
@@ -276,12 +341,12 @@ class TestPemeriksaanOtomatis(DasarAgent):
         hasil = Path(self._tmp.name) / "hasil"
         hasil.mkdir()
         (hasil / "main.py").write_text("raise SystemExit(3)\n")
-        st, baris = tim.cek_jalan(hasil, self.spec(), CtxPalsu(), {"nilai": True}, True)
+        st, baris, out = tim.cek_jalan(hasil, self.spec(), CtxPalsu(), {"nilai": True}, True)
         self.assertEqual(st, "gagal")
         self.assertIn("exit code 3", baris[0])
         (hasil / "main.py").write_text("import time\ntime.sleep(30)\n")
         with mock.patch.object(tim, "UJI_DETIK", 1):
-            st, baris = tim.cek_jalan(hasil, self.spec(), CtxPalsu(), {"nilai": True}, True)
+            st, baris, out = tim.cek_jalan(hasil, self.spec(), CtxPalsu(), {"nilai": True}, True)
         self.assertEqual(st, "gagal")
         self.assertIn("batas waktu", baris[0])
 
@@ -327,6 +392,93 @@ class TestAlur(DasarAgent):
         ev2, _ = self.jalan(self.cfg(uji=False))
         self.assertNotIn("uji_mulai", jenis(ev2))
         self.assertIn("cek_mulai", jenis(ev2))
+
+    def test_harapan_terpenuhi_melewati_pemeriksa(self):
+        # kasus log nyata (Fibonacci): kode benar menghasilkan 88, Pemeriksa kecil menolak keliru
+        llama = LlamaPalsu("A", "B")
+        rencana = json.dumps(dict(json.loads(RENCANA), harapan=["88"]))
+        kode = "=== FILE: main.py ===\nprint('0 1 1 2 3 5 8 13 21 34', 88)\n=== END ===\n"
+        s = StreamPalsu([rencana], [kode], periksa=[])      # Pemeriksa tidak boleh dipanggil
+        self.pasang(llama, s)
+        ev, _ = self.jalan(self.cfg())
+        self.assertEqual(ev[-1]["status"], "lolos")
+        self.assertNotIn("PEMERIKSA", [p for p, _ in s.panggilan])
+        self.assertEqual([e["n"] for e in ev if e["t"] == "putaran"], [1])
+        self.assertTrue([e for e in ev if e["t"] == "cek"][0]["harapan"])
+        self.assertIn("ringkas", jenis(ev))
+        teks = "".join(e["d"] for e in ev if e["t"] == "token")
+        self.assertIn("**Harapan Perencana**: terpenuhi", teks)
+        self.assertIn("**Pemeriksa**: dilewati", teks)
+
+    def test_pemeriksa_menolak_tanpa_masalah_konkret_diterima(self):
+        llama = LlamaPalsu("A", "B")
+        tolak = json.dumps({"ok": False, "ringkas": "kurang", "masalah": ["?:? -"],
+                            "perbaikan": "ganti jadi perkalian keseluruhan"})
+        s = StreamPalsu([RENCANA], [KODE_BAIK], [tolak])
+        self.pasang(llama, s)
+        ev, _ = self.jalan(self.cfg())
+        self.assertEqual(ev[-1]["status"], "lolos")
+        self.assertEqual([e["n"] for e in ev if e["t"] == "putaran"], [1])
+
+    def test_pemeriksa_berhalusinasi_diabaikan(self):
+        llama = LlamaPalsu("A", "B")
+        tolak = json.dumps({"ok": False, "ringkas": "salah", "masalah": ["main.py:1 - hasil 108 salah"],
+                            "dilihat": "108", "perbaikan": "ganti"})
+        s = StreamPalsu([RENCANA], [KODE_BAIK], [tolak])
+        self.pasang(llama, s)
+        ev, _ = self.jalan(self.cfg())
+        self.assertEqual(ev[-1]["status"], "lolos")
+        self.assertIn("kemungkinan keliru", [e for e in ev if e["t"] == "nilai"][0]["ringkas"])
+
+    def test_hasil_terbaik_dipulihkan_bila_koreksi_merusak(self):
+        llama = LlamaPalsu("A", "B")
+        tolak = json.dumps({"ok": False, "ringkas": "kurang", "masalah": ["main.py:1 - perlu diubah total"],
+                            "dilihat": "print('halo')", "perbaikan": "ubah"})
+        s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_RUSAK], [tolak],
+                        jelaskan=["Semua sempurna tanpa masalah!"])
+        self.pasang(llama, s)
+        ev, _ = self.jalan(self.cfg(maks=2))
+        self.assertEqual(ev[-1]["status"], "belum")
+        pulih = [e for e in ev if e["t"] == "pulih"]
+        self.assertEqual(pulih[0]["putaran"], 1)
+        run = tim.baca_run(ev[-1]["id"])
+        self.assertEqual(run["berkas"][0]["isi"], "print('halo')\n")      # bukan versi rusak
+        # fakta ditulis sistem dan tidak bisa dibantah penjelasan model
+        teks = "".join(e["d"] for e in ev if e["t"] == "token")
+        self.assertIn("Semua sempurna", teks)
+        self.assertIn("**Status**: belum sempurna", teks)
+        self.assertIn("**Dipulihkan**: hasil putaran 1", teks)
+        self.assertIn("halo", teks)                                         # keluaran uji jalan nyata
+
+    def test_pagar_nyasar_dibersihkan_sehingga_lolos(self):
+        # kasus log nyata (10 x 10): berkas berakhir dengan ``` kosong -> dulu "sintaks salah"
+        llama = LlamaPalsu("A", "B")
+        kode = ('=== FILE: main.py ===\n"""Hitung."""\nprint(10 * 10)\n```\n\n```\n=== END ===\n')
+        s = StreamPalsu([RENCANA], [kode], [NILAI_OK])
+        self.pasang(llama, s)
+        ev, _ = self.jalan(self.cfg())
+        self.assertEqual(ev[-1]["status"], "lolos")
+        self.assertEqual([e["n"] for e in ev if e["t"] == "putaran"], [1])
+
+    def test_jejak_dan_log_tersimpan(self):
+        llama = LlamaPalsu("A", "B")
+        s = StreamPalsu([RENCANA], [KODE_RUSAK, KODE_BAIK], [NILAI_OK])
+        self.pasang(llama, s)
+        ev, _ = self.jalan(self.cfg())
+        folder = Path(self._tmp.name) / ev[-1]["id"]
+        jejak = sorted(p.name for p in (folder / "jejak").iterdir())
+        self.assertEqual([n.split("-", 1)[1] for n in jejak],
+                         ["rencana.txt", "tulis-1.txt", "tulis-2.txt", "periksa-2.txt", "jelaskan.txt"])
+        isi = (folder / "jejak" / jejak[1]).read_text(encoding="utf-8")
+        self.assertIn("### PROMPT", isi)
+        self.assertIn("def x(:", isi)               # keluaran mentah model tersimpan apa adanya
+        baris = [json.loads(b) for b in (folder / "log.jsonl").read_text(encoding="utf-8").splitlines()]
+        tipe = [b["t"] for b in baris]
+        self.assertEqual(tipe[0], "mulai")
+        self.assertEqual(tipe[-1], "selesai")
+        self.assertNotIn("isi", tipe)
+        self.assertTrue(all("isi" not in b for b in baris))
+        self.assertTrue(all("ts" in b for b in baris))
 
     def test_tiga_model_pemeriksa_menolak_lalu_menerima(self):
         llama = LlamaPalsu("A", "B", "C")
