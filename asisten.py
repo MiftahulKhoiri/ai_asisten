@@ -480,6 +480,13 @@ class H(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/agent/run/([0-9]{8}-[0-9]{6}-[0-9a-f]{4})", path)
         if metode == "GET" and m:
             return self._json(200, tim_agen.baca_run(m.group(1)))
+        if metode == "DELETE" and m:
+            try:
+                tim_agen.hapus_run(m.group(1))
+            except PermissionError as e:
+                return self._json(409, {"error": str(e)})
+            log("INFO", f"Proses Agent dihapus: {m.group(1)}")
+            return self._json(200, {"ok": True})
         if metode == "POST":
             b = self._body()
             if path == "/api/chat/baru":
@@ -520,6 +527,10 @@ class H(BaseHTTPRequestHandler):
                 return self.kirim(b)
             if path == "/api/agent/jalankan":
                 return self.agent_jalankan(b)
+            if path == "/api/agent/riwayat/hapus-semua":
+                n = tim_agen.hapus_semua_run()
+                log("INFO", f"{n} proses Agent dihapus")
+                return self._json(200, {"ok": True, "dihapus": n})
             if path == "/api/konfirmasi":
                 item = KONF.get(b.get("kid"))
                 if not item:
