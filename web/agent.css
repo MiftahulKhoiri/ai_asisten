@@ -17,6 +17,12 @@ select{width:100%;padding:10px 12px;background:var(--panel);color:var(--teks);bo
 #setupPesan{min-height:24px;margin:10px 0}
 #setupPesan.err{color:var(--bahaya)}
 .subjudul{margin:24px 0 4px;font-size:15px;color:var(--redup);font-weight:600}
+.judul-riwayat{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
+.btn.kecil{padding:4px 12px;font-size:13px}
+.baris-run{display:flex;align-items:stretch;gap:6px;margin:10px 0}
+.baris-run .model{margin:0;flex:1;min-width:0}
+.baris-run .x{flex:none;width:46px;background:none;border:1px solid var(--garis);border-radius:12px;color:var(--redup);font-size:16px}
+.baris-run .x:active{color:var(--bahaya);border-color:var(--bahaya)}
 
 /* ---------- alur tahap ---------- */
 #alur{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--garis)}
