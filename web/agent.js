@@ -320,20 +320,46 @@
 
   /* ---------- riwayat ---------- */
   const LABEL_STATUS = {lolos: '✔ lolos', belum: '⚠ belum sempurna', butuh_info: '❓ butuh info', batal: 'dibatalkan', error: '✖ error'};
+  let riwayat = [];
   async function muatRiwayat() {
-    let list = [];
-    try { list = (await apij('/api/agent/riwayat')).run || []; } catch (e) { return; }
+    try { riwayat = (await apij('/api/agent/riwayat')).run || []; } catch (e) { return; }
+    gambarRiwayat();
+  }
+  function gambarRiwayat() {
     const box = $('daftarRun'); box.innerHTML = '';
-    if (!list.length) { box.appendChild(el('p', 'redup kosong', 'Belum ada riwayat Agent.')); return; }
-    for (const r of list) {
+    $('btnHapusRiwayat').hidden = !riwayat.length;
+    if (!riwayat.length) { box.appendChild(el('p', 'redup kosong', 'Belum ada riwayat Agent.')); return; }
+    for (const r of riwayat) {
+      const baris = el('div', 'baris-run');
       const b = el('button', 'model'); b.type = 'button';
       b.append(el('span', 'nama', r.judul || r.id),
         el('span', 'meta', (r.dibuat || '').replace('T', ' ') + ' · ' + (LABEL_STATUS[r.status] || r.status || '') +
           (r.putaran ? ' · putaran ' + r.putaran + '/' + r.maks : '')));
       b.onclick = () => bukaRun(r.id);
-      box.appendChild(b);
+      const x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Hapus proses ini');
+      x.onclick = () => hapusRun(r);
+      baris.append(b, x); box.appendChild(baris);
     }
   }
+  async function hapusRun(r) {
+    if (!confirm('Hapus proses "' + (r.judul || r.id) + '"? Berkas hasil program di folder prosesnya ikut terhapus dan tidak bisa dikembalikan.')) return;
+    try { await apij('/api/agent/run/' + r.id, {method: 'DELETE'}); }
+    catch (e) { if (e.message !== '401') toast(e.message); return; }
+    if (lanjutId === r.id) aturLanjut(null, '');
+    toast('Proses dihapus');
+    muatRiwayat();
+  }
+  async function hapusSemuaRiwayat() {
+    if (!riwayat.length) { toast('Tidak ada riwayat untuk dihapus.'); return; }
+    if (!confirm('Hapus ' + riwayat.length + ' proses Agent beserta semua berkas hasilnya? Tidak bisa dikembalikan.')) return;
+    try {
+      const j = await apij('/api/agent/riwayat/hapus-semua', {method: 'POST', body: {}});
+      toast(j.dihapus + ' proses dihapus');
+      aturLanjut(null, '');
+    } catch (e) { if (e.message !== '401') toast(e.message); }
+    muatRiwayat();
+  }
+  $('btnHapusRiwayat').onclick = hapusSemuaRiwayat;
   async function bukaRun(id) {
     let r;
     try { r = await apij('/api/agent/run/' + id); } catch (e) { if (e.message !== '401') toast(e.message); return; }
@@ -618,7 +644,8 @@
       case 'cek': {
         kartuCek(ev);
         const jalan = (ev.jalan === 'lolos' || ev.jalan === 'gagal') ? ' · uji jalan ' + ev.jalan : '';
-        catatLog(ev.ok ? '✔' : '✖', 'Pemeriksaan otomatis ' + (ev.ok ? 'lolos' : 'gagal') + jalan, ev.ok ? 'ok' : 'gagal');
+        const harap = ev.harapan === true ? ' · sesuai harapan Perencana' : '';
+        catatLog(ev.ok ? '✔' : '✖', 'Pemeriksaan otomatis ' + (ev.ok ? 'lolos' : 'gagal') + jalan + harap, ev.ok ? 'ok' : 'gagal');
         for (const b of ev.d.split('\n').filter(x => x.indexOf('GAGAL') === 0).slice(0, 3)) catatLog('', b.slice(0, 160), 'sub gagal');
         break;
       }
@@ -636,6 +663,8 @@
         catatLog('❓', 'Perencana bertanya: ' + ev.d.slice(0, 120), 'izin'); break;
       case 'ringkas':
         tambahInfo('ℹ ' + ev.d); catatLog('ℹ', ev.d); break;
+      case 'pulih':
+        tambahInfo('↩ ' + ev.d); catatLog('↩', ev.d, 'izin'); break;
       case 'konfirmasi':
         kartuKonfirmasi(ev); setAktif('Menunggu izinmu', '', true);
         catatLog('❓', 'Meminta izin: ' + ev.ringkas.slice(0, 120), 'izin'); break;
