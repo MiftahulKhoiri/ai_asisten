@@ -19,13 +19,14 @@ Terminal hanya untuk menyalakan aplikasi dan menampilkan log.
 5. [Alur sesi](#alur-sesi)
 6. [Skill (bisa digabung)](#skill-bisa-digabung)
 7. [Fitur web](#fitur-web)
-8. [Tools](#tools)
-9. [Pengaturan (variabel lingkungan)](#pengaturan-variabel-lingkungan)
-10. [Keamanan](#keamanan)
-11. [Berkas](#berkas)
-12. [Pengujian](#pengujian)
-13. [Pemecahan masalah](#pemecahan-masalah)
-14. [Batasan](#batasan)
+8. [Agent (tim beberapa model)](#agent-tim-beberapa-model)
+9. [Tools](#tools)
+10. [Pengaturan (variabel lingkungan)](#pengaturan-variabel-lingkungan)
+11. [Keamanan](#keamanan)
+12. [Berkas](#berkas)
+13. [Pengujian](#pengujian)
+14. [Pemecahan masalah](#pemecahan-masalah)
+15. [Batasan](#batasan)
 
 ## Cara kerja
 
@@ -344,6 +345,53 @@ Halaman yang butuh JavaScript (mis. harga emas dinamis) bisa terbaca kosong.
 - Mode **AUTO** (di menu): tanpa konfirmasi, kecuali hal berisiko (`sudo`, instal paket, lokasi sensitif,
   lihat [Keamanan](#keamanan)) dan setelah tool Web dipakai di obrolan itu.
 
+## Agent (tim beberapa model)
+
+Tombol **Agent** di pojok atas halaman chat membuka `agent.html`. Di sana beberapa model
+lokal bekerja bergiliran untuk **membuat program**; tiap model dimuat saat gilirannya dan
+dibongkar saat selesai (bila "Bongkar model tiap tahap" aktif).
+
+| Peran | Tugas |
+|---|---|
+| **Perencana** (Model 1) | menerima perintah, menyusun lembar tugas `tugas.json` + `tugas.md`, lalu menjelaskan hasil akhir kepada kamu |
+| **Pelaksana** (Model 2) | membaca lembar tugas dan menulis program ke folder `hasil/` |
+| **Pemeriksa** | memeriksa hasil; lolos = selesai, belum = koreksi dikirim ke Pelaksana |
+
+Pilihan di halaman Agent:
+
+- **2 model**: Model 1 = Perencana + Pemeriksa + Penjelas, Model 2 = Pelaksana.
+- **3 model**: tiap peran punya model sendiri (model yang sama boleh dipakai untuk dua peran).
+  Minimal harus ada 2 model yang berbeda.
+- **Maksimal putaran koreksi** (1-10): berapa kali Pelaksana boleh mengulang.
+- **Bongkar model tiap tahap**: hemat RAM; model yang dipakai tahap berikutnya tidak dibongkar.
+- **Boleh uji jalan program**: program dijalankan setelah kamu mengizinkan.
+
+Alur satu proses: Perencana -> Pelaksana -> pemeriksaan -> (ulang ke Pelaksana bila belum
+sempurna) -> Perencana menjelaskan. Pesan lanjutan di halaman yang sama **melanjutkan proyek
+yang sama** (berkas lama ikut dibawa); tombol **Proyek baru** memulai dari nol. Bila
+Perencana butuh info, ia bertanya dulu; jawabanmu digabung dengan permintaan awal.
+
+Pemeriksaan tidak hanya mengandalkan model kecil. Orkestrator (kode, bukan model) selalu
+memeriksa dulu: berkas yang diminta ada, sintaks Python/JSON/JavaScript/Bash benar, dan uji jalan
+bila diizinkan. Bila pemeriksaan otomatis gagal, hasilnya langsung dikembalikan ke Pelaksana
+tanpa memuat model Pemeriksa (hemat waktu muat). Model Pemeriksa hanya menilai bila
+pemeriksaan otomatis lolos.
+
+Berkas hasil ada di `~/agent_kerja/<id>/` (`hasil/`, `tugas.json`, `koreksi_N.md`, `laporan.md`,
+`run.json`). Riwayat proses tampil di halaman Agent dan bisa dilanjutkan.
+
+Keamanan: program buatan model dijalankan **hanya setelah kamu mengizinkan** (ditanya sekali per
+proses, juga di mode AUTO), tanpa shell, di folder `hasil/`, dengan batas waktu
+(`ASISTEN_AGENT_UJI_DTK`). Perintah uji dibatasi pada `python3`/`node` + berkas dari lembar tugas.
+Nama berkas dari model divalidasi (tanpa `..`, tanpa titik di depan, ekstensi yang dikenal).
+Tetap periksa kodenya bila ragu.
+
+Catatan model kecil: konteks terbatas, jadi proyek yang terlalu besar akan terpotong. Pecah
+permintaan menjadi bagian kecil (1-3 berkas). Bila berkas sering terpotong, naikkan
+`ASISTEN_AGENT_TOKENS` (dan `ASISTEN_CTX` bila RAM cukup). Agent butuh llama-server mode router
+(sama seperti halaman chat) dan menolak berjalan selama sesi chat masih memuat model: tekan
+**Selesai** di chat dulu.
+
 ## Tools
 
 | Tool | Fungsi | Izin |
@@ -396,6 +444,9 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 | `ASISTEN_LOG_MAKS_KB` | `1024` | batas ukuran `aksi.log` sebelum diputar menjadi `aksi.log.1` .. `.3` (0 = tanpa rotasi) |
 | `ASISTEN_GERBANG` | `1` | `0` mematikan gerbang yang membatasi tool pada permintaan yang tampak butuh akses sistem |
 | `ASISTEN_MODEL` | `Qwen_Qwen3-1.7B-Q4_K_M` | model bawaan untuk `cli_lama.py` |
+| `ASISTEN_AGENT_DIR` | `~/agent_kerja` | folder kerja halaman Agent (satu subfolder per proses) |
+| `ASISTEN_AGENT_TOKENS` | `3000` | batas token tahap Pelaksana (menulis kode) |
+| `ASISTEN_AGENT_UJI_DTK` | `20` | batas waktu uji jalan program hasil Agent, dalam detik |
 
 Khusus `start.sh` (dan sebagian `deploy/pasang-layanan.sh`):
 
@@ -455,7 +506,9 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `src/tool_web.py` | `ambil_url`, `baca_halaman`, `berita`, `cari_web` |
 | `src/aksilog.py` | penulisan `aksi.log` dengan rotasi |
 | `src/tool_lain.py` | kalkulator dan waktu (tempat termudah untuk tool baru) |
+| `tim_agen.py` | Agent: peran Perencana/Pelaksana/Pemeriksa, muat-bongkar model bergiliran, pemeriksaan otomatis |
 | `web/index.html`, `index.css`, `index.js` | tampilan chat |
+| `web/agent.html`, `agent.css`, `agent.js` | tampilan Agent (tombol **Agent** di chat) |
 | `start.sh` | menyalakan llama-server (bila belum hidup) lalu asisten, dengan satu perintah |
 | `deploy/` | `pasang-layanan.sh` dan templat unit systemd (`*.service.in`) |
 | `.github/workflows/tests.yml` | CI GitHub: menjalankan pengujian di Python 3.9, 3.11, 3.13 |
@@ -475,7 +528,9 @@ Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`),
 agen dan skill (`tests/test_agen.py`, memakai model palsu),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
-serta pemeriksaan tampilan web (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang).
+pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
+Agent: urutan muat/bongkar model, putaran koreksi, pemeriksaan otomatis, keamanan nama berkas, dan
+endpoint `/api/agent` (`tests/test_tim.py`, memakai llama-server dan model palsu).
 rotasi `aksi.log` (`tests/test_aksilog.py`), serta `start.sh` dan `deploy/pasang-layanan.sh`
 (`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).
 Tidak butuh model termuat dan tidak butuh llama-server menyala.
