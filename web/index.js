@@ -80,6 +80,7 @@
     for (const n of ['token', 'model', 'chat']) $('layar_' + n).hidden = (n !== nama);
     $('btnSelesai').hidden = (nama !== 'chat');
     $('btnMenu').hidden = (nama !== 'chat');
+    $('btnAgent').hidden = (nama === 'token');
     if (nama !== 'chat') { $('judulChat').textContent = 'AI Asisten'; $('subModel').textContent = ''; }
   }
   function setPoll(ms) {
