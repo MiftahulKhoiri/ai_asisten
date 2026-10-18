@@ -1,0 +1,50 @@
+/* agent.css - tambahan gaya halaman Agent. Gaya dasar (warna, tombol, pesan, kartu tool)
+   dipakai bersama dari index.css, jadi file ini hanya berisi yang khusus Agent. */
+
+a.ikon{display:inline-block;text-decoration:none}
+
+/* ---------- pengaturan ---------- */
+.field{margin:16px 0}
+.field .label{font-size:13px;color:var(--redup);margin-bottom:6px}
+.field label{display:block;margin-bottom:6px}
+.field label small{display:block;color:var(--redup);font-size:12px;font-weight:400}
+select{width:100%;padding:10px 12px;background:var(--panel);color:var(--teks);border:1px solid var(--garis);border-radius:10px;font-size:16px}
+.stepper{display:flex;align-items:center;gap:8px}
+.stepper .btn{min-width:44px;font-size:18px;padding:6px 0}
+.stepper input{width:72px;text-align:center;padding:9px 6px;background:var(--panel);color:var(--teks);border:1px solid var(--garis);border-radius:10px;font-size:16px}
+.saklar{margin:14px 0;align-items:flex-start}
+.saklar input{margin-top:5px;flex:none}
+#setupPesan{min-height:24px;margin:10px 0}
+#setupPesan.err{color:var(--bahaya)}
+.subjudul{margin:24px 0 4px;font-size:15px;color:var(--redup);font-weight:600}
+
+/* ---------- alur tahap ---------- */
+#alur{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;background:var(--panel);border-bottom:1px solid var(--garis)}
+#alur .chip{font-size:12px;padding:2px 10px;border-radius:999px;border:1px solid var(--garis);color:var(--redup);white-space:nowrap}
+#alur .chip.aktif{color:var(--aksen);border-color:var(--aksen);animation:denyutChip 1.4s ease-in-out infinite}
+#alur .chip.selesai{color:var(--ok);border-color:var(--ok)}
+#infoAlur{flex-basis:100%;font-size:12px;color:var(--redup);min-height:16px}
+@keyframes denyutChip{0%,100%{box-shadow:0 0 0 0 rgba(91,156,255,.0)}50%{box-shadow:0 0 0 3px rgba(91,156,255,.25)}}
+@media (prefers-reduced-motion:reduce){#alur .chip.aktif{animation:none}}
+
+#lanjutBar{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-bottom:1px solid var(--garis);font-size:13px;color:var(--redup)}
+#lanjutBar span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lanjutBar .btn{padding:4px 10px;font-size:13px}
+
+/* ---------- kartu tahap, rencana, pemeriksaan ---------- */
+details.tahap{align-self:stretch;max-width:100%}
+details.tahap .stat{font-size:13px;color:var(--redup);margin:6px 0 2px}
+details.tahap pre{max-height:240px;overflow-y:auto}
+.kartu{align-self:stretch;max-width:100%;border:1px solid var(--garis);border-radius:10px;background:var(--panel);padding:10px 12px;font-size:14px;overflow-wrap:anywhere}
+.kartu b.jdl{display:block;margin-bottom:2px}
+.kartu .sub{color:var(--redup);font-size:12px;margin-top:8px}
+.kartu ul{margin:2px 0 0;padding-left:20px}
+.kartu li{margin:1px 0}
+.kartu .baris{margin-top:4px}
+.kartu.nilai.ok{border-color:var(--ok)}
+.kartu.nilai.gagal{border-color:var(--izin)}
+.hasil{align-self:stretch;border-radius:10px;padding:10px 12px;border:1px solid var(--garis);background:var(--panel);font-size:14px;overflow-wrap:anywhere}
+.hasil small{display:block;color:var(--redup);font-size:12px;margin-top:2px}
+.hasil.lolos{border-color:var(--ok)}
+.hasil.belum,.hasil.butuh_info,.hasil.batal{border-color:var(--izin)}
+.hasil.error{border-color:var(--bahaya)}

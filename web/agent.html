@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111317">
+<title>AI Agent</title>
+<link rel="stylesheet" href="index.css">
+<link rel="stylesheet" href="agent.css">
+</head>
+<body>
+<div id="app">
+  <header>
+    <a class="ikon" id="btnChat" href="index.html" aria-label="Kembali ke Chat">&#8249; Chat</a>
+    <div class="judul"><b id="judulAgent">Agent</b><small id="subAgent"></small></div>
+    <button class="ikon" id="btnPengaturan" type="button" hidden>Pengaturan</button>
+  </header>
+
+  <section class="layar" id="layar_token" hidden>
+    <div class="tengah">
+      <h2>Masukkan token</h2>
+      <p class="redup">Token ada di terminal Raspberry Pi (baris "Buka dari HP"). Biasanya cukup membuka halaman Chat sekali; tokennya dipakai juga di sini.</p>
+      <input type="password" id="tokenInput" placeholder="token" autocomplete="off">
+      <button class="btn" id="btnToken" type="button">Masuk</button>
+      <p id="tokenPesan" class="redup"></p>
+    </div>
+  </section>
+
+  <section class="layar" id="layar_setup" hidden>
+    <div class="tengah">
+      <h2>Agent tim model</h2>
+      <p class="redup">Beberapa model bekerja bergiliran: satu menyusun tugas, satu menulis program, satu memeriksa. Tiap model dimuat saat gilirannya dan dibongkar saat selesai.</p>
+
+      <div class="field">
+        <div class="label">Jumlah model</div>
+        <div class="seg" id="segMode">
+          <button type="button" data-mode="2"><b>2 model</b><small>Perencana = Pemeriksa</small></button>
+          <button type="button" data-mode="3"><b>3 model</b><small>Peran masing-masing</small></button>
+        </div>
+        <p id="ketMode" class="redup kecil"></p>
+      </div>
+
+      <div class="field">
+        <label for="selP"><b id="namaP">Model 1 · Perencana</b><small id="ketP"></small></label>
+        <select id="selP"></select>
+      </div>
+      <div class="field">
+        <label for="selE"><b>Model 2 · Pelaksana</b><small>Menulis program dari lembar tugas.</small></label>
+        <select id="selE"></select>
+      </div>
+      <div class="field" id="fieldC" hidden>
+        <label for="selC"><b>Model 3 · Pemeriksa</b><small>Memeriksa hasil dan memberi koreksi.</small></label>
+        <select id="selC"></select>
+      </div>
+
+      <div class="field">
+        <label for="inpMaks"><b>Maksimal putaran koreksi</b><small>Berapa kali Pelaksana boleh mengulang bila hasil belum sempurna (1-10).</small></label>
+        <div class="stepper">
+          <button class="btn abu" id="btnKurang" type="button" aria-label="Kurangi">&minus;</button>
+          <input type="number" id="inpMaks" min="1" max="10" inputmode="numeric">
+          <button class="btn abu" id="btnTambah" type="button" aria-label="Tambah">+</button>
+        </div>
+      </div>
+
+      <label class="saklar"><input type="checkbox" id="cbBongkar">
+        <span>Bongkar model tiap tahap selesai<br><small>Hemat RAM, tetapi tiap pergantian model menunggu muat ulang.</small></span></label>
+      <label class="saklar"><input type="checkbox" id="cbUji">
+        <span>Boleh uji jalan program hasil<br><small>Program dijalankan di folder hasil setelah kamu mengizinkan (ditanya sekali per proses).</small></span></label>
+
+      <p id="ketMemori" class="redup kecil"></p>
+      <div id="setupPesan"></div>
+      <button class="btn" id="btnMulai" type="button">Mulai</button>
+      <button class="btn abu" id="btnMuatUlang" type="button" style="margin-left:8px">&#8635; Muat ulang model</button>
+
+      <h3 class="subjudul">Riwayat Agent</h3>
+      <div id="daftarRun"></div>
+    </div>
+  </section>
+
+  <section class="layar" id="layar_kerja" hidden>
+    <div id="alur" aria-label="Tahap kerja">
+      <span class="chip" id="st_rencana">Perencana</span>
+      <span class="chip" id="st_tulis">Pelaksana</span>
+      <span class="chip" id="st_periksa">Pemeriksa</span>
+      <span class="chip" id="st_jelaskan">Penjelas</span>
+      <small id="infoAlur"></small>
+    </div>
+    <div id="lanjutBar" hidden>
+      <span id="lanjutTeks"></span>
+      <button class="btn abu" id="btnBaru" type="button">Proyek baru</button>
+    </div>
+    <div id="pesan"></div>
+    <form id="bawah" autocomplete="off">
+      <textarea id="input" rows="1" placeholder="Apa yang ingin dibuat?"></textarea>
+      <button class="btn" id="btnKirim" type="submit">Kirim</button>
+    </form>
+  </section>
+</div>
+<div id="toast" hidden></div>
+
+<script src="agent.js"></script>
+</body>
+</html>

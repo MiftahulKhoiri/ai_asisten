@@ -1,0 +1,491 @@
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  let TOKEN = localStorage.getItem('aa_token') || '';
+  let layar = '', sibuk = false, models = [], statusSrv = null, daftarSig = '';
+  let lanjutId = null, lanjutJudul = '', awalTanya = null;
+  const cfg = {mode: 2, p: '', e: '', c: '', maks: 3, bongkar: true, uji: true};
+
+  /* ---------- util ---------- */
+  function el(tag, kelas, teks) {
+    const e = document.createElement(tag);
+    if (kelas) e.className = kelas;
+    if (teks !== undefined) e.textContent = teks;
+    return e;
+  }
+  function esc(s) {
+    return s.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+  }
+  function md(s) {
+    return s.split('```').map((p, i) => {
+      if (i % 2 === 1) {
+        const nl = p.indexOf('\n');
+        const kode = (nl >= 0 && /^[\w+-]*$/.test(p.slice(0, nl).trim())) ? p.slice(nl + 1) : p;
+        return '<div class="kode"><button type="button" class="salin">Salin</button><pre><code>' +
+          esc(kode.replace(/\n$/, '')) + '</code></pre></div>';
+      }
+      return esc(p)
+        .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\n/g, '<br>');
+    }).join('');
+  }
+  async function salinTeks(teks) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(teks); return true; }
+    } catch (e) { /* lanjut ke cara cadangan */ }
+    try {   // http biasa (alamat IP lokal) tidak punya clipboard API
+      const t = document.createElement('textarea');
+      t.value = teks; t.setAttribute('readonly', '');
+      t.style.cssText = 'position:fixed;top:0;left:0;opacity:0;font-size:16px';
+      document.body.appendChild(t); t.select(); t.setSelectionRange(0, teks.length);
+      const ok = document.execCommand('copy'); t.remove(); return ok;
+    } catch (e) { return false; }
+  }
+  let toastT = null;
+  function toast(m) {
+    const t = $('toast'); t.textContent = m; t.hidden = false;
+    clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3500);
+  }
+  function gulir(paksa) {
+    const b = $('pesan');
+    if (paksa || b.scrollHeight - b.scrollTop - b.clientHeight < 140) b.scrollTop = b.scrollHeight;
+  }
+  function ribu(n) { return n >= 1000 ? (n / 1000).toFixed(1).replace('.0', '') + 'k' : String(n); }
+  function gb(mb) { return mb ? (mb / 1024).toFixed(1) + ' GB' : '?'; }
+
+  /* ---------- API ---------- */
+  async function api(path, opt) {
+    opt = Object.assign({}, opt || {});
+    const h = Object.assign({'Authorization': 'Bearer ' + TOKEN}, opt.headers || {});
+    if (opt.body && typeof opt.body !== 'string') { opt.body = JSON.stringify(opt.body); h['Content-Type'] = 'application/json'; }
+    opt.headers = h;
+    const r = await fetch(path, opt);
+    if (r.status === 401) { tampil('token'); $('tokenPesan').textContent = TOKEN ? 'Token salah.' : ''; throw new Error('401'); }
+    return r;
+  }
+  async function apij(path, opt) {
+    const r = await api(path, opt);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    return j;
+  }
+
+  /* ---------- layar ---------- */
+  function ringkasCfg() {
+    return cfg.mode + ' model · maks ' + cfg.maks + ' putaran';
+  }
+  function tampil(nama) {
+    layar = nama;
+    for (const n of ['token', 'setup', 'kerja']) $('layar_' + n).hidden = (n !== nama);
+    $('btnPengaturan').hidden = (nama !== 'kerja');
+    $('subAgent').textContent = nama === 'kerja' ? ringkasCfg() : '';
+  }
+
+  /* ---------- pengaturan ---------- */
+  function muatCfg() {
+    try { Object.assign(cfg, JSON.parse(localStorage.getItem('ag_cfg') || '{}')); } catch (e) { /* abaikan */ }
+    cfg.mode = cfg.mode === 3 ? 3 : 2;
+    cfg.maks = Math.max(1, Math.min(10, parseInt(cfg.maks, 10) || 3));
+    cfg.bongkar = cfg.bongkar !== false; cfg.uji = cfg.uji !== false;
+  }
+  function simpanCfg() {
+    try { localStorage.setItem('ag_cfg', JSON.stringify(cfg)); } catch (e) { /* abaikan */ }
+  }
+  function bawaanModel() {
+    if (!models.length) return;
+    const ada = id => models.some(m => m.id === id);
+    if (!ada(cfg.p)) cfg.p = models[0].id;                                  // terkecil: cepat untuk merencana
+    if (!ada(cfg.e)) cfg.e = models[models.length - 1].id;                  // terbesar: menulis kode
+    if (!ada(cfg.c)) cfg.c = models[Math.floor(models.length / 2)].id;
+    if (cfg.p === cfg.e && models.length > 1) cfg.e = models.find(m => m.id !== cfg.p).id;
+  }
+  function isiPilihan(sel, nilai) {
+    sel.innerHTML = '';
+    for (const m of models) {
+      const o = document.createElement('option'); o.value = m.id;
+      o.textContent = m.id + ' · ' + gb(m.mb);
+      sel.appendChild(o);
+    }
+    if (models.some(m => m.id === nilai)) sel.value = nilai;
+  }
+  function renderSetup(paksaDaftar) {
+    for (const b of document.querySelectorAll('#segMode button')) {
+      const on = Number(b.dataset.mode) === cfg.mode;
+      b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    $('fieldC').hidden = cfg.mode !== 3;
+    $('namaP').textContent = cfg.mode === 3 ? 'Model 1 · Perencana' : 'Model 1 · Perencana + Pemeriksa';
+    $('ketP').textContent = cfg.mode === 3
+      ? 'Menerima perintah, menyusun lembar tugas, lalu menjelaskan hasil akhir.'
+      : 'Menerima perintah, menyusun lembar tugas, memeriksa hasil, dan menjelaskannya.';
+    $('ketMode').textContent = cfg.mode === 3
+      ? 'Tiap peran punya model sendiri. Model yang sama boleh dipilih untuk dua peran.'
+      : 'Model 1 merencana dan memeriksa, Model 2 menulis program.';
+    const sig = models.map(m => m.id).join('|');
+    if (paksaDaftar || sig !== daftarSig) {   // jangan bangun ulang pilihan saat polling (menutup menu di HP)
+      daftarSig = sig;
+      isiPilihan($('selP'), cfg.p); isiPilihan($('selE'), cfg.e); isiPilihan($('selC'), cfg.c);
+    }
+    $('inpMaks').value = cfg.maks;
+    $('cbBongkar').checked = cfg.bongkar; $('cbUji').checked = cfg.uji;
+    cekSetup();
+  }
+  function cekSetup() {
+    const pilih = cfg.mode === 3 ? [cfg.p, cfg.e, cfg.c] : [cfg.p, cfg.e];
+    const unik = Array.from(new Set(pilih));
+    let pesan = '', ok = true;
+    if (models.length < 2) { pesan = 'Butuh minimal 2 model di llama-server.'; ok = false; }
+    else if (unik.length < 2) { pesan = 'Pilih minimal 2 model yang berbeda.'; ok = false; }
+    if (statusSrv && statusSrv.chat_aktif) {
+      pesan = 'Sesi chat masih memegang model' + (statusSrv.model_chat ? ' (' + statusSrv.model_chat + ')' : '') +
+        '. Akhiri dulu di halaman Chat (tombol Selesai).';
+      ok = false;
+    } else if (statusSrv && statusSrv.sibuk) { pesan = 'Masih ada proses berjalan di server.'; ok = false; }
+    else if (statusSrv && statusSrv.pesan && !models.length) { pesan = statusSrv.pesan; ok = false; }
+    $('setupPesan').className = ok ? '' : 'err'; $('setupPesan').textContent = pesan;
+    $('btnMulai').disabled = !ok;
+    const mb = unik.map(id => (models.find(m => m.id === id) || {}).mb || 0);
+    const perlu = cfg.bongkar ? Math.max.apply(null, mb.concat([0])) : mb.reduce((a, b) => a + b, 0);
+    $('ketMemori').textContent = perlu
+      ? 'Memori model yang dibutuhkan sekaligus: sekitar ' + gb(perlu) + (cfg.bongkar ? ' (satu model per tahap)' : ' (semua model tetap termuat)') + ', belum termasuk konteks.'
+      : '';
+  }
+  async function muatStatus(paksa) {
+    try {
+      statusSrv = await apij('/api/agent/status');
+      models = statusSrv.models || [];
+      bawaanModel();
+      renderSetup(!!paksa);
+    } catch (e) {
+      if (e.message !== '401') { $('setupPesan').className = 'err'; $('setupPesan').textContent = 'Tidak bisa terhubung ke server.'; }
+    }
+  }
+  function ubahMaks(n) {
+    cfg.maks = Math.max(1, Math.min(10, parseInt(n, 10) || cfg.maks));
+    $('inpMaks').value = cfg.maks; simpanCfg();
+  }
+  for (const b of document.querySelectorAll('#segMode button')) {
+    b.onclick = () => { cfg.mode = Number(b.dataset.mode) === 3 ? 3 : 2; simpanCfg(); renderSetup(false); };
+  }
+  $('selP').onchange = e => { cfg.p = e.target.value; simpanCfg(); cekSetup(); };
+  $('selE').onchange = e => { cfg.e = e.target.value; simpanCfg(); cekSetup(); };
+  $('selC').onchange = e => { cfg.c = e.target.value; simpanCfg(); cekSetup(); };
+  $('btnKurang').onclick = () => ubahMaks(cfg.maks - 1);
+  $('btnTambah').onclick = () => ubahMaks(cfg.maks + 1);
+  $('inpMaks').addEventListener('change', e => ubahMaks(e.target.value));
+  $('cbBongkar').onchange = e => { cfg.bongkar = e.target.checked; simpanCfg(); cekSetup(); };
+  $('cbUji').onchange = e => { cfg.uji = e.target.checked; simpanCfg(); };
+  $('btnMuatUlang').onclick = async () => {
+    const b = $('btnMuatUlang'); b.disabled = true;
+    try { await apij('/api/model/muat-ulang', {method: 'POST', body: {}}); } catch (e) { if (e.message !== '401') toast(e.message); }
+    b.disabled = false; muatStatus(true);
+  };
+  $('btnMulai').onclick = () => {
+    $('input').value = ''; ukuranInput(); masukKerja();
+  };
+  $('btnPengaturan').onclick = () => {
+    if (sibuk) { toast('Tunggu proses selesai atau tekan Stop.'); return; }
+    tampil('setup'); muatStatus(true); muatRiwayat();
+  };
+
+  /* ---------- riwayat ---------- */
+  const LABEL_STATUS = {lolos: '✔ lolos', belum: '⚠ belum sempurna', butuh_info: '❓ butuh info', batal: 'dibatalkan', error: '✖ error'};
+  async function muatRiwayat() {
+    let list = [];
+    try { list = (await apij('/api/agent/riwayat')).run || []; } catch (e) { return; }
+    const box = $('daftarRun'); box.innerHTML = '';
+    if (!list.length) { box.appendChild(el('p', 'redup kosong', 'Belum ada riwayat Agent.')); return; }
+    for (const r of list) {
+      const b = el('button', 'model'); b.type = 'button';
+      b.append(el('span', 'nama', r.judul || r.id),
+        el('span', 'meta', (r.dibuat || '').replace('T', ' ') + ' · ' + (LABEL_STATUS[r.status] || r.status || '') +
+          (r.putaran ? ' · putaran ' + r.putaran + '/' + r.maks : '')));
+      b.onclick = () => bukaRun(r.id);
+      box.appendChild(b);
+    }
+  }
+  async function bukaRun(id) {
+    let r;
+    try { r = await apij('/api/agent/run/' + id); } catch (e) { if (e.message !== '401') toast(e.message); return; }
+    masukKerja(true);
+    tambahUser(r.tugas || '');
+    if (r.spec) kartuRencana(r.spec);
+    for (const b of (r.berkas || [])) kartuBerkas(b.nama, b.isi, false, false);
+    if (r.laporan) tambahAsisten(r.laporan);
+    tambahHasil({status: r.status, teks: LABEL_STATUS[r.status] || r.status, dir: r.dir});
+    aturLanjut(r.id, r.judul);
+    gulir(true);
+  }
+
+  /* ---------- layar kerja ---------- */
+  function masukKerja(tanpaSapaan) {
+    tampil('kerja');
+    $('pesan').innerHTML = ''; resetAlur(); $('infoAlur').textContent = '';
+    aturLanjut(null, '');
+    if (!tanpaSapaan) {
+      const model = cfg.mode === 3 ? [cfg.p, cfg.e, cfg.c] : [cfg.p, cfg.e, cfg.p];
+      tambahInfo('Tim: Perencana ' + model[0] + ' → Pelaksana ' + model[1] + ' → Pemeriksa ' + model[2] +
+        '. Maks ' + cfg.maks + ' putaran koreksi. Tulis apa yang ingin dibuat.');
+    }
+  }
+  function aturLanjut(id, judul) {
+    lanjutId = id || null; lanjutJudul = judul || ''; awalTanya = null;
+    $('lanjutBar').hidden = !lanjutId;
+    $('lanjutTeks').textContent = lanjutId ? 'Melanjutkan proyek: ' + lanjutJudul : '';
+    $('input').placeholder = lanjutId ? 'Minta perbaikan atau tambahan...' : 'Apa yang ingin dibuat?';
+  }
+  $('btnBaru').onclick = () => { if (sibuk) { toast('Tunggu proses selesai atau tekan Stop.'); return; } aturLanjut(null, ''); };
+
+  const URUT = ['rencana', 'tulis', 'periksa', 'jelaskan'];
+  const PERAN = {rencana: 'Perencana', tulis: 'Pelaksana', periksa: 'Pemeriksa', jelaskan: 'Penjelas'};
+  const IKON = {rencana: '🧭', tulis: '✏', periksa: '🔎', jelaskan: '💬'};
+  let selesaiSet = new Set(), aktifKunci = null;
+  function resetAlur() {
+    selesaiSet = new Set(); aktifKunci = null;
+    for (const k of URUT) { $('st_' + k).className = 'chip'; $('st_' + k).textContent = PERAN[k]; }
+  }
+  function setAlur(kunci, putaran) {
+    if (aktifKunci) selesaiSet.add(aktifKunci);
+    aktifKunci = kunci;
+    for (const k of URUT) {
+      const c = $('st_' + k);
+      c.className = 'chip' + (k === kunci ? ' aktif' : selesaiSet.has(k) ? ' selesai' : '');
+      c.textContent = PERAN[k] + ((k === kunci && putaran && (k === 'tulis' || k === 'periksa')) ? ' · ' + putaran : '');
+    }
+  }
+  function akhiriAlur() {
+    if (aktifKunci) selesaiSet.add(aktifKunci);
+    aktifKunci = null;
+    for (const k of URUT) $('st_' + k).className = 'chip' + (selesaiSet.has(k) ? ' selesai' : '');
+  }
+
+  /* ---------- render pesan ---------- */
+  function tambahUser(teks) {
+    const p = el('div', 'p user'), g = el('div', 'gel', teks);
+    p.appendChild(g); $('pesan').appendChild(p); gulir(true);
+  }
+  function tambahAsisten(teks) {
+    const p = el('div', 'p'), g = el('div', 'gel'); g.innerHTML = md(teks);
+    p.appendChild(g); $('pesan').appendChild(p); gulir();
+    return g;
+  }
+  function tambahInfo(teks, err) {
+    $('pesan').appendChild(el('div', 'info' + (err ? ' err' : ''), teks)); gulir();
+  }
+  function lencana(kelas, teks) { return el('span', 'lencana ' + kelas, teks); }
+  function daftarUl(arr) {
+    const ul = el('ul');
+    for (const x of arr) ul.appendChild(el('li', '', x));
+    return ul;
+  }
+  function kartuRencana(spec) {
+    const k = el('div', 'kartu');
+    k.appendChild(el('b', 'jdl', '📋 ' + (spec.judul || 'Lembar tugas')));
+    if (spec.ringkasan) k.appendChild(el('div', '', spec.ringkasan));
+    k.appendChild(el('div', 'sub', 'Berkas'));
+    k.appendChild(daftarUl((spec.berkas || []).map(b => b.nama + (b.fungsi ? ' - ' + b.fungsi : ''))));
+    if ((spec.kriteria || []).length) { k.appendChild(el('div', 'sub', 'Kriteria selesai')); k.appendChild(daftarUl(spec.kriteria)); }
+    k.appendChild(el('div', 'sub', 'Uji jalan: ' + ((spec.jalankan || []).length ? spec.jalankan.join(' ') : 'tidak ada')));
+    if (spec.catatan) k.appendChild(el('div', 'sub', 'Catatan: ' + spec.catatan));
+    $('pesan').appendChild(k); gulir();
+  }
+  function kartuBerkas(nama, isi, baru, dipotong) {
+    const d = el('details', 'tool'), s = el('summary');
+    const baris = isi.replace(/\n$/, '').split('\n').length;
+    s.append(el('span', 'ik', '✏'), el('span', 'rg', nama + ' · ' + baris + ' baris'), lencana(baru ? 'ok' : 'menunggu', baru ? 'baru' : 'diubah'));
+    const kotak = el('div', 'kode'), salin = el('button', 'salin', 'Salin'); salin.type = 'button';
+    const pre = el('pre'); pre.textContent = isi + (dipotong ? '\n...[tampilan dipotong; isi lengkap ada di folder hasil]' : '');
+    kotak._teks = isi;
+    kotak.append(salin, pre); d.append(s, kotak); $('pesan').appendChild(d); gulir();
+  }
+  function kartuCek(ev) {
+    const d = el('details', 'tool'), s = el('summary');
+    s.append(el('span', 'ik', '🔧'), el('span', 'rg', 'Pemeriksaan otomatis' + (ev.jalan && ev.jalan !== 'dilewati' ? ' · uji jalan ' + ev.jalan : '')),
+      lencana(ev.ok ? 'ok' : 'gagal', ev.ok ? 'lolos' : 'gagal'));
+    const pre = el('pre'); pre.textContent = ev.d;
+    d.append(s, pre); if (!ev.ok) d.open = true;
+    $('pesan').appendChild(d); gulir();
+  }
+  function kartuNilai(ev) {
+    const k = el('div', 'kartu nilai ' + (ev.ok ? 'ok' : 'gagal'));
+    const b = el('div', 'baris'); b.append(lencana(ev.ok ? 'ok' : 'ditolak', ev.ok ? 'Pemeriksa: OK' : 'Pemeriksa: perlu perbaikan'));
+    k.appendChild(b);
+    if (ev.ringkas) k.appendChild(el('div', '', ev.ringkas));
+    if ((ev.masalah || []).length) { k.appendChild(el('div', 'sub', 'Masalah')); k.appendChild(daftarUl(ev.masalah)); }
+    if (ev.perbaikan && !ev.ok) k.appendChild(el('div', 'sub', 'Perbaikan: ' + ev.perbaikan));
+    $('pesan').appendChild(k); gulir();
+  }
+  const IKON_STATUS = {lolos: '✔', belum: '⚠', butuh_info: '❓', batal: '⏹', error: '✖'};
+  function tambahHasil(ev) {
+    const d = el('div', 'hasil ' + (ev.status || ''));
+    d.appendChild(el('b', '', (IKON_STATUS[ev.status] || '') + ' ' + (ev.teks || ev.status || '')));
+    if (ev.dir) d.appendChild(el('small', '', 'Folder: ' + ev.dir));
+    $('pesan').appendChild(d); gulir();
+  }
+  function kartuKonfirmasi(ev) {
+    const d = el('div', 'konf');
+    const t = el('b', '', ({uji: 'Izinkan menjalankan program hasil agent?', tulis: 'Izinkan menulis file?',
+      jaringan: 'Izinkan akses jaringan?'})[ev.jenis] || 'Izinkan menjalankan perintah?');
+    const pre = el('pre'); pre.textContent = ev.ringkas + (ev.detail ? '\n\n' + ev.detail : '');
+    const row = el('div', 'baris');
+    const ya = el('button', 'btn', 'Ya, izinkan'), tidak = el('button', 'btn abu', 'Tolak');
+    const jawab = async setuju => {
+      ya.disabled = true; tidak.disabled = true;
+      try { await apij('/api/konfirmasi', {method: 'POST', body: {kid: ev.kid, setuju}}); row.textContent = setuju ? '✔ Diizinkan' : '✖ Ditolak'; }
+      catch (e) { row.textContent = 'Gagal: ' + e.message; }
+    };
+    ya.onclick = () => jawab(true); tidak.onclick = () => jawab(false);
+    row.append(ya, tidak); d.append(t, pre, row); $('pesan').appendChild(d); gulir(true);
+  }
+  function teksInfo(ev) {
+    let t = ev.tok + ' token · ' + ev.tok_s + ' tok/s';
+    if (ev.pakai && ev.maks) {
+      const pct = Math.min(100, Math.round(ev.pakai / ev.maks * 100));
+      t += ' · konteks ' + ribu(ev.pakai) + '/' + ribu(ev.maks) + ' (' + pct + '%)' + (pct >= 85 ? ' ⚠ hampir penuh' : '');
+    }
+    return t;
+  }
+
+  /* kartu tahap: satu kartu per tahap, berisi status muat model dan keluaran model */
+  function kartuTahap(ev, st) {
+    tutupKartu(st, 'ok', 'selesai');
+    const d = el('details', 'tool tahap'), s = el('summary');
+    const lc = lencana('menunggu', 'berjalan');
+    s.append(el('span', 'ik', IKON[ev.tahap] || '⚙'),
+      el('span', 'rg', ev.peran + (ev.putaran ? ' · putaran ' + ev.putaran : '') + ' · ' + ev.model), lc);
+    const stat = el('div', 'stat', 'Menyiapkan model ...'), pre = el('pre');
+    d.append(s, stat, pre); d.open = true; $('pesan').appendChild(d);
+    st.kartu = {d, lc, stat, pre, raw: ''}; gulir();
+  }
+  function tutupKartu(st, kelas, label) {
+    const k = st.kartu; if (!k) return;
+    k.lc.className = 'lencana ' + kelas; k.lc.textContent = label;
+    k.d.open = false; st.kartu = null;
+  }
+
+  /* ---------- kirim & stream ---------- */
+  function setSibuk(v) {
+    sibuk = v;
+    $('btnKirim').textContent = v ? 'Stop' : 'Kirim';
+    $('btnKirim').className = v ? 'btn merah' : 'btn';
+  }
+  function ukuranInput() {
+    const i = $('input'); i.style.height = 'auto'; i.style.height = Math.min(i.scrollHeight, 160) + 'px';
+  }
+  async function kirim() {
+    const diketik = $('input').value.trim();
+    if (!diketik || sibuk) return;
+    let teks = diketik;
+    if (awalTanya) {   // jawaban atas pertanyaan Perencana: gabungkan dengan permintaan awal
+      teks = 'Permintaan awal: ' + awalTanya + '\nJawaban/tambahan pengguna: ' + diketik;
+    }
+    $('input').value = ''; ukuranInput();
+    tambahUser(diketik); setSibuk(true); resetAlur(); $('infoAlur').textContent = 'Menghubungi server ...';
+    const st = {kartu: null, bubble: null, raw: '', teks};
+    try {
+      const body = {teks, lanjut: lanjutId, mode: cfg.mode, model_p: cfg.p, model_e: cfg.e,
+        model_c: cfg.mode === 3 ? cfg.c : cfg.p, maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.uji};
+      const r = await api('/api/agent/jalankan', {method: 'POST', body});
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + r.status)); }
+      const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+      while (true) {
+        const {value, done} = await rd.read(); if (done) break;
+        buf += dec.decode(value, {stream: true});
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const baris = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!baris) continue;
+          let ev; try { ev = JSON.parse(baris); } catch (e) { continue; }
+          tangani(ev, st);
+        }
+      }
+    } catch (e) { if (e.message !== '401') { tambahInfo('⚠ ' + e.message, true); $('infoAlur').textContent = ''; } }
+    finally { tutupKartu(st, 'gagal', 'berhenti'); akhiriAlur(); setSibuk(false); muatRiwayat(); }
+  }
+  function tangani(ev, st) {
+    switch (ev.t) {
+      case 'mulai':
+        $('infoAlur').textContent = 'Folder kerja: ' + ev.dir; break;
+      case 'tahap':
+        kartuTahap(ev, st); setAlur(ev.tahap, ev.putaran); break;
+      case 'putaran':
+        $('infoAlur').textContent = 'Putaran ' + ev.n + ' dari maks ' + ev.maks;
+        tambahInfo('🔁 Putaran ' + ev.n + '/' + ev.maks); break;
+      case 'muat':
+        if (st.kartu) st.kartu.stat.textContent = ev.d;
+        $('infoAlur').textContent = ev.d; break;
+      case 'muat_selesai':
+        if (st.kartu) st.kartu.stat.textContent = '✔ Model siap (' + ev.detik + ' dtk)';
+        $('infoAlur').textContent = ''; break;
+      case 'bongkar':
+        tambahInfo('⏏ ' + ev.model + ' dibongkar dari memori'); break;
+      case 'isi':
+        if (st.kartu) { st.kartu.raw += ev.d; st.kartu.pre.textContent = st.kartu.raw; st.kartu.pre.scrollTop = st.kartu.pre.scrollHeight; }
+        break;
+      case 'info':
+        tambahInfo(teksInfo(ev), false); break;
+      case 'rencana':
+        st.judul = ev.d.judul; tutupKartu(st, 'ok', 'selesai'); kartuRencana(ev.d); break;
+      case 'berkas':
+        kartuBerkas(ev.nama, ev.isi, ev.baru, ev.dipotong); break;
+      case 'cek':
+        kartuCek(ev); break;
+      case 'nilai':
+        tutupKartu(st, ev.ok ? 'ok' : 'ditolak', ev.ok ? 'OK' : 'perlu perbaikan'); kartuNilai(ev); break;
+      case 'token':     // penjelasan akhir dari Perencana
+        if (!st.bubble) { tutupKartu(st, 'ok', 'selesai'); st.bubble = tambahAsisten(''); st.raw = ''; }
+        st.raw += ev.d; st.bubble.innerHTML = md(st.raw); gulir(); break;
+      case 'tanya':
+        tutupKartu(st, 'ok', 'selesai'); tambahAsisten(ev.d); awalTanya = st.teks; break;
+      case 'ringkas':
+        tambahInfo('ℹ ' + ev.d); break;
+      case 'konfirmasi':
+        kartuKonfirmasi(ev); break;
+      case 'error':
+        tutupKartu(st, 'gagal', 'error'); tambahInfo('⚠ ' + ev.d, true); break;
+      case 'batal':
+        tutupKartu(st, 'ditolak', 'dibatalkan'); tambahInfo('Dibatalkan.'); break;
+      case 'selesai':
+        tutupKartu(st, 'ok', 'selesai'); akhiriAlur(); $('infoAlur').textContent = '';
+        tambahHasil(ev);
+        if (ev.status === 'lolos' || ev.status === 'belum') { aturLanjut(ev.id, st.judul || (st.teks || '').slice(0, 40)); }
+        st.bubble = null; break;
+      default: break;   // ping
+    }
+  }
+
+  /* ---------- event ---------- */
+  $('bawah').addEventListener('submit', e => {
+    e.preventDefault();
+    if (sibuk) { api('/api/stop', {method: 'POST', body: {}}).catch(() => {}); } else kirim();
+  });
+  $('input').addEventListener('input', ukuranInput);
+  $('input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!sibuk) kirim(); }
+  });
+  $('pesan').addEventListener('click', async e => {   // tombol Salin (blok kode & berkas)
+    const b = e.target.closest('.salin'); if (!b) return;
+    const kotak = b.parentElement, pre = kotak.querySelector('pre'); if (!pre) return;
+    const ok = await salinTeks(kotak._teks !== undefined ? kotak._teks : pre.textContent);
+    b.textContent = ok ? 'Tersalin ✓' : 'Gagal menyalin';
+    setTimeout(() => { b.textContent = 'Salin'; }, 1500);
+  });
+  $('btnToken').onclick = () => {
+    const v = $('tokenInput').value.trim(); if (!v) return;
+    TOKEN = v; localStorage.setItem('aa_token', v); $('tokenPesan').textContent = '';
+    tampil('setup'); muatStatus(true); muatRiwayat();
+  };
+  $('tokenInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnToken').click(); });
+  setInterval(() => { if (layar === 'setup' && !document.hidden && TOKEN) muatStatus(false); }, 6000);
+
+  /* ---------- mulai ---------- */
+  muatCfg();
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('token')) {
+    TOKEN = qs.get('token'); localStorage.setItem('aa_token', TOKEN);
+    history.replaceState(null, '', location.pathname);
+  }
+  if (!TOKEN) tampil('token');
+  else { tampil('setup'); muatStatus(true); muatRiwayat(); }
+})();
