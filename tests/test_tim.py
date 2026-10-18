@@ -5,6 +5,8 @@ putaran koreksi, pemeriksaan otomatis, keamanan nama berkas, dan keluaran event.
 """
 import json
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import threading
@@ -306,6 +308,26 @@ class TestAlur(DasarAgent):
         self.assertTrue((Path(self._tmp.name) / ev[-1]["id"] / "koreksi_1.md").is_file())
         self.assertTrue((Path(self._tmp.name) / ev[-1]["id"] / "tugas.json").is_file())
 
+    def test_event_untuk_log_langsung(self):
+        llama = LlamaPalsu("A", "B")
+        s = StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK])
+        self.pasang(llama, s)
+        ev, _ = self.jalan(self.cfg())
+        j = jenis(ev)
+        # bongkar_mulai selalu mendahului bongkar untuk model yang sama
+        for i, e in enumerate(ev):
+            if e["t"] == "bongkar":
+                self.assertEqual(ev[i - 1], {"t": "bongkar_mulai", "model": e["model"]})
+        self.assertEqual(j.count("bongkar_mulai"), j.count("bongkar"))
+        self.assertLess(j.index("cek_mulai"), j.index("uji_mulai"))
+        self.assertLess(j.index("uji_mulai"), j.index("cek"))
+        self.assertEqual([e for e in ev if e["t"] == "uji_mulai"][0]["d"], "python3 main.py")
+        # tanpa uji jalan: tidak ada event uji_mulai
+        self.pasang(LlamaPalsu("A", "B"), StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK]))
+        ev2, _ = self.jalan(self.cfg(uji=False))
+        self.assertNotIn("uji_mulai", jenis(ev2))
+        self.assertIn("cek_mulai", jenis(ev2))
+
     def test_tiga_model_pemeriksa_menolak_lalu_menerima(self):
         llama = LlamaPalsu("A", "B", "C")
         s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_BAIK], [NILAI_TOLAK, NILAI_OK])
@@ -544,6 +566,33 @@ class TestEndpoint(DasarAgent):
         kode, isi = self.req("GET", "/api/agent/run/" + ev[-1]["id"])
         self.assertEqual(json.loads(isi)["berkas"][0]["nama"], "main.py")
         self.assertEqual(self.req("GET", "/api/agent/run/20260101-000000-abcd")[0], 404)
+
+
+class TestAsapJs(DasarAgent):
+    """Memutar event asli orkestrator ke web/agent.js (DOM tiruan, butuh node)."""
+
+    def test_log_langsung_dan_lencana(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node tidak terpasang")
+        llama = LlamaPalsu("A", "B", "C")
+        self.pasang(llama, StreamPalsu([RENCANA], [KODE_RUSAK, KODE_BAIK, KODE_BAIK], [NILAI_TOLAK, NILAI_OK]))
+        ev, _ = self.jalan(self.cfg(mode=3))
+        berkas = Path(self._tmp.name) / "events.ndjson"
+        berkas.write_text("\n".join(json.dumps(e) for e in ev) + "\n", encoding="utf-8")
+        skrip = Path(__file__).resolve().parent / "agent_smoke.js"
+        r = subprocess.run([node, str(skrip), str(berkas)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        d = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertEqual(d["galat"], [])
+        self.assertTrue(d["lencana_tampil"])
+        self.assertTrue(d["lencana_selesai"])
+        self.assertIn("Selesai", d["kata"])
+        log = "\n".join(d["teks_log"])
+        for harus in ("Memuat A", "A siap dipakai", "Membongkar A dari memori", "A sudah dibongkar",
+                      "Pelaksana mulai menulis kode", "Menjalankan uji: python3 main.py",
+                      "Pemeriksa: perlu perbaikan", "Pemeriksaan otomatis gagal", "Selesai: lolos"):
+            self.assertIn(harus, log)
 
 
 if __name__ == "__main__":
