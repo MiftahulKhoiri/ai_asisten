@@ -403,6 +403,12 @@ Berkas hasil ada di `~/agent_kerja/<id>/` (`hasil/`, `tugas.json`, `koreksi_N.md
 `run.json`, `log.jsonl` = catatan event proses, `jejak/` = prompt dan keluaran mentah tiap model
 untuk diagnosis). Riwayat proses tampil di halaman Agent dan bisa dilanjutkan.
 
+**Menghapus riwayat:** tombol **✕** di tiap item menghapus satu proses, dan **Hapus semua** di
+atas daftar menghapus semuanya. Keduanya menghapus seluruh folder prosesnya, termasuk berkas
+hasil program (tidak masuk tempat sampah, tidak bisa dikembalikan), dan selalu minta konfirmasi.
+Proses yang sedang berjalan tidak bisa dihapus (dilewati oleh Hapus semua). Hanya folder proses
+(`AAAAMMDD-JJMMDD-xxxx`) yang disentuh; folder atau berkas lain di `~/agent_kerja` tetap aman.
+
 Keamanan: program buatan model dijalankan **hanya setelah kamu mengizinkan** (ditanya sekali per
 proses, juga di mode AUTO), tanpa shell, di folder `hasil/`, dengan batas waktu
 (`ASISTEN_AGENT_UJI_DTK`). Perintah uji dibatasi pada `python3`/`node` + berkas dari lembar tugas.
