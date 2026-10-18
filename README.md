@@ -379,14 +379,29 @@ dimuat / termuat / sedang dibongkar / sudah dibongkar), keluaran model yang seda
 riwayat proses bertanda waktu. Tombol **Salin log** menyalin seluruhnya. Setelah selesai, lencana
 tetap ada agar log bisa ditinjau. Log hidup selama halaman terbuka (tidak disimpan ke riwayat).
 
-Pemeriksaan tidak hanya mengandalkan model kecil. Orkestrator (kode, bukan model) selalu
-memeriksa dulu: berkas yang diminta ada, sintaks Python/JSON/JavaScript/Bash benar, dan uji jalan
-bila diizinkan. Bila pemeriksaan otomatis gagal, hasilnya langsung dikembalikan ke Pelaksana
-tanpa memuat model Pemeriksa (hemat waktu muat). Model Pemeriksa hanya menilai bila
-pemeriksaan otomatis lolos.
+Pemeriksaan tidak hanya mengandalkan model kecil, karena model 1-4B sering salah menilai.
+Bukti dari kode lebih berat daripada pendapat model:
+
+- Orkestrator (kode, bukan model) selalu memeriksa dulu: berkas yang diminta ada, sintaks
+  Python/JSON/JavaScript/Bash benar, dan uji jalan bila diizinkan. Bila gagal, hasilnya langsung
+  dikembalikan ke Pelaksana tanpa memuat model Pemeriksa (hemat waktu muat).
+- **Harapan keluaran**: Perencana boleh mengisi `harapan` (teks yang pasti muncul di keluaran,
+  mis. `88` untuk jumlah 10 bilangan Fibonacci). Bila keluaran program memuatnya, hasil langsung
+  **lolos** dan Pemeriksa dilewati. (Program yang sekadar mencetak jawabannya tanpa menghitung
+  juga akan lolos; Agent memeriksa hasil, bukan cara kerjanya.)
+- **Penolakan Pemeriksa harus konkret**: masalah kosong ("?:? -") diabaikan, dan Pemeriksa wajib
+  mengutip (`dilihat`) bagian keluaran/kode yang salah. Kutipan yang tidak ada di keluaran atau
+  kode dianggap halusinasi dan penolakannya diabaikan.
+- **Hasil terbaik dipulihkan**: bila akhirnya belum sempurna, berkas dikembalikan ke putaran
+  terbaik, supaya koreksi yang keliru tidak merusak hasil yang sudah baik.
+- **Laporan akhir**: Penjelas hanya menulis prosa tentang programnya. Status, berkas, keluaran uji
+  jalan, dan hasil pemeriksaan ditambahkan oleh sistem dari data nyata, jadi tidak bisa dikarang.
+- Lembar tugas untuk Pelaksana/Pemeriksa tidak memuat `langkah` buatan Perencana (sering keliru
+  dan menyesatkan); langkah hanya disimpan di `tugas.md` untuk dibaca manusia.
 
 Berkas hasil ada di `~/agent_kerja/<id>/` (`hasil/`, `tugas.json`, `koreksi_N.md`, `laporan.md`,
-`run.json`). Riwayat proses tampil di halaman Agent dan bisa dilanjutkan.
+`run.json`, `log.jsonl` = catatan event proses, `jejak/` = prompt dan keluaran mentah tiap model
+untuk diagnosis). Riwayat proses tampil di halaman Agent dan bisa dilanjutkan.
 
 Keamanan: program buatan model dijalankan **hanya setelah kamu mengizinkan** (ditanya sekali per
 proses, juga di mode AUTO), tanpa shell, di folder `hasil/`, dengan batas waktu
