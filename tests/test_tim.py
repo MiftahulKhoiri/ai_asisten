@@ -696,6 +696,26 @@ class TestEndpoint(DasarAgent):
         self.assertIn("Chat", json.loads(isi)["error"])
         self.assertFalse(asisten.GEN_LOCK.locked())
 
+    def test_hapus_lewat_http(self):
+        ids = ["20261018-100000-aaaa", "20261018-110000-bbbb", "20261018-120000-cccc"]
+        for i in ids:
+            d = Path(self._tmp.name) / i
+            d.mkdir()
+            (d / "run.json").write_text(json.dumps({"id": i, "judul": i, "status": "lolos"}))
+        self.assertEqual(self.req("DELETE", "/api/agent/run/" + ids[0], token=False)[0], 401)
+        self.assertEqual(self.req("POST", "/api/agent/riwayat/hapus-semua", {}, token=False)[0], 401)
+        self.assertEqual(self.req("DELETE", "/api/agent/run/" + ids[0])[0], 200)
+        self.assertEqual(self.req("DELETE", "/api/agent/run/" + ids[0])[0], 404)
+        self.assertEqual(self.req("DELETE", "/api/agent/run/bukan-id")[0], 404)
+        tim.AKTIF_RUN.add(ids[1])
+        self.addCleanup(tim.AKTIF_RUN.discard, ids[1])
+        kode, isi = self.req("DELETE", "/api/agent/run/" + ids[1])
+        self.assertEqual(kode, 409)
+        self.assertIn("masih berjalan", json.loads(isi)["error"])
+        kode, isi = self.req("POST", "/api/agent/riwayat/hapus-semua", {})
+        self.assertEqual((kode, json.loads(isi)["dihapus"]), (200, 1))      # ids[2]; ids[1] sedang berjalan
+        self.assertEqual([r["id"] for r in json.loads(self.req("GET", "/api/agent/riwayat")[1])["run"]], [ids[1]])
+
     def test_jalan_penuh_lewat_http(self):
         llama = LlamaPalsu("A", "B")
         self.pasang(llama, StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK]))
@@ -720,6 +740,70 @@ class TestEndpoint(DasarAgent):
         self.assertEqual(self.req("GET", "/api/agent/run/20260101-000000-abcd")[0], 404)
 
 
+class TestHapusRiwayat(DasarAgent):
+    ID1, ID2, ID3 = "20261018-100000-aaaa", "20261018-110000-bbbb", "20261018-120000-cccc"
+
+    def buat(self, *ids):
+        for i in ids:
+            d = Path(self._tmp.name) / i
+            (d / "hasil").mkdir(parents=True)
+            (d / "hasil" / "main.py").write_text("print(1)\n")
+            (d / "run.json").write_text(json.dumps({"id": i, "judul": i, "status": "lolos"}))
+
+    def test_hapus_satu(self):
+        self.buat(self.ID1, self.ID2)
+        tim.hapus_run(self.ID1)
+        self.assertEqual([r["id"] for r in tim.daftar_run()], [self.ID2])
+        with self.assertRaises(FileNotFoundError):
+            tim.hapus_run(self.ID1)
+        for buruk in ("../x", "", None, "bukan-id"):
+            with self.assertRaises(FileNotFoundError):
+                tim.hapus_run(buruk)
+
+    def test_proses_berjalan_tidak_bisa_dihapus(self):
+        self.buat(self.ID1, self.ID2)
+        tim.AKTIF_RUN.add(self.ID1)
+        self.addCleanup(tim.AKTIF_RUN.discard, self.ID1)
+        with self.assertRaises(PermissionError):
+            tim.hapus_run(self.ID1)
+        self.assertEqual(tim.hapus_semua_run(), 1)          # hanya ID2
+        self.assertEqual([r["id"] for r in tim.daftar_run()], [self.ID1])
+
+    def test_hapus_semua_hanya_folder_proses(self):
+        self.buat(self.ID1, self.ID2, self.ID3)
+        lain = Path(self._tmp.name) / "catatan-saya"
+        lain.mkdir()
+        (lain / "a.txt").write_text("jangan dihapus")
+        (Path(self._tmp.name) / "berkas.txt").write_text("x")
+        self.assertEqual(tim.hapus_semua_run(), 3)
+        self.assertTrue((lain / "a.txt").exists())
+        self.assertTrue((Path(self._tmp.name) / "berkas.txt").exists())
+        self.assertEqual(tim.daftar_run(), [])
+
+    def test_symlink_tidak_diikuti(self):
+        with tempfile.TemporaryDirectory() as luar:
+            (Path(luar) / "penting.txt").write_text("penting")
+            self.buat(self.ID1)
+            (Path(self._tmp.name) / self.ID1 / "hasil" / "tautan").symlink_to(luar)
+            (Path(self._tmp.name) / self.ID2).symlink_to(luar)      # 'proses' berupa symlink
+            tim.hapus_run(self.ID1)
+            self.assertTrue((Path(luar) / "penting.txt").exists())
+            with self.assertRaises(FileNotFoundError):
+                tim.hapus_run(self.ID2)
+            self.assertEqual(tim.hapus_semua_run(), 0)
+            self.assertTrue((Path(luar) / "penting.txt").exists())
+
+    def test_aktif_run_dibersihkan_setelah_selesai_atau_error(self):
+        self.pasang(LlamaPalsu("A", "B"), StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK]))
+        ev, _ = self.jalan(self.cfg())
+        self.assertEqual(tim.AKTIF_RUN, set())
+        self.pasang(LlamaPalsu("A", "B"), StreamPalsu([RuntimeError("mati")]))
+        ev, _ = self.jalan(self.cfg())
+        self.assertEqual(ev[-1]["status"], "error")
+        self.assertEqual(tim.AKTIF_RUN, set())
+        tim.hapus_run(ev[-1]["id"])          # proses yang sudah selesai boleh dihapus
+
+
 class TestAsapJs(DasarAgent):
     """Memutar event asli orkestrator ke web/agent.js (DOM tiruan, butuh node)."""
 
@@ -737,6 +821,9 @@ class TestAsapJs(DasarAgent):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         d = json.loads(r.stdout.strip().splitlines()[-1])
         self.assertEqual(d["galat"], [])
+        self.assertGreaterEqual(d["tombol_x"], 2)        # satu tombol hapus per item riwayat
+        self.assertEqual(d["hapus"], ["DELETE /api/agent/run/20261018-110000-bbbb",
+                                      "POST /api/agent/riwayat/hapus-semua"])
         self.assertTrue(d["lencana_tampil"])
         self.assertTrue(d["lencana_selesai"])
         self.assertIn("Selesai", d["kata"])
