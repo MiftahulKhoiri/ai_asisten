@@ -54,6 +54,135 @@
   function ribu(n) { return n >= 1000 ? (n / 1000).toFixed(1).replace('.0', '') + 'k' : String(n); }
   function gb(mb) { return mb ? (mb / 1024).toFixed(1) + ' GB' : '?'; }
 
+  /* ---------- log langsung: lencana di pojok atas + panel rincian ---------- */
+  const LOG_MAKS = 600;
+  const NAMA_STATE = {belum: 'belum dimuat', memuat: 'sedang dimuat', termuat: 'termuat di memori',
+    membongkar: 'sedang dibongkar', dibongkar: 'sudah dibongkar'};
+  const aktv = {label: '', model: '', mulai: 0, selesai: false, gagal: false, izin: false};
+  let logList = [], logMulai = 0, logAkhir = 0, modelState = {}, peranModel = {};
+  let keluaran = '', keluaranJudul = '', panelBuka = false;
+
+  function mmss(ms) {
+    const d = Math.max(0, Math.floor(ms / 1000));
+    return Math.floor(d / 60) + ':' + String(d % 60).padStart(2, '0');
+  }
+  function gambarBarisLog(e) {
+    const d = el('div', 'lg ' + e.kelas);
+    d.append(el('span', 'lw', mmss(e.t)), el('span', 'li', e.ikon), el('span', 'lt', e.teks));
+    e.el = d;
+    const sc = $('logIsi'), dekat = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 80;
+    $('logDaftar').appendChild(d);
+    if (dekat) sc.scrollTop = sc.scrollHeight;
+  }
+  function catatLog(ikon, teks, kelas) {
+    const e = {t: Date.now() - logMulai, ikon, teks, kelas: kelas || '', el: null};
+    logList.push(e);
+    if (logList.length > LOG_MAKS) { const buang = logList.shift(); if (buang.el) buang.el.remove(); }
+    if (panelBuka) { gambarBarisLog(e); gambarRingkas(); }
+    return e;
+  }
+  function ubahLog(e, teks) {
+    e.teks = teks;
+    if (e.el) e.el.querySelector('.lt').textContent = teks;
+  }
+  function setModel(nama, state) {
+    if (!nama) return;
+    modelState[nama] = state;
+    if (panelBuka) gambarModel();
+  }
+  function setAktif(label, model, izin) {
+    aktv.label = label; aktv.model = model || ''; aktv.mulai = Date.now(); aktv.izin = !!izin;
+    renderLencana();
+  }
+  function akhiriLog(label, gagal) {
+    aktv.selesai = true; aktv.gagal = !!gagal; aktv.label = label; aktv.model = ''; aktv.izin = false;
+    logAkhir = Date.now();
+    renderLencana();
+  }
+  function resetLog() {
+    logList = []; logMulai = 0; logAkhir = 0; keluaran = ''; keluaranJudul = '';
+    $('logDaftar').innerHTML = '';
+    tutupPanel(); renderLencana();
+  }
+  function mulaiLog(teks) {
+    logList = []; $('logDaftar').innerHTML = ''; logMulai = Date.now(); logAkhir = 0;
+    keluaran = ''; keluaranJudul = ''; aktv.selesai = false; aktv.gagal = false;
+    modelState = {}; peranModel = {};
+    const pm = cfg.mode === 3
+      ? [[cfg.p, 'Perencana · Penjelas'], [cfg.e, 'Pelaksana'], [cfg.c, 'Pemeriksa']]
+      : [[cfg.p, 'Perencana · Pemeriksa · Penjelas'], [cfg.e, 'Pelaksana']];
+    for (const [n, peran] of pm) {
+      peranModel[n] = peranModel[n] ? peranModel[n] + ' · ' + peran : peran;
+      modelState[n] = 'belum';
+    }
+    setAktif('Menghubungi server', '');
+    catatLog('▶', 'Perintah dikirim: ' + teks.replace(/\s+/g, ' ').slice(0, 80));
+    if (panelBuka) bukaPanel();
+  }
+  function renderLencana() {
+    const b = $('lencanaLog');
+    b.hidden = !logMulai; $('isiPesan').classList.toggle('ada-pil', !!logMulai);
+    b.classList.toggle('selesai', aktv.selesai && !aktv.gagal);
+    b.classList.toggle('gagal', aktv.selesai && aktv.gagal);
+    b.classList.toggle('izin', !aktv.selesai && aktv.izin);
+    if (!logMulai) return;
+    const k = $('lencanaKata');
+    if (k.textContent !== aktv.label) k.textContent = aktv.label;   // jangan ganti node tiap detik (pembaca layar)
+    const d = Math.floor((Date.now() - aktv.mulai) / 1000);
+    $('lencanaSub').textContent = aktv.selesai ? 'ketuk untuk lihat log'
+      : (aktv.model ? aktv.model + ' · ' : '') + d + ' dtk';
+    if (panelBuka) gambarSekarang();
+  }
+  function gambarRingkas() {
+    $('logRingkas').textContent = 'Total ' + mmss((logAkhir || Date.now()) - logMulai) + ' · ' + logList.length + ' baris';
+  }
+  function gambarSekarang() {
+    const d = Math.floor((Date.now() - aktv.mulai) / 1000);
+    const box = $('logSekarang'); box.innerHTML = '';
+    box.appendChild(document.createTextNode(aktv.label));
+    box.appendChild(el('small', '', (aktv.model ? 'Model: ' + aktv.model + ' · ' : '') +
+      (aktv.selesai ? 'proses berhenti' : d + ' dtk pada langkah ini')));
+    gambarRingkas();
+  }
+  function gambarModel() {
+    const box = $('logModel'); box.innerHTML = '';
+    const nama = Object.keys(modelState);
+    if (!nama.length) { box.appendChild(el('div', 'redup', '-')); return; }
+    for (const n of nama) {
+      const r = el('div', 'mrow'), mn = el('span', 'mn', n);
+      if (peranModel[n]) mn.appendChild(el('small', '', peranModel[n]));
+      r.append(el('span', 'dot ' + modelState[n]), mn, el('span', 'ms', NAMA_STATE[modelState[n]] || modelState[n]));
+      box.appendChild(r);
+    }
+  }
+  function gambarKeluaran() {
+    $('logKeluaranJudul').textContent = keluaranJudul || 'Keluaran model';
+    const pre = $('logKeluaran');
+    pre.textContent = keluaran ? keluaran.slice(-2500) : '(belum ada keluaran)';
+    pre.scrollTop = pre.scrollHeight;
+  }
+  function bukaPanel() {
+    panelBuka = true; $('panelLog').hidden = false;
+    $('logDaftar').innerHTML = '';
+    for (const e of logList) gambarBarisLog(e);
+    gambarSekarang(); gambarModel(); gambarKeluaran();
+    $('logIsi').scrollTop = $('logIsi').scrollHeight;
+    $('btnTutupLog').focus();
+  }
+  function tutupPanel() {
+    panelBuka = false; $('panelLog').hidden = true;
+    for (const e of logList) e.el = null;
+  }
+  $('lencanaLog').onclick = bukaPanel;
+  $('btnTutupLog').onclick = tutupPanel;
+  $('latarLog').onclick = tutupPanel;
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && panelBuka) tutupPanel(); });
+  $('btnSalinLog').onclick = async () => {
+    const teks = logList.map(e => '[' + mmss(e.t) + '] ' + e.ikon + ' ' + e.teks).join('\n');
+    toast(await salinTeks(teks) ? 'Log disalin' : 'Gagal menyalin log');
+  };
+  setInterval(() => { if (logMulai && !aktv.selesai) renderLencana(); }, 1000);
+
   /* ---------- API ---------- */
   async function api(path, opt) {
     opt = Object.assign({}, opt || {});
@@ -220,7 +349,7 @@
 
   /* ---------- layar kerja ---------- */
   function masukKerja(tanpaSapaan) {
-    tampil('kerja');
+    tampil('kerja'); resetLog();
     $('pesan').innerHTML = ''; resetAlur(); $('infoAlur').textContent = '';
     aturLanjut(null, '');
     if (!tanpaSapaan) {
@@ -332,8 +461,13 @@
     const ya = el('button', 'btn', 'Ya, izinkan'), tidak = el('button', 'btn abu', 'Tolak');
     const jawab = async setuju => {
       ya.disabled = true; tidak.disabled = true;
-      try { await apij('/api/konfirmasi', {method: 'POST', body: {kid: ev.kid, setuju}}); row.textContent = setuju ? '✔ Diizinkan' : '✖ Ditolak'; }
-      catch (e) { row.textContent = 'Gagal: ' + e.message; }
+      try {
+        await apij('/api/konfirmasi', {method: 'POST', body: {kid: ev.kid, setuju}});
+        row.textContent = setuju ? '✔ Diizinkan' : '✖ Ditolak';
+        catatLog(setuju ? '✔' : '✖', setuju ? 'Izin diberikan' : 'Izin ditolak', setuju ? 'ok' : 'izin');
+        if (ev.jenis === 'uji') setAktif(setuju ? 'Menjalankan program uji' : 'Pemeriksaan otomatis', '');
+        else setAktif('Melanjutkan proses', '');
+      } catch (e) { row.textContent = 'Gagal: ' + e.message; }
     };
     ya.onclick = () => jawab(true); tidak.onclick = () => jawab(false);
     row.append(ya, tidak); d.append(t, pre, row); $('pesan').appendChild(d); gulir(true);
@@ -382,6 +516,7 @@
     }
     $('input').value = ''; ukuranInput();
     tambahUser(diketik); setSibuk(true); resetAlur(); $('infoAlur').textContent = 'Menghubungi server ...';
+    mulaiLog(diketik);
     const st = {kartu: null, bubble: null, raw: '', teks};
     try {
       const body = {teks, lanjut: lanjutId, mode: cfg.mode, model_p: cfg.p, model_e: cfg.e,
@@ -400,55 +535,119 @@
           tangani(ev, st);
         }
       }
-    } catch (e) { if (e.message !== '401') { tambahInfo('⚠ ' + e.message, true); $('infoAlur').textContent = ''; } }
-    finally { tutupKartu(st, 'gagal', 'berhenti'); akhiriAlur(); setSibuk(false); muatRiwayat(); }
+    } catch (e) {
+      if (e.message !== '401') {
+        tambahInfo('⚠ ' + e.message, true); $('infoAlur').textContent = '';
+        catatLog('✖', 'Terputus: ' + e.message, 'gagal');
+      }
+    } finally {
+      tutupKartu(st, 'gagal', 'berhenti'); akhiriAlur(); setSibuk(false); muatRiwayat();
+      if (logMulai && !aktv.selesai) akhiriLog('Terputus dari server', true);
+    }
   }
+  const KATA_AKTIF = {rencana: 'menyusun lembar tugas', tulis: 'menulis kode', periksa: 'menilai hasil',
+    jelaskan: 'menjelaskan hasil'};
+  function mulaiMenulis(st) {   // token pertama tiba: model sudah termuat dan mulai menjawab
+    if (st.menulis || !st.tahap) return;
+    st.menulis = true;
+    const t = st.tahap, kata = KATA_AKTIF[t.tahap] || 'menulis';
+    setModel(t.model, 'termuat');
+    setAktif(t.peran + ' ' + kata, t.model);
+    catatLog('✍', t.peran + ' mulai ' + kata);
+  }
+  function tambahKeluaran(d) {
+    keluaran += d;
+    if (keluaran.length > 6000) keluaran = keluaran.slice(-4000);
+    if (panelBuka) gambarKeluaran();
+  }
+  const LABEL_AKHIR = {lolos: 'Selesai · lolos pemeriksaan', belum: 'Selesai · belum sempurna',
+    butuh_info: 'Menunggu infomu', batal: 'Dibatalkan', error: 'Berhenti karena error'};
   function tangani(ev, st) {
     switch (ev.t) {
       case 'mulai':
-        $('infoAlur').textContent = 'Folder kerja: ' + ev.dir; break;
+        $('infoAlur').textContent = 'Folder kerja: ' + ev.dir;
+        catatLog('📁', 'Folder kerja: ' + ev.dir); break;
       case 'tahap':
-        kartuTahap(ev, st); setAlur(ev.tahap, ev.putaran); break;
+        kartuTahap(ev, st); setAlur(ev.tahap, ev.putaran);
+        st.tahap = ev; st.menulis = false; keluaran = ''; keluaranJudul = 'Keluaran ' + ev.peran + ' · ' + ev.model;
+        if (panelBuka) gambarKeluaran();
+        catatLog('▶', 'Tahap ' + ev.peran + (ev.putaran ? ' (putaran ' + ev.putaran + ')' : '') + ' · model ' + ev.model, 'tahap');
+        setAktif(ev.peran + ' berpikir', ev.model); break;
       case 'putaran':
         $('infoAlur').textContent = 'Putaran ' + ev.n + ' dari maks ' + ev.maks;
-        tambahInfo('🔁 Putaran ' + ev.n + '/' + ev.maks); break;
+        tambahInfo('🔁 Putaran ' + ev.n + '/' + ev.maks);
+        catatLog('🔁', 'Putaran ' + ev.n + ' dari maksimal ' + ev.maks, 'tahap'); break;
       case 'muat':
         if (st.kartu) st.kartu.stat.textContent = ev.d;
-        $('infoAlur').textContent = ev.d; break;
+        $('infoAlur').textContent = ev.d;
+        setModel(ev.model, 'memuat'); setAktif('Memuat model', ev.model);
+        if (!st.muat || st.muat.model !== ev.model) st.muat = {model: ev.model, e: catatLog('⏳', ev.d)};
+        else ubahLog(st.muat.e, ev.d);
+        break;
       case 'muat_selesai':
         if (st.kartu) st.kartu.stat.textContent = '✔ Model siap (' + ev.detik + ' dtk)';
-        $('infoAlur').textContent = ''; break;
+        $('infoAlur').textContent = '';
+        setModel(ev.model, 'termuat'); st.muat = null;
+        catatLog('✔', ev.model + ' siap dipakai (' + ev.detik + ' dtk)', 'ok');
+        setAktif((st.tahap ? st.tahap.peran : 'Model') + ' berpikir', ev.model); break;
+      case 'bongkar_mulai':
+        setModel(ev.model, 'membongkar'); setAktif('Membongkar model', ev.model);
+        catatLog('⏏', 'Membongkar ' + ev.model + ' dari memori ...'); break;
       case 'bongkar':
-        tambahInfo('⏏ ' + ev.model + ' dibongkar dari memori'); break;
+        tambahInfo('⏏ ' + ev.model + ' dibongkar dari memori');
+        setModel(ev.model, 'dibongkar'); catatLog('✔', ev.model + ' sudah dibongkar', 'ok');
+        setAktif('Beralih ke tahap berikutnya', ''); break;
       case 'isi':
+        mulaiMenulis(st); tambahKeluaran(ev.d);
         if (st.kartu) { st.kartu.raw += ev.d; st.kartu.pre.textContent = st.kartu.raw; st.kartu.pre.scrollTop = st.kartu.pre.scrollHeight; }
         break;
       case 'info':
-        tambahInfo(teksInfo(ev), false); break;
+        tambahInfo(teksInfo(ev), false); catatLog('📊', teksInfo(ev)); break;
       case 'rencana':
-        st.judul = ev.d.judul; tutupKartu(st, 'ok', 'selesai'); kartuRencana(ev.d); break;
+        st.judul = ev.d.judul; tutupKartu(st, 'ok', 'selesai'); kartuRencana(ev.d);
+        catatLog('📋', 'Lembar tugas: ' + ev.d.judul + ' (' + (ev.d.berkas || []).length + ' berkas)'); break;
       case 'berkas':
-        kartuBerkas(ev.nama, ev.isi, ev.baru, ev.dipotong); break;
-      case 'cek':
-        kartuCek(ev); break;
+        kartuBerkas(ev.nama, ev.isi, ev.baru, ev.dipotong);
+        catatLog('✏', (ev.baru ? 'Membuat ' : 'Mengubah ') + ev.nama); break;
+      case 'cek_mulai':
+        setAktif('Pemeriksaan otomatis', '');
+        catatLog('🔧', 'Pemeriksaan otomatis: berkas dan sintaks'); break;
+      case 'uji_mulai':
+        setAktif('Menjalankan program uji', '');
+        catatLog('▶', 'Menjalankan uji: ' + ev.d); break;
+      case 'cek': {
+        kartuCek(ev);
+        const jalan = (ev.jalan === 'lolos' || ev.jalan === 'gagal') ? ' · uji jalan ' + ev.jalan : '';
+        catatLog(ev.ok ? '✔' : '✖', 'Pemeriksaan otomatis ' + (ev.ok ? 'lolos' : 'gagal') + jalan, ev.ok ? 'ok' : 'gagal');
+        for (const b of ev.d.split('\n').filter(x => x.indexOf('GAGAL') === 0).slice(0, 3)) catatLog('', b.slice(0, 160), 'sub gagal');
+        break;
+      }
       case 'nilai':
-        tutupKartu(st, ev.ok ? 'ok' : 'ditolak', ev.ok ? 'OK' : 'perlu perbaikan'); kartuNilai(ev); break;
+        tutupKartu(st, ev.ok ? 'ok' : 'ditolak', ev.ok ? 'OK' : 'perlu perbaikan'); kartuNilai(ev);
+        catatLog(ev.ok ? '✔' : '✖', 'Pemeriksa: ' + (ev.ok ? 'OK' : 'perlu perbaikan') + (ev.ringkas ? ' - ' + ev.ringkas : ''), ev.ok ? 'ok' : 'izin');
+        for (const m of (ev.masalah || []).slice(0, 3)) catatLog('', m.slice(0, 160), 'sub');
+        break;
       case 'token':     // penjelasan akhir dari Perencana
+        mulaiMenulis(st); tambahKeluaran(ev.d);
         if (!st.bubble) { tutupKartu(st, 'ok', 'selesai'); st.bubble = tambahAsisten(''); st.raw = ''; }
         st.raw += ev.d; st.bubble.innerHTML = md(st.raw); gulir(); break;
       case 'tanya':
-        tutupKartu(st, 'ok', 'selesai'); tambahAsisten(ev.d); awalTanya = st.teks; break;
+        tutupKartu(st, 'ok', 'selesai'); tambahAsisten(ev.d); awalTanya = st.teks;
+        catatLog('❓', 'Perencana bertanya: ' + ev.d.slice(0, 120), 'izin'); break;
       case 'ringkas':
-        tambahInfo('ℹ ' + ev.d); break;
+        tambahInfo('ℹ ' + ev.d); catatLog('ℹ', ev.d); break;
       case 'konfirmasi':
-        kartuKonfirmasi(ev); break;
+        kartuKonfirmasi(ev); setAktif('Menunggu izinmu', '', true);
+        catatLog('❓', 'Meminta izin: ' + ev.ringkas.slice(0, 120), 'izin'); break;
       case 'error':
-        tutupKartu(st, 'gagal', 'error'); tambahInfo('⚠ ' + ev.d, true); break;
+        tutupKartu(st, 'gagal', 'error'); tambahInfo('⚠ ' + ev.d, true); catatLog('✖', ev.d, 'gagal'); break;
       case 'batal':
-        tutupKartu(st, 'ditolak', 'dibatalkan'); tambahInfo('Dibatalkan.'); break;
+        tutupKartu(st, 'ditolak', 'dibatalkan'); tambahInfo('Dibatalkan.'); catatLog('⏹', 'Dibatalkan', 'izin'); break;
       case 'selesai':
         tutupKartu(st, 'ok', 'selesai'); akhiriAlur(); $('infoAlur').textContent = '';
         tambahHasil(ev);
+        catatLog(IKON_STATUS[ev.status] || '•', 'Selesai: ' + ev.teks, ev.status === 'lolos' ? 'ok' : (ev.status === 'error' ? 'gagal' : 'izin'));
+        akhiriLog(LABEL_AKHIR[ev.status] || 'Selesai', ev.status === 'error');
         if (ev.status === 'lolos' || ev.status === 'belum') { aturLanjut(ev.id, st.judul || (st.teks || '').slice(0, 40)); }
         st.bubble = null; break;
       default: break;   // ping
@@ -458,7 +657,10 @@
   /* ---------- event ---------- */
   $('bawah').addEventListener('submit', e => {
     e.preventDefault();
-    if (sibuk) { api('/api/stop', {method: 'POST', body: {}}).catch(() => {}); } else kirim();
+    if (sibuk) {
+      catatLog('⏹', 'Stop ditekan, menghentikan proses ...', 'izin'); setAktif('Menghentikan proses', aktv.model, true);
+      api('/api/stop', {method: 'POST', body: {}}).catch(() => {});
+    } else kirim();
   });
   $('input').addEventListener('input', ukuranInput);
   $('input').addEventListener('keydown', e => {
