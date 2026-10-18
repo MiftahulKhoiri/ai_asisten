@@ -233,6 +233,20 @@ class TestSpec(unittest.TestCase):
         self.assertTrue(spec["kriteria"])
         self.assertEqual(spec["jalankan"], [])
 
+    def test_perintah_uji_satu_string(self):
+        # kasus log nyata: Perencana menulis ["python3 main.py"] dan dulu dibuang diam-diam
+        b = [{"nama": "main.py"}]
+        for v in (["python3 main.py"], "python3 main.py", ["python3", "main.py"], ["python3 main.py --demo"]):
+            hasil = tim.rapikan_spec({"berkas": b, "jalankan": v, "harapan": ["x"]}, "t")
+            self.assertEqual(hasil["jalankan"][:2], ["python3", "main.py"], msg=repr(v))
+            self.assertEqual(hasil["harapan"], ["x"])
+        self.assertEqual(tim.rapikan_spec({"berkas": b, "jalankan": ["python3 -c x"]}, "t")["jalankan"], [])
+
+    def test_nilai_ok_membuang_masalah(self):
+        n = tim.rapikan_nilai({"ok": True, "ringkas": "baik", "masalah": ["Program menampilkan Halo"],
+                               "perbaikan": "tidak perlu", "dilihat": "print"})
+        self.assertEqual((n["ok"], n["masalah"], n["perbaikan"]), (True, [], ""))
+
     def test_perintah_uji_dibatasi(self):
         b = [{"nama": "main.py"}]
         bagus = tim.rapikan_spec({"berkas": b, "jalankan": ["python", "main.py", "--demo"]}, "t")
@@ -409,6 +423,28 @@ class TestAlur(DasarAgent):
         teks = "".join(e["d"] for e in ev if e["t"] == "token")
         self.assertIn("**Harapan Perencana**: terpenuhi", teks)
         self.assertIn("**Pemeriksa**: dilewati", teks)
+
+    def test_ulang_log_halo_dunia(self):
+        # Replay log nyata: Perencana menulis jalankan sebagai satu string, Pelaksana menambah
+        # komentar setelah === END ===. Dulu uji jalan dilewati dan Pemeriksa tetap dimuat.
+        llama = LlamaPalsu("A", "B")
+        rencana = json.dumps({"judul": "Cetak 'Halo Dunia'", "ringkasan": "cetak teks",
+                              "bahasa": "python", "berkas": [{"nama": "main.py", "fungsi": "cetak"}],
+                              "langkah": ["print('Halo Dunia')"], "kriteria": ["menampilkan 'Halo Dunia'"],
+                              "jalankan": ["python3 main.py"], "harapan": ["Halo Dunia"], "tanya": ""})
+        kode = ("=== FILE: main.py ===\nprint('Halo Dunia')\n=== END ===\n\n"
+                "Terkadang Python menampilkan tanda pemrosesan... satu kode satu.")
+        s = StreamPalsu([rencana], [kode], periksa=[])
+        self.pasang(llama, s)
+        ev, ctx = self.jalan(self.cfg())
+        self.assertEqual(ev[-1]["status"], "lolos")
+        self.assertEqual(ctx.ditanya, ["uji"])                       # program benar-benar dijalankan
+        self.assertNotIn("PEMERIKSA", [p for p, _ in s.panggilan])
+        teks = "".join(e["d"] for e in ev if e["t"] == "token")
+        self.assertIn("**Keluaran uji jalan**", teks)
+        self.assertIn("Halo Dunia", teks)
+        run = tim.baca_run(ev[-1]["id"])
+        self.assertEqual(run["berkas"][0]["isi"], "print('Halo Dunia')\n")
 
     def test_pemeriksa_menolak_tanpa_masalah_konkret_diterima(self):
         llama = LlamaPalsu("A", "B")
