@@ -734,6 +734,8 @@ def catat_event(ev):
         log("OK", f"Model siap: {ev['model']} ({ev['detik']} dtk)")
     elif t == "bongkar":
         log("OK", f"Model dibongkar dari memori: {ev['model']}")
+    elif t == "uji_mulai":
+        log("TOOL", f"agent menjalankan uji: {ev['d']}")
     elif t == "berkas":
         log("TOOL", f"agent {'membuat' if ev.get('baru') else 'mengubah'} {ev['nama']}")
     elif t == "cek":
