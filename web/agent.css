@@ -48,3 +48,53 @@ details.tahap pre{max-height:240px;overflow-y:auto}
 .hasil.lolos{border-color:var(--ok)}
 .hasil.belum,.hasil.butuh_info,.hasil.batal{border-color:var(--izin)}
 .hasil.error{border-color:var(--bahaya)}
+
+/* ---------- lencana proses langsung + panel log ---------- */
+#isiPesan{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
+#isiPesan.ada-pil #pesan{padding-top:56px}
+.pil-log{position:absolute;top:8px;right:10px;z-index:15;display:flex;align-items:center;gap:9px;max-width:min(80vw,340px);padding:6px 14px 6px 11px;background:var(--panel);border:1px solid var(--garis);border-radius:999px;box-shadow:0 2px 10px rgba(0,0,0,.25);text-align:left;animation:muncul .25s ease-out}
+.pil-log .teks{display:flex;flex-direction:column;min-width:0;line-height:1.25}
+.pil-log .kata{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pil-log small{font-size:11px;color:var(--redup);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.pil-log.selesai .orb{animation:none;background:var(--ok)}
+.pil-log.selesai .orb::after{display:none}
+.pil-log.selesai .kata{animation:none;background:none;color:var(--teks);-webkit-text-fill-color:currentColor}
+.pil-log.gagal .orb{animation:none;background:var(--bahaya)}
+.pil-log.gagal .orb::after{display:none}
+.pil-log.gagal .kata{animation:none;background:none;color:var(--teks);-webkit-text-fill-color:currentColor}
+.pil-log.izin .orb{background:var(--izin)}
+.pil-log.izin .orb::after{background:var(--izin)}
+
+#panelLog{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;justify-content:flex-end}
+#panelLog .latar{position:absolute;inset:0;background:rgba(0,0,0,.45)}
+#panelLog .lembar{position:relative;width:100%;max-width:680px;margin:0 auto;max-height:82dvh;display:flex;flex-direction:column;background:var(--bg);border:1px solid var(--garis);border-bottom:0;border-radius:16px 16px 0 0;padding-bottom:env(safe-area-inset-bottom);animation:naik .2s ease-out}
+.lembar .kepala{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--garis)}
+.lembar .kepala .jd{flex:1;min-width:0}
+.lembar .kepala .jd b,.lembar .kepala .jd small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lembar .kepala .jd small{color:var(--redup);font-size:12px;font-variant-numeric:tabular-nums}
+.lembar .isi{overflow-y:auto;padding:4px 12px 18px;-webkit-overflow-scrolling:touch}
+.seksi{margin:14px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--redup)}
+#logSekarang{white-space:pre-line;font-size:15px}
+#logSekarang small{display:block;color:var(--redup);font-size:12px}
+.mrow{display:flex;align-items:center;gap:10px;padding:5px 0;font-size:14px}
+.mrow .mn{flex:1;min-width:0;overflow-wrap:anywhere}
+.mrow .mn small{display:block;color:var(--redup);font-size:11px}
+.mrow .ms{flex:none;font-size:12px;color:var(--redup)}
+.dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--garis)}
+.dot.memuat,.dot.membongkar{background:var(--izin);animation:denyut 1.2s ease-in-out infinite}
+.dot.termuat{background:var(--ok)}
+.dot.dibongkar{background:var(--redup)}
+#logKeluaran{max-height:170px;overflow-y:auto;margin:0;padding:8px 10px;background:var(--kode);border-radius:8px;font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere}
+.lg{display:flex;gap:8px;padding:3px 0;font-size:13px;align-items:flex-start}
+.lg .lw{flex:none;width:40px;color:var(--redup);font-size:12px;font-variant-numeric:tabular-nums;padding-top:1px}
+.lg .li{flex:none;width:18px;text-align:center}
+.lg .lt{min-width:0;overflow-wrap:anywhere}
+.lg.tahap .lt{font-weight:600}
+.lg.ok .lt{color:var(--ok)}
+.lg.gagal .lt{color:var(--bahaya)}
+.lg.izin .lt{color:var(--izin)}
+.lg.sub{color:var(--redup)}
+.lg.sub .lw,.lg.sub .li{display:none}
+.lg.sub{padding-left:48px;font-size:12px}
+@keyframes naik{from{transform:translateY(24px);opacity:0}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){#panelLog .lembar,.pil-log,.dot.memuat,.dot.membongkar{animation:none}}
