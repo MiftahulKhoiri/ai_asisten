@@ -555,10 +555,13 @@ def spec_model(spec):
 def _rapikan_jalankan(v, nama_berkas):
     """Perintah uji hanya: python3/node + berkas dari lembar tugas + argumen sederhana."""
     if isinstance(v, str):
-        v = v.split()
-    if not isinstance(v, list) or not 2 <= len(v) <= 6:
+        v = [v]
+    if not isinstance(v, list):
         return []
-    v = [str(x) for x in v]
+    # Model kecil sering menulis ["python3 main.py"] (satu string) alih-alih ["python3", "main.py"].
+    v = [t for x in v for t in str(x).split()]
+    if not 2 <= len(v) <= 6:
+        return []
     if v[0] not in INTERPRETER or v[1] not in nama_berkas:
         return []
     if any(not re.fullmatch(r"[\w./=:,+-]{1,60}", a) for a in v[2:]):
@@ -760,6 +763,8 @@ def rapikan_nilai(d, sumber=None):
     nilai = {"ok": bool(ok), "masalah": masalah, "dilihat": dilihat,
              "ringkas": " ".join(str(d.get("ringkas") or "").split())[:300],
              "perbaikan": " ".join(str(d.get("perbaikan") or "").split())[:600]}
+    if nilai["ok"]:      # lolos: daftar masalah/perbaikan hanya membingungkan (sering berisi kriteria)
+        nilai.update(masalah=[], perbaikan="", dilihat="")
     if not nilai["ok"]:
         alasan = ""
         if not masalah:
