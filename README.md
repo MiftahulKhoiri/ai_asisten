@@ -371,6 +371,14 @@ sempurna) -> Perencana menjelaskan. Pesan lanjutan di halaman yang sama **melanj
 yang sama** (berkas lama ikut dibawa); tombol **Proyek baru** memulai dari nol. Bila
 Perencana butuh info, ia bertanya dulu; jawabanmu digabung dengan permintaan awal.
 
+**Log langsung.** Selama proses berjalan, lencana kecil muncul di pojok kanan atas chat Agent
+dengan aktivitas saat ini: memuat model, berpikir, menulis kode, membongkar model, pemeriksaan
+otomatis, menjalankan program uji, atau menunggu izin (disertai nama model dan detik berjalan).
+Ketuk lencana untuk membuka panel: aktivitas sekarang, status tiap model (belum dimuat / sedang
+dimuat / termuat / sedang dibongkar / sudah dibongkar), keluaran model yang sedang ditulis, dan
+riwayat proses bertanda waktu. Tombol **Salin log** menyalin seluruhnya. Setelah selesai, lencana
+tetap ada agar log bisa ditinjau. Log hidup selama halaman terbuka (tidak disimpan ke riwayat).
+
 Pemeriksaan tidak hanya mengandalkan model kecil. Orkestrator (kode, bukan model) selalu
 memeriksa dulu: berkas yang diminta ada, sintaks Python/JSON/JavaScript/Bash benar, dan uji jalan
 bila diizinkan. Bila pemeriksaan otomatis gagal, hasilnya langsung dikembalikan ke Pelaksana
@@ -530,7 +538,8 @@ keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
 Agent: urutan muat/bongkar model, putaran koreksi, pemeriksaan otomatis, keamanan nama berkas, dan
-endpoint `/api/agent` (`tests/test_tim.py`, memakai llama-server dan model palsu).
+endpoint `/api/agent`, dan log langsung di halaman Agent (`tests/test_tim.py` + `tests/agent_smoke.js`,
+memakai llama-server dan model palsu; tes `agent_smoke.js` butuh `node`).
 rotasi `aksi.log` (`tests/test_aksilog.py`), serta `start.sh` dan `deploy/pasang-layanan.sh`
 (`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).
 Tidak butuh model termuat dan tidak butuh llama-server menyala.
