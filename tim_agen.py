@@ -226,6 +226,7 @@ class Pemuat:
 
     def lepas(self, nama):
         if self.milik.pop(nama, False):
+            yield {"t": "bongkar_mulai", "model": nama}   # tampil di log langsung sebelum menunggu
             bongkar(nama)
             yield {"t": "bongkar", "model": nama}
 
@@ -817,11 +818,14 @@ def _kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, izin, akhir):
         ditulis, masalah = yield from _tulis(spec, koreksi, hasil_dir, me, ctx)
 
         # Pemeriksaan otomatis (kode): sintaks, berkas ada, uji jalan
+        yield {"t": "cek_mulai"}
         ok_statis, baris = cek_statis(hasil_dir, spec, ditulis)
         baris = ["GAGAL format: " + m for m in masalah] + baris
         ok = ok_statis and not masalah
         status_jalan = "dilewati"
         if ok:
+            if spec["jalankan"] and cfg["uji"]:
+                yield {"t": "uji_mulai", "d": " ".join(spec["jalankan"])}
             status_jalan, jalan = cek_jalan(hasil_dir, spec, ctx, izin, cfg["uji"])
             baris += jalan
             ok = status_jalan != "gagal"
