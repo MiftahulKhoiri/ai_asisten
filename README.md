@@ -421,6 +421,28 @@ permintaan menjadi bagian kecil (1-3 berkas). Bila berkas sering terpotong, naik
 (sama seperti halaman chat) dan menolak berjalan selama sesi chat masih memuat model: tekan
 **Selesai** di chat dulu.
 
+### Mengubah perilaku Agent
+
+Kode Agent ada di folder `tim/`, satu berkas satu tanggung jawab, jadi perbaikan cukup menyentuh
+berkas yang relevan:
+
+| Ingin mengubah | Berkas |
+|---|---|
+| teks prompt Perencana/Pelaksana/Pemeriksa/Penjelas, susunan isi prompt | `tim/tim_prompt.py` |
+| batas token, batas waktu uji, folder kerja, batas berkas, validasi pengaturan dari web | `tim/tim_config.py` |
+| alur putaran, kapan Pemeriksa dilewati, pemulihan hasil terbaik | `tim/tim_alur.py` |
+| tiap tahap model (Perencana, Pelaksana, Pemeriksa, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
+| aturan pemeriksaan otomatis, uji jalan, validasi penilaian Pemeriksa | `tim/tim_cek.py` |
+| cara membaca keluaran Pelaksana (`=== FILE: ===`), nama berkas aman | `tim/tim_berkas.py` |
+| lembar tugas: perintah uji yang diizinkan, harapan keluaran | `tim/tim_spec.py` |
+| muat/bongkar model di llama-server | `tim/tim_model.py` |
+| aliran jawaban model, pengambilan JSON | `tim/tim_llm.py` |
+| bagian fakta pada laporan akhir | `tim/tim_laporan.py` |
+| riwayat proses (daftar, baca, hapus) | `tim/tim_riwayat.py` |
+
+Dari luar cukup `import tim` (`tim.jalankan`, `tim.daftar_run`, ...). Konstanta pengaturan
+(`tim.KERJA`, `tim.TOKEN_TAHAP`, ...) dibaca langsung dari `tim_config`.
+
 ## Tools
 
 | Tool | Fungsi | Izin |
@@ -535,7 +557,7 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `src/tool_web.py` | `ambil_url`, `baca_halaman`, `berita`, `cari_web` |
 | `src/aksilog.py` | penulisan `aksi.log` dengan rotasi |
 | `src/tool_lain.py` | kalkulator dan waktu (tempat termudah untuk tool baru) |
-| `tim_agen.py` | Agent: peran Perencana/Pelaksana/Pemeriksa, muat-bongkar model bergiliran, pemeriksaan otomatis |
+| `tim/` | paket Agent, dipecah per tanggung jawab (lihat tabel "Mengubah perilaku Agent"); dipakai lewat `import tim` |
 | `web/index.html`, `index.css`, `index.js` | tampilan chat |
 | `web/agent.html`, `agent.css`, `agent.js` | tampilan Agent (tombol **Agent** di chat) |
 | `start.sh` | menyalakan llama-server (bila belum hidup) lalu asisten, dengan satu perintah |
