@@ -7,7 +7,7 @@ Lalu buka alamat yang tampil di terminal dari HP (satu jaringan Wi-Fi).
 - Terminal hanya untuk menyalakan aplikasi dan menampilkan log.
 - Model BARU dimuat setelah dipilih di tampilan web, dan otomatis dibongkar
   saat sesi diakhiri, setelah idle, atau saat aplikasi ditutup (Ctrl+C).
-- Halaman Agent (web/agent.html): beberapa model bekerja bergiliran (lihat tim_agen.py).
+- Halaman Agent (web/agent.html): beberapa model bekerja bergiliran (lihat tim.py).
 - Semua endpoint /api wajib token (disimpan di .token).
 Hanya memakai library standar Python.
 """
@@ -31,7 +31,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import agen
-import tim_agen
+import tim
 
 BASE = Path(__file__).resolve().parent
 WEB = BASE / "web"
@@ -373,10 +373,10 @@ def status_json():
 
 def agent_status():
     """Data untuk halaman Agent: daftar model dan apakah Agent boleh dijalankan sekarang."""
-    d = {"models": [], "pesan": "", "folder": str(tim_agen.KERJA),
-         "langkah": {"min": tim_agen.LANGKAH_MIN, "maks": tim_agen.LANGKAH_MAKS,
-                     "bawaan": tim_agen.LANGKAH_BAWAAN},
-         "token_tahap": tim_agen.TOKEN_TAHAP, "uji_detik": tim_agen.UJI_DETIK}
+    d = {"models": [], "pesan": "", "folder": str(tim.KERJA),
+         "langkah": {"min": tim.LANGKAH_MIN, "maks": tim.LANGKAH_MAKS,
+                     "bawaan": tim.LANGKAH_BAWAAN},
+         "token_tahap": tim.TOKEN_TAHAP, "uji_detik": tim.UJI_DETIK}
     try:
         d["models"] = daftar_model()
     except Exception:  # noqa: BLE001
@@ -476,13 +476,13 @@ class H(BaseHTTPRequestHandler):
         if metode == "GET" and path == "/api/agent/status":
             return self._json(200, agent_status())
         if metode == "GET" and path == "/api/agent/riwayat":
-            return self._json(200, {"run": tim_agen.daftar_run()})
+            return self._json(200, {"run": tim.daftar_run()})
         m = re.fullmatch(r"/api/agent/run/([0-9]{8}-[0-9]{6}-[0-9a-f]{4})", path)
         if metode == "GET" and m:
-            return self._json(200, tim_agen.baca_run(m.group(1)))
+            return self._json(200, tim.baca_run(m.group(1)))
         if metode == "DELETE" and m:
             try:
-                tim_agen.hapus_run(m.group(1))
+                tim.hapus_run(m.group(1))
             except PermissionError as e:
                 return self._json(409, {"error": str(e)})
             log("INFO", f"Proses Agent dihapus: {m.group(1)}")
@@ -528,7 +528,7 @@ class H(BaseHTTPRequestHandler):
             if path == "/api/agent/jalankan":
                 return self.agent_jalankan(b)
             if path == "/api/agent/riwayat/hapus-semua":
-                n = tim_agen.hapus_semua_run()
+                n = tim.hapus_semua_run()
                 log("INFO", f"{n} proses Agent dihapus")
                 return self._json(200, {"ok": True, "dihapus": n})
             if path == "/api/konfirmasi":
@@ -643,16 +643,16 @@ class H(BaseHTTPRequestHandler):
         tugas = (b.get("teks") or "").strip()
         if not tugas:
             return self._json(400, {"error": "Perintah kosong"})
-        if len(tugas) > tim_agen.MAKS_TUGAS:
-            return self._json(400, {"error": f"Perintah terlalu panjang (maks {tim_agen.MAKS_TUGAS} karakter)"})
+        if len(tugas) > tim.MAKS_TUGAS:
+            return self._json(400, {"error": f"Perintah terlalu panjang (maks {tim.MAKS_TUGAS} karakter)"})
         lanjut = b.get("lanjut")
-        if lanjut is not None and not tim_agen.id_valid(lanjut):
+        if lanjut is not None and not tim.id_valid(lanjut):
             return self._json(400, {"error": "id proyek tidak valid"})
         try:
             tersedia = {m["id"] for m in daftar_model()}
         except Exception:  # noqa: BLE001
             return self._json(502, {"error": "Tidak bisa menghubungi llama-server"})
-        cfg, err = tim_agen.siapkan_cfg(b, tersedia)
+        cfg, err = tim.siapkan_cfg(b, tersedia)
         if err:
             return self._json(400, {"error": err})
         with S_LOCK:
@@ -675,7 +675,7 @@ class H(BaseHTTPRequestHandler):
 
             def kerja():
                 try:
-                    for ev in tim_agen.jalankan(tugas, cfg, ctx, lanjut):
+                    for ev in tim.jalankan(tugas, cfg, ctx, lanjut):
                         q.put(ev)
                 except Exception as e:  # noqa: BLE001
                     q.put({"t": "error", "d": f"{type(e).__name__}: {e}"})
@@ -836,7 +836,7 @@ def main():
             bongkar_model()
         except Exception as e:  # noqa: BLE001
             log("ERR", f"Gagal membongkar model saat keluar: {e}")
-        for nama in tim_agen.bongkar_sisa():
+        for nama in tim.bongkar_sisa():
             log("OK", f"Model Agent dibongkar dari memori: {nama}")
         server.server_close()
         log("OK", "Selesai")
