@@ -1,4 +1,4 @@
-"""Pengujian tim_agen.py (Agent multi-model) dan endpoint /api/agent.
+"""Pengujian paket tim/ (Agent multi-model) dan endpoint /api/agent.
 
 llama-server dan model dipalsukan: yang diuji adalah urutan muat/bongkar model, alur
 putaran koreksi, pemeriksaan otomatis, keamanan nama berkas, dan keluaran event.
@@ -20,7 +20,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import agen  # noqa: E402
 import asisten  # noqa: E402
-import tim_agen as tim  # noqa: E402
+import tim  # noqa: E402
+from tim import tim_config, tim_llm, tim_model  # noqa: E402
 
 RENCANA = json.dumps({
     "judul": "Halo", "ringkasan": "Cetak halo", "bahasa": "python",
@@ -56,7 +57,7 @@ class LlamaPalsu:
 
 
 class StreamPalsu:
-    """Pengganti tim_agen._stream: jawaban berurutan per peran (dikenali dari system prompt)."""
+    """Pengganti tim_llm._stream: jawaban berurutan per peran (dikenali dari system prompt)."""
 
     def __init__(self, rencana=(), tulis=(), periksa=(), jelaskan=("Selesai dibuat.",)):
         self.antrian = {"PERENCANA": list(rencana), "PELAKSANA": list(tulis),
@@ -93,14 +94,15 @@ class DasarAgent(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        for nama, nilai in (("KERJA", Path(self._tmp.name)), ("_TIDUR", lambda s: None)):
-            p = mock.patch.object(tim, nama, nilai)
+        for obj, nama, nilai in ((tim_config, "KERJA", Path(self._tmp.name)),
+                                 (tim_model, "_TIDUR", lambda s: None)):
+            p = mock.patch.object(obj, nama, nilai)
             p.start()
             self.addCleanup(p.stop)
         tim.DIMUAT.clear()
 
     def pasang(self, llama, stream):
-        for obj, nama, nilai in ((agen, "llama", llama), (tim, "_stream", stream)):
+        for obj, nama, nilai in ((agen, "llama", llama), (tim_llm, "_stream", stream)):
             p = mock.patch.object(obj, nama, nilai)
             p.start()
             self.addCleanup(p.stop)
@@ -359,7 +361,7 @@ class TestPemeriksaanOtomatis(DasarAgent):
         self.assertEqual(st, "gagal")
         self.assertIn("exit code 3", baris[0])
         (hasil / "main.py").write_text("import time\ntime.sleep(30)\n")
-        with mock.patch.object(tim, "UJI_DETIK", 1):
+        with mock.patch.object(tim_config, "UJI_DETIK", 1):
             st, baris, out = tim.cek_jalan(hasil, self.spec(), CtxPalsu(), {"nilai": True}, True)
         self.assertEqual(st, "gagal")
         self.assertIn("batas waktu", baris[0])
