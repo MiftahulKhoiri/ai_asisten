@@ -320,6 +320,11 @@
 
   /* ---------- riwayat ---------- */
   const LABEL_STATUS = {lolos: '✔ lolos', belum: '⚠ belum sempurna', butuh_info: '❓ butuh info', batal: 'dibatalkan', error: '✖ error'};
+  const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  function waktuRingkas(iso) {   // 2026-10-19T00:35:05 -> "19 Okt · 00:35"
+    const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso || '');
+    return m ? parseInt(m[3], 10) + ' ' + BULAN[parseInt(m[2], 10) - 1] + ' · ' + m[4] + ':' + m[5] : (iso || '');
+  }
   let riwayat = [];
   async function muatRiwayat() {
     try { riwayat = (await apij('/api/agent/riwayat')).run || []; } catch (e) { return; }
@@ -331,9 +336,9 @@
     if (!riwayat.length) { box.appendChild(el('p', 'redup kosong', 'Belum ada riwayat Agent.')); return; }
     for (const r of riwayat) {
       const baris = el('div', 'baris-run');
-      const b = el('button', 'model'); b.type = 'button';
+      const b = el('button', 'model st-' + (r.status || '')); b.type = 'button';
       b.append(el('span', 'nama', r.judul || r.id),
-        el('span', 'meta', (r.dibuat || '').replace('T', ' ') + ' · ' + (LABEL_STATUS[r.status] || r.status || '') +
+        el('span', 'meta', waktuRingkas(r.dibuat) + ' · ' + (LABEL_STATUS[r.status] || r.status || '').replace(/^\S+\s/, '') +
           (r.putaran ? ' · putaran ' + r.putaran + '/' + r.maks : '')));
       b.onclick = () => bukaRun(r.id);
       const x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Hapus proses ini');
@@ -367,7 +372,7 @@
     tambahUser(r.tugas || '');
     if (r.spec) kartuRencana(r.spec);
     for (const b of (r.berkas || [])) kartuBerkas(b.nama, b.isi, false, false);
-    if (r.laporan) tambahAsisten(r.laporan);
+    if (r.laporan) { const st2 = {raw: r.laporan, bubble: tambahAsisten(''), kartuLaporan: null}; isiLaporan(st2); }
     tambahHasil({status: r.status, teks: LABEL_STATUS[r.status] || r.status, dir: r.dir});
     aturLanjut(r.id, r.judul);
     gulir(true);
@@ -378,11 +383,22 @@
     tampil('kerja'); resetLog();
     $('pesan').innerHTML = ''; resetAlur(); $('infoAlur').textContent = '';
     aturLanjut(null, '');
-    if (!tanpaSapaan) {
-      const model = cfg.mode === 3 ? [cfg.p, cfg.e, cfg.c] : [cfg.p, cfg.e, cfg.p];
-      tambahInfo('Tim: Perencana ' + model[0] + ' → Pelaksana ' + model[1] + ' → Pemeriksa ' + model[2] +
-        '. Maks ' + cfg.maks + ' putaran koreksi. Tulis apa yang ingin dibuat.');
+    if (!tanpaSapaan) kartuTim();
+  }
+  function kartuTim() {
+    const model = cfg.mode === 3 ? [cfg.p, cfg.e, cfg.c] : [cfg.p, cfg.e, cfg.p];
+    const baris = [['rencana', '🧭', 'Perencana', model[0], 'menyusun lembar tugas, lalu menjelaskan hasil'],
+      ['tulis', '✏️', 'Pelaksana', model[1], 'menulis program'],
+      ['periksa', '🔎', 'Pemeriksa', model[2], 'memeriksa dan memberi koreksi']];
+    const k = el('div', 'kartu tim');
+    k.appendChild(el('b', 'jdl', 'Tim siap · maks ' + cfg.maks + ' putaran'));
+    for (const [kunci, ik, nama, mdl, tugas] of baris) {
+      const r = el('div', 'baris-tim r-' + kunci), rt = el('span', 'rt');
+      rt.append(el('b', '', nama + ' · ' + mdl), el('small', '', tugas));
+      r.append(el('span', 'rk', ik), rt); k.appendChild(r);
     }
+    k.appendChild(el('div', 'redup kecil', 'Tulis apa yang ingin dibuat.'));
+    $('pesan').appendChild(k);
   }
   function aturLanjut(id, judul) {
     lanjutId = id || null; lanjutJudul = judul || ''; awalTanya = null;
@@ -396,23 +412,29 @@
   const PERAN = {rencana: 'Perencana', tulis: 'Pelaksana', periksa: 'Pemeriksa', jelaskan: 'Penjelas'};
   const IKON = {rencana: '🧭', tulis: '✏', periksa: '🔎', jelaskan: '💬'};
   let selesaiSet = new Set(), aktifKunci = null;
+  let alurTutup = false;
+  function gambarAlur(kunci, putaran) {
+    let terjauh = -1;
+    URUT.forEach((k, i) => { if (selesaiSet.has(k)) terjauh = i; });
+    URUT.forEach((k, i) => {
+      const c = $('st_' + k), akt = (k === kunci), sel = !akt && selesaiSet.has(k);
+      const lewat = alurTutup && !akt && !sel && i < terjauh;      // mis. Pemeriksa dilewati
+      c.className = 'lk' + (akt ? ' aktif' : sel ? ' selesai' : lewat ? ' lewat' : '');
+      c.querySelector('.bl').textContent = sel ? '✓' : lewat ? '–' : String(i + 1);
+      c.querySelector('.nm').textContent = PERAN[k] +
+        ((akt && putaran && (k === 'tulis' || k === 'periksa')) ? ' · ' + putaran : '');
+    });
+  }
   function resetAlur() {
-    selesaiSet = new Set(); aktifKunci = null;
-    for (const k of URUT) { $('st_' + k).className = 'chip'; $('st_' + k).textContent = PERAN[k]; }
+    selesaiSet = new Set(); aktifKunci = null; alurTutup = false; gambarAlur(null, 0);
   }
   function setAlur(kunci, putaran) {
     if (aktifKunci) selesaiSet.add(aktifKunci);
-    aktifKunci = kunci;
-    for (const k of URUT) {
-      const c = $('st_' + k);
-      c.className = 'chip' + (k === kunci ? ' aktif' : selesaiSet.has(k) ? ' selesai' : '');
-      c.textContent = PERAN[k] + ((k === kunci && putaran && (k === 'tulis' || k === 'periksa')) ? ' · ' + putaran : '');
-    }
+    aktifKunci = kunci; gambarAlur(kunci, putaran);
   }
   function akhiriAlur() {
     if (aktifKunci) selesaiSet.add(aktifKunci);
-    aktifKunci = null;
-    for (const k of URUT) $('st_' + k).className = 'chip' + (selesaiSet.has(k) ? ' selesai' : '');
+    aktifKunci = null; alurTutup = true; gambarAlur(null, 0);
   }
 
   /* ---------- render pesan ---------- */
@@ -435,20 +457,31 @@
     return ul;
   }
   function kartuRencana(spec) {
-    const k = el('div', 'kartu');
+    const k = el('div', 'kartu rencana');
     k.appendChild(el('b', 'jdl', '📋 ' + (spec.judul || 'Lembar tugas')));
     if (spec.ringkasan) k.appendChild(el('div', '', spec.ringkasan));
     k.appendChild(el('div', 'sub', 'Berkas'));
-    k.appendChild(daftarUl((spec.berkas || []).map(b => b.nama + (b.fungsi ? ' - ' + b.fungsi : ''))));
+    for (const b of (spec.berkas || [])) {
+      const r = el('div', 'bk');
+      r.appendChild(el('span', 'pb', b.nama));
+      if (b.fungsi) r.appendChild(el('span', 'fg', b.fungsi));
+      k.appendChild(r);
+    }
     if ((spec.kriteria || []).length) { k.appendChild(el('div', 'sub', 'Kriteria selesai')); k.appendChild(daftarUl(spec.kriteria)); }
-    k.appendChild(el('div', 'sub', 'Uji jalan: ' + ((spec.jalankan || []).length ? spec.jalankan.join(' ') : 'tidak ada')));
-    if (spec.catatan) k.appendChild(el('div', 'sub', 'Catatan: ' + spec.catatan));
+    k.appendChild(el('div', 'uji', '▶ ' + ((spec.jalankan || []).length ? spec.jalankan.join(' ') : 'tanpa uji jalan')));
+    if ((spec.harapan || []).length) k.appendChild(el('div', 'uji', '🎯 harapan keluaran: ' + spec.harapan.join(', ')));
+    if (spec.catatan) k.appendChild(el('div', 'uji', 'Catatan: ' + spec.catatan));
     $('pesan').appendChild(k); gulir();
   }
   function kartuBerkas(nama, isi, baru, dipotong) {
-    const d = el('details', 'tool'), s = el('summary');
+    const d = el('details', 'tool berkas'), s = el('summary');
     const baris = isi.replace(/\n$/, '').split('\n').length;
-    s.append(el('span', 'ik', '✏'), el('span', 'rg', nama + ' · ' + baris + ' baris'), lencana(baru ? 'ok' : 'menunggu', baru ? 'baru' : 'diubah'));
+    const rg = el('span', 'rg', nama);
+    rg.appendChild(el('small', '', baris + ' baris'));
+    const ext = nama.indexOf('.') >= 0 ? nama.split('.').pop().slice(0, 5) : '';
+    s.append(el('span', 'ik', '📄'), rg);
+    if (ext) s.appendChild(el('span', 'bhs', ext));
+    s.appendChild(lencana(baru ? 'ok' : 'menunggu', baru ? 'baru' : 'diubah'));
     const kotak = el('div', 'kode'), salin = el('button', 'salin', 'Salin'); salin.type = 'button';
     const pre = el('pre'); pre.textContent = isi + (dipotong ? '\n...[tampilan dipotong; isi lengkap ada di folder hasil]' : '');
     kotak._teks = isi;
@@ -473,10 +506,51 @@
   }
   const IKON_STATUS = {lolos: '✔', belum: '⚠', butuh_info: '❓', batal: '⏹', error: '✖'};
   function tambahHasil(ev) {
-    const d = el('div', 'hasil ' + (ev.status || ''));
-    d.appendChild(el('b', '', (IKON_STATUS[ev.status] || '') + ' ' + (ev.teks || ev.status || '')));
-    if (ev.dir) d.appendChild(el('small', '', 'Folder: ' + ev.dir));
+    const d = el('div', 'hasil ' + (ev.status || '')), tx = el('div', 'hs-tx');
+    const t = String(ev.teks || ev.status || '');
+    tx.appendChild(el('b', '', t.charAt(0).toUpperCase() + t.slice(1)));
+    if (ev.dir) tx.appendChild(el('small', '', ev.dir));
+    d.append(el('span', 'hs-ik', IKON_STATUS[ev.status] || '•'), tx);
     $('pesan').appendChild(d); gulir();
+  }
+  /* laporan akhir: prosa dari Penjelas (gelembung) + fakta dari sistem (kartu berbaris) */
+  const POLA_FAKTA = /\n\n(?=\S{1,3} \*\*Status\*\*)/;
+  const KELAS_IKON = {'✔': 'lolos', '⚠': 'belum', '⏹': 'batal', '✖': 'error'};
+  function barisLaporan(teks) {
+    const rows = []; let cur = null, pagar = false;
+    for (const baris of teks.split('\n')) {
+      const m = pagar ? null : /^(?:(\S{1,3}) )?\*\*(.+?)\*\*:\s?(.*)$/.exec(baris);
+      if (m) { cur = {ik: m[1] || '', k: m[2], v: m[3], kode: null}; rows.push(cur); continue; }
+      if (!cur) continue;
+      if (/^```/.test(baris)) { pagar = !pagar; if (pagar && cur.kode === null) cur.kode = ''; continue; }
+      if (pagar) cur.kode += (cur.kode ? '\n' : '') + baris;
+      else if (baris.trim()) cur.v += (cur.v ? ' ' : '') + baris.trim();
+    }
+    return rows;
+  }
+  function gambarKartuLaporan(kartu, rows) {
+    kartu.innerHTML = '';
+    rows.forEach((r, i) => {
+      const d = el('div', 'lp' + (i === 0 ? ' utama' : '')), k = el('div', 'k', r.k), v = el('div', 'v');
+      v.innerHTML = md(r.ik && i === 0 ? r.ik + ' ' + r.v : r.v);
+      if (r.kode !== null) {
+        const kotak = el('div', 'kode'), salin = el('button', 'salin', 'Salin'), pre = el('pre');
+        salin.type = 'button'; pre.textContent = r.kode; kotak._teks = r.kode;
+        kotak.append(salin, pre); v.appendChild(kotak);
+      }
+      d.append(k, v); kartu.appendChild(d);
+    });
+  }
+  function isiLaporan(st) {
+    const i = st.raw.search(POLA_FAKTA);
+    const prosa = (i >= 0 ? st.raw.slice(0, i) : st.raw).trim();
+    st.bubble.innerHTML = md(prosa);
+    if (st.bubble.parentElement) st.bubble.parentElement.hidden = !prosa;
+    if (i < 0) return;
+    if (!st.kartuLaporan) { st.kartuLaporan = el('div', 'laporan'); $('pesan').appendChild(st.kartuLaporan); }
+    const rows = barisLaporan(st.raw.slice(i).trim());
+    st.kartuLaporan.className = 'laporan ' + (KELAS_IKON[rows.length ? rows[0].ik : ''] || '');
+    gambarKartuLaporan(st.kartuLaporan, rows);
   }
   function kartuKonfirmasi(ev) {
     const d = el('div', 'konf');
@@ -510,10 +584,11 @@
   /* kartu tahap: satu kartu per tahap, berisi status muat model dan keluaran model */
   function kartuTahap(ev, st) {
     tutupKartu(st, 'ok', 'selesai');
-    const d = el('details', 'tool tahap'), s = el('summary');
+    const d = el('details', 'tool tahap r-' + ev.tahap), s = el('summary');
     const lc = lencana('menunggu', 'berjalan');
-    s.append(el('span', 'ik', IKON[ev.tahap] || '⚙'),
-      el('span', 'rg', ev.peran + (ev.putaran ? ' · putaran ' + ev.putaran : '') + ' · ' + ev.model), lc);
+    const rg = el('span', 'rg');
+    rg.append(el('b', '', ev.peran + (ev.putaran ? ' · putaran ' + ev.putaran : '')), el('small', '', ev.model));
+    s.append(el('span', 'ik', IKON[ev.tahap] || '⚙'), rg, lc);
     const stat = el('div', 'stat', 'Menyiapkan model ...'), pre = el('pre');
     d.append(s, stat, pre); d.open = true; $('pesan').appendChild(d);
     st.kartu = {d, lc, stat, pre, raw: ''}; gulir();
@@ -527,7 +602,8 @@
   /* ---------- kirim & stream ---------- */
   function setSibuk(v) {
     sibuk = v;
-    $('btnKirim').textContent = v ? 'Stop' : 'Kirim';
+    $('btnKirim').textContent = v ? '■' : '↑';
+    $('btnKirim').setAttribute('aria-label', v ? 'Stop' : 'Kirim');
     $('btnKirim').className = v ? 'btn merah' : 'btn';
   }
   function ukuranInput() {
@@ -657,7 +733,7 @@
       case 'token':     // penjelasan akhir dari Perencana
         mulaiMenulis(st); tambahKeluaran(ev.d);
         if (!st.bubble) { tutupKartu(st, 'ok', 'selesai'); st.bubble = tambahAsisten(''); st.raw = ''; }
-        st.raw += ev.d; st.bubble.innerHTML = md(st.raw); gulir(); break;
+        st.raw += ev.d; isiLaporan(st); gulir(); break;
       case 'tanya':
         tutupKartu(st, 'ok', 'selesai'); tambahAsisten(ev.d); awalTanya = st.teks;
         catatLog('❓', 'Perencana bertanya: ' + ev.d.slice(0, 120), 'izin'); break;
@@ -678,7 +754,7 @@
         catatLog(IKON_STATUS[ev.status] || '•', 'Selesai: ' + ev.teks, ev.status === 'lolos' ? 'ok' : (ev.status === 'error' ? 'gagal' : 'izin'));
         akhiriLog(LABEL_AKHIR[ev.status] || 'Selesai', ev.status === 'error');
         if (ev.status === 'lolos' || ev.status === 'belum') { aturLanjut(ev.id, st.judul || (st.teks || '').slice(0, 40)); }
-        st.bubble = null; break;
+        st.bubble = null; st.kartuLaporan = null; break;
       default: break;   // ping
     }
   }
