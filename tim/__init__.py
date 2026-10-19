@@ -1,4 +1,4 @@
- """tim/ - Agent tim model: beberapa model lokal bekerja bergiliran.
+"""tim/ - Agent tim model: beberapa model lokal bekerja bergiliran.
 
 Dipakai oleh asisten.py (halaman web web/agent.html). Hanya library standar Python.
 
