@@ -28,7 +28,7 @@ import urllib.error
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import agen
 import tim
@@ -51,6 +51,16 @@ S_LOCK = threading.RLock()
 GEN_LOCK = threading.Lock()   # hanya satu proses generasi pada satu waktu
 AKTIF = {"ctx": None}
 KONF = {}                     # kid -> [Event, setuju]
+
+# Proses Agent berjalan di latar belakang, terlepas dari halaman web: semua event disimpan di
+# buffer ini. Halaman (yang baru dibuka lagi, atau dari HP lain) membaca buffer lewat
+# /api/agent/event dan menampilkan ulang semua yang sudah terjadi.
+AGENT = {"sesi": None, "id": None, "tugas": "", "events": [], "awal": 0,
+         "aktif": False, "mulai": 0.0, "status": None}
+AGENT_COND = threading.Condition()
+AGENT_MAKS_EVENT = 20000      # event tertua dibuang bila buffer melebihi ini
+AGENT_BATCH = 4000            # event paling banyak per jawaban /api/agent/event
+AGENT_TUNGGU_MAKS = 25        # detik paling lama satu long-poll menunggu event baru
 
 
 # --------------------------------------------------------------------------
@@ -385,7 +395,81 @@ def agent_status():
         d["chat_aktif"] = S["status"] in ("siap", "memuat")
         d["model_chat"] = S["model"] or S["target"]
     d["sibuk"] = GEN_LOCK.locked()
+    d["proses"] = agent_proses()
     return d
+
+
+def agent_proses():
+    """Ringkasan proses Agent di buffer (sedang berjalan atau yang terakhir selesai); None bila belum ada."""
+    with AGENT_COND:
+        if not AGENT["sesi"]:
+            return None
+        return {"sesi": AGENT["sesi"], "id": AGENT["id"], "tugas": AGENT["tugas"],
+                "aktif": AGENT["aktif"], "status": AGENT["status"],
+                "lalu": round(time.time() - AGENT["mulai"], 1)}
+
+
+def agent_tambah(sesi, ev):
+    """Catat satu event proses Agent: ke log terminal dan ke buffer yang dibaca halaman web."""
+    catat_event(ev)
+    if ev.get("t") == "ping":
+        return
+    with AGENT_COND:
+        if AGENT["sesi"] != sesi:
+            return
+        if ev.get("t") == "mulai":
+            AGENT["id"] = ev.get("id")
+        elif ev.get("t") == "selesai":
+            AGENT["status"] = ev.get("status")
+        AGENT["events"].append(dict(ev, ts=round(time.time() - AGENT["mulai"], 1)))
+        lebih = len(AGENT["events"]) - AGENT_MAKS_EVENT
+        if lebih > 0:
+            del AGENT["events"][:lebih]
+            AGENT["awal"] += lebih
+        AGENT_COND.notify_all()
+
+
+def _gabung_potongan(events):
+    """Potongan teks beruntun (isi/token) digabung jadi satu event: jawaban lebih kecil dan cepat."""
+    hasil = []
+    for ev in events:
+        if (hasil and ev.get("t") in ("isi", "token") and hasil[-1].get("t") == ev["t"]
+                and isinstance(ev.get("d"), str) and isinstance(hasil[-1].get("d"), str)):
+            hasil[-1] = dict(hasil[-1], d=hasil[-1]["d"] + ev["d"])
+        else:
+            hasil.append(ev)
+    return hasil
+
+
+def agent_baca(sesi, dari, tunggu):
+    """Event proses Agent mulai nomor `dari`. Menunggu (long-poll) sampai ada event baru atau
+    `tunggu` detik. None bila `sesi` bukan buffer yang sekarang (server dimulai ulang / proses baru)."""
+    with AGENT_COND:
+        if sesi != AGENT["sesi"]:
+            return None
+        mulai = max(dari, AGENT["awal"])
+        total = lambda: AGENT["awal"] + len(AGENT["events"])    # noqa: E731
+        if total() <= mulai and AGENT["aktif"] and tunggu > 0:
+            AGENT_COND.wait_for(lambda: total() > mulai or not AGENT["aktif"] or AGENT["sesi"] != sesi,
+                                timeout=tunggu)
+            if AGENT["sesi"] != sesi:
+                return None
+            ada_baru = total() > mulai and AGENT["aktif"]
+        else:
+            ada_baru = False
+    if ada_baru:
+        time.sleep(0.25)        # kumpulkan beberapa potongan token dalam satu jawaban
+    with AGENT_COND:
+        if sesi != AGENT["sesi"]:
+            return None
+        mulai = max(dari, AGENT["awal"])
+        potong = AGENT["events"][mulai - AGENT["awal"]: mulai - AGENT["awal"] + AGENT_BATCH]
+        akhir = mulai + len(potong)
+        habis = (not AGENT["aktif"]) and akhir >= AGENT["awal"] + len(AGENT["events"])
+        return {"sesi": sesi, "id": AGENT["id"], "aktif": AGENT["aktif"], "habis": habis,
+                "dari": mulai, "next": akhir, "status": AGENT["status"],
+                "lalu": round(time.time() - AGENT["mulai"], 1),
+                "events": _gabung_potongan(potong)}
 
 
 # --------------------------------------------------------------------------
@@ -477,6 +561,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(200, agent_status())
         if metode == "GET" and path == "/api/agent/riwayat":
             return self._json(200, {"run": tim.daftar_run()})
+        if metode == "GET" and path == "/api/agent/event":
+            return self.agent_event()
         m = re.fullmatch(r"/api/agent/run/([0-9]{8}-[0-9]{6}-[0-9a-f]{4})", path)
         if metode == "GET" and m:
             return self._json(200, tim.baca_run(m.group(1)))
@@ -639,7 +725,11 @@ class H(BaseHTTPRequestHandler):
         threading.Thread(target=kerja, daemon=True).start()
 
     def agent_jalankan(self, b):
-        """Jalankan satu proses Agent (beberapa model bergiliran) dan alirkan event-nya."""
+        """Mulai satu proses Agent (beberapa model bergiliran) di latar belakang.
+
+        Jawaban langsung berisi {"sesi": ...}; event-nya dibaca lewat GET /api/agent/event. Proses
+        tetap berjalan walau halaman web ditutup; menutup halaman tidak membatalkannya (Stop
+        lewat /api/stop)."""
         tugas = (b.get("teks") or "").strip()
         if not tugas:
             return self._json(400, {"error": "Perintah kosong"})
@@ -662,36 +752,65 @@ class H(BaseHTTPRequestHandler):
         if not GEN_LOCK.acquire(blocking=False):
             return self._json(409, {"error": "Masih ada proses berjalan"})
         diserahkan = False   # True setelah thread kerja berjalan: dialah yang melepas kunci
+        sesi = None
         try:
             sentuh()
             log("CHAT", f"agent: {tugas[:100]}")
             log("INFO", f"Agent {cfg['mode']} model: perencana={cfg['model_p']}, "
                         f"pelaksana={cfg['model_e']}, pemeriksa={cfg['model_c']}, "
-                        f"maks {cfg['maks']} putaran")
-            q = queue.Queue()
-            ctx = Ctx(q, threading.Event())
+                        f"maks {cfg['maks']} putaran, uji jalan "
+                        + ("DIIZINKAN" if cfg["uji"] else "mati"))
+            ctx = Ctx(queue.Queue(), threading.Event())
             ctx.skill = ("tanpa",)
             AKTIF["ctx"] = ctx
+            with AGENT_COND:      # buffer baru hanya setelah kunci didapat: 409 tidak menghapus yang lama
+                sesi = secrets.token_hex(4)
+                AGENT.update(sesi=sesi, id=None, tugas=" ".join(tugas.split())[:200], events=[],
+                             awal=0, aktif=True, mulai=time.time(), status=None)
 
             def kerja():
                 try:
                     for ev in tim.jalankan(tugas, cfg, ctx, lanjut):
-                        q.put(ev)
+                        agent_tambah(sesi, ev)
                 except Exception as e:  # noqa: BLE001
-                    q.put({"t": "error", "d": f"{type(e).__name__}: {e}"})
+                    agent_tambah(sesi, {"t": "error", "d": f"{type(e).__name__}: {e}"})
                 finally:
-                    AKTIF["ctx"] = None
-                    sentuh()
-                    GEN_LOCK.release()
-                    q.put(None)
+                    with AGENT_COND:   # kunci dilepas sebelum 'aktif' dimatikan: klien bisa langsung mulai lagi
+                        AKTIF["ctx"] = None
+                        sentuh()
+                        GEN_LOCK.release()
+                        if AGENT["sesi"] == sesi:
+                            AGENT["aktif"] = False
+                        AGENT_COND.notify_all()
 
             threading.Thread(target=kerja, daemon=True).start()
             diserahkan = True
         finally:
             if not diserahkan:
                 AKTIF["ctx"] = None
+                with AGENT_COND:
+                    if sesi and AGENT["sesi"] == sesi:
+                        AGENT["aktif"] = False
                 GEN_LOCK.release()
-        self.alirkan(q, ctx)
+        self._json(200, {"ok": True, "sesi": sesi})
+
+    def agent_event(self):
+        """Long-poll event proses Agent: ?sesi=..&dari=N&tunggu=detik."""
+        q = parse_qs(urlparse(self.path).query)
+
+        def angka(nama, bawaan):
+            try:
+                return max(0, int((q.get(nama) or [bawaan])[0]))
+            except (TypeError, ValueError):
+                return bawaan
+        sesi = (q.get("sesi") or [""])[0]
+        hasil = agent_baca(sesi, angka("dari", 0), min(angka("tunggu", 0), AGENT_TUNGGU_MAKS))
+        if hasil is None:
+            return self._json(410, {"error": "Proses itu sudah tidak ada di server (aplikasi "
+                                              "dimulai ulang atau proses baru sudah berjalan). "
+                                              "Lihat hasilnya di Riwayat."})
+        sentuh()
+        self._json(200, hasil)
 
     def alirkan(self, q, ctx):
         self.send_response(200)
