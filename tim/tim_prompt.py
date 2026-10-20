@@ -35,6 +35,8 @@ SYSTEM_PERENCANA = (
 
 SYSTEM_PELAKSANA = (
     "Kamu PELAKSANA dalam tim pembuat program. Tulis kode sesuai lembar tugas dari PERENCANA.\n"
+    "Kamu hanya MENULIS kode: kamu tidak menjalankan dan tidak menilai programmu. PEMERIKSA yang "
+    "menjalankannya dan menentukan benar atau salah; bila salah, ia mengirim KOREKSI kepadamu.\n"
     "Format keluaran WAJIB, untuk setiap berkas:\n"
     "=== FILE: nama_berkas ===\n"
     "(isi LENGKAP berkas)\n"
@@ -54,23 +56,27 @@ SYSTEM_PELAKSANA = (
 
 
 SYSTEM_PEMERIKSA = (
-    "Kamu PEMERIKSA dalam tim pembuat program. Periksa berkas buatan PELAKSANA terhadap lembar "
-    "tugas. HASIL PEMERIKSAAN OTOMATIS adalah fakta (sintaks dan keluaran program yang benar-benar "
-    "dijalankan).\n"
+    "Kamu PEMERIKSA dalam tim pembuat program. Kamulah yang MENJALANKAN program buatan "
+    "PELAKSANA dan yang MENENTUKAN benar atau salah. HASIL KAMU MENJALANKAN PROGRAM (sintaks dan "
+    "keluaran program yang benar-benar dijalankan) adalah fakta.\n"
     "Balas HANYA dengan satu objek JSON:\n"
     '{"ok": true atau false, "ringkas": "satu kalimat penilaian", '
     '"masalah": ["berkas:baris - uraian bug nyata"], '
     '"dilihat": "kutipan PERSIS dari keluaran program atau baris kode yang salah", '
     '"perbaikan": "instruksi konkret untuk pelaksana"}\n'
     "Aturan:\n"
-    "1. ok=true bila semua kriteria utama terpenuhi dan tidak ada bug nyata. Bila keluaran "
-    "program sudah memenuhi kriteria, jawab ok=true.\n"
-    "2. ok=false HANYA bila kamu bisa menunjuk kesalahan nyata. Isi \"dilihat\" dengan kutipan "
-    "persis dari keluaran atau kode; penolakan tanpa kutipan yang benar akan diabaikan.\n"
-    "3. Jangan menuntut gaya penulisan, fitur tambahan, atau hal di luar kriteria. Jangan "
-    "mengarang masalah atau angka yang tidak ada di keluaran.\n"
-    "4. Jangan menyarankan mengubah algoritma yang keluarannya sudah benar.\n"
-    "5. Maksimal 5 masalah.")
+    "1. ok=true berarti hasil SUDAH JADI dan tim selesai. Pakai ok=true bila semua kriteria "
+    "utama terpenuhi dan tidak ada bug nyata.\n"
+    "2. ok=false berarti koreksimu dikirim ke PELAKSANA. Wajib isi \"masalah\" (kesalahan nyata), "
+    "\"dilihat\" (kutipan persis dari keluaran atau kode yang salah), dan \"perbaikan\" "
+    "(instruksi konkret). ok=false tanpa masalah konkret tidak bisa dikirim sebagai koreksi.\n"
+    "3. Bila hasil menjalankan memuat GAGAL (sintaks salah, berkas belum dibuat, program error), "
+    "itu kesalahan nyata: jangan jawab ok=true.\n"
+    "4. Harapan Perencana hanya petunjuk dan bisa keliru; kamu yang memutuskan.\n"
+    "5. Jangan menuntut gaya penulisan, fitur tambahan, atau hal di luar kriteria. Jangan "
+    "mengarang masalah atau angka yang tidak ada di keluaran. Jangan menyarankan mengubah "
+    "algoritma yang keluarannya sudah benar.\n"
+    "6. Maksimal 5 masalah.")
 
 
 SYSTEM_PENJELAS = (
@@ -108,6 +114,12 @@ PESAN_ULANG_JSON = ("Balasanmu bukan JSON valid. Balas ulang HANYA dengan objek 
                     "format.")
 
 
+PESAN_MINTA_MASALAH = ("Kamu menjawab ok=false tanpa masalah yang konkret, sehingga tidak ada koreksi "
+                       "untuk Pelaksana. Balas ulang HANYA dengan objek JSON: bila ada kesalahan "
+                       "nyata, isi \"masalah\" (berkas:baris - uraian), \"dilihat\", dan "
+                       "\"perbaikan\"; bila tidak ada bug nyata, jawab ok=true.")
+
+
 def pesan_chat(system, user):
     """Pesan awal: prompt peran (system) + isi tugas (user)."""
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
@@ -117,6 +129,12 @@ def pesan_ulang_json(jawaban_sebelumnya):
     """Tambahan pesan untuk meminta model mengulang jawaban yang bukan JSON valid."""
     return [{"role": "assistant", "content": jawaban_sebelumnya[:1500]},
             {"role": "user", "content": PESAN_ULANG_JSON}]
+
+
+def pesan_minta_masalah(jawaban_sebelumnya):
+    """Tambahan pesan: Pemeriksa menolak tapi tidak menyebut masalah konkret, minta ulang."""
+    return [{"role": "assistant", "content": jawaban_sebelumnya[:1500]},
+            {"role": "user", "content": PESAN_MINTA_MASALAH}]
 
 
 def prompt_rencana(tugas, spec_lama=None, berkas_ada=()):
@@ -146,12 +164,12 @@ def prompt_tulis(spec, koreksi, berkas_ada):
 
 
 def prompt_periksa(spec, cek_baris, berkas):
-    """Isi prompt Pemeriksa: lembar tugas, kode bernomor baris, dan hasil pemeriksaan otomatis."""
+    """Isi prompt Pemeriksa: lembar tugas, kode bernomor baris, dan hasil ia menjalankan program."""
     anggaran = anggaran_prompt(conf.TOKEN_PERIKSA)
     return ("LEMBAR TUGAS:\n" + json.dumps(spec_model(spec), ensure_ascii=False, indent=1)
             + "\n\nBERKAS (dengan nomor baris):\n"
             + blok_berkas(berkas, max(1500, anggaran - 2500), nomor=True)
-            + "\n\nHASIL PEMERIKSAAN OTOMATIS (fakta, bukan pendapat):\n"
+            + "\n\nHASIL KAMU MENJALANKAN PROGRAM (fakta, bukan pendapat):\n"
             + "\n".join(cek_baris)[:1800])
 
 
