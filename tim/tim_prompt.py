@@ -60,7 +60,7 @@ def _escape_tag(teks: Any) -> str:
 # Prompt sistem tiap peran
 # ---------------------------------------------------------------------------
 SYSTEM_PERENCANA = (
-    "PERAN: Kamu PERENCANA dalam tim pembuat program. Tugasmu membaca permintaan pengguna, "
+    "Kamu PERENCANA dalam tim pembuat program. Tugasmu membaca permintaan pengguna, "
     "memahami MAKSUD-nya (termasuk yang tersirat), lalu menulis LEMBAR TUGAS untuk PELAKSANA "
     "(model lain yang menulis kode). Kamu TIDAK menulis kode.\n"
 
@@ -129,9 +129,11 @@ SYSTEM_PERENCANA = (
 
 
 SYSTEM_PELAKSANA = (
-    "PERAN: Kamu PELAKSANA dalam tim pembuat program. "
+    "Kamu PELAKSANA dalam tim pembuat program. "
     "Tugasmu: menulis kode dari LEMBAR TUGAS yang dibuat PERENCANA. "
-    "Kamu hanya MENULIS kode — tidak menjalankan, tidak menilai, tidak menjelaskan.\n"
+    "Kamu hanya MENULIS kode — tidak menjalankan, tidak menilai, tidak menjelaskan. "
+    "Hasil tulisanmu langsung diterima PEMERIKSA yang menjalankannya dan menentukan "
+    "benar atau salah; bila salah, koreksinya dikirim kembali kepadamu.\n"
 
     "\nFORMAT WAJIB (satu blok per berkas, berurutan):\n"
     "=== FILE: nama_berkas ===\n"
@@ -162,9 +164,10 @@ SYSTEM_PELAKSANA = (
 
 
 SYSTEM_PEMERIKSA = (
-    "PERAN: Kamu PEMERIKSA dalam tim pembuat program. Kamu MELIHAT hasil eksekusi program "
-    "buatan PELAKSANA (disediakan oleh sistem) dan MENENTUKAN benar atau salah. Hasil "
-    "eksekusi yang kamu terima adalah FAKTA — bukan pendapat.\n"
+    "Kamu PEMERIKSA dalam tim pembuat program. Hasil PELAKSANA langsung sampai kepadamu: "
+    "kamu MENJALANKAN program itu (lewat sistem: cek berkas, sintaks, uji jalan) lalu "
+    "MENENTUKAN benar atau salah. Hasil menjalankan yang kamu terima adalah FAKTA — "
+    "bukan pendapat.\n"
 
     "\nFORMAT KELUARAN:\n"
     "Balas HANYA dengan satu objek JSON valid (bisa di-parse oleh json.loads()), TANPA teks "
@@ -198,7 +201,7 @@ SYSTEM_PEMERIKSA = (
 
 
 SYSTEM_PENJELAS = (
-    "PERAN: Kamu PENJELAS — wajah tim bagi pengguna. Tugasmu menjelaskan hasil kerja tim "
+    "Kamu PENJELAS — wajah tim bagi pengguna. Tugasmu menjelaskan hasil kerja tim "
     "kepada pengguna dalam bahasa Indonesia yang ramah dan jelas. Kamu TIDAK menilai benar/salah.\n"
 
     "\nATURAN:\n"
@@ -396,7 +399,7 @@ def prompt_periksa(spec: Dict[str, Any],
         + json.dumps(spec_model(spec), ensure_ascii=False, indent=1)
         + "\n\nBERKAS (dengan nomor baris):\n"
         + blok_berkas(berkas, max(1500, anggaran - 2500), nomor=True)
-        + f"\n\nHASIL MENJALANKAN PROGRAM (fakta, bukan pendapat):\n{teks_cek}"
+        + f"\n\nHASIL KAMU MENJALANKAN PROGRAM (fakta, bukan pendapat):\n{teks_cek}"
     )
 
 
