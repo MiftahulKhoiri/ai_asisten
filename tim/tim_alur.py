@@ -1,4 +1,5 @@
-"""Orkestrator: putaran Pelaksana -> pemeriksaan -> koreksi, serta pintu masuk jalankan().
+"""Orkestrator: putaran Pelaksana (menulis) -> Pemeriksa (menjalankan + menentukan) -> koreksi,
+serta pintu masuk jalankan().
 """
 import json
 import secrets
@@ -8,13 +9,14 @@ from pathlib import Path
 
 from . import tim_config as conf
 from .tim_berkas import baca_json, baca_proyek, pulihkan, salin_proyek
-from .tim_cek import cek_jalan, cek_statis, cocok_keluaran, teks_koreksi
+from .tim_cek import teks_koreksi
 from .tim_config import Batal
 from .tim_model import Pemuat
 from .tim_riwayat import AKTIF_RUN
 from .tim_tahap import (
     Jejak,
     event_tahap,
+    pemeriksa_menjalankan,
     tahap_jelaskan,
     tahap_periksa,
     tahap_rencana,
@@ -23,73 +25,56 @@ from .tim_tahap import (
 
 
 def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, izin, akhir, jejak):
-    """Putaran Pelaksana -> pemeriksaan -> koreksi. Kembalian: 'lolos' atau 'belum'.
+    """Putaran Pelaksana -> Pemeriksa -> koreksi. Kembalian: 'lolos' atau 'belum'.
     `akhir` (dict) diisi hasil pemeriksaan terakhir untuk penjelasan.
 
-    Bukti dari kode lebih berat daripada pendapat model: keluaran yang memuat 'harapan'
-    Perencana langsung lolos (Pemeriksa dilewati), dan bila akhirnya belum sempurna, hasil
-    putaran terbaik dipulihkan supaya koreksi yang keliru tidak merusak hasil yang lebih baik."""
+    Pembagian tugas:
+      Pelaksana  hanya MENULIS program. Ia tidak menjalankan apa pun.
+      Pemeriksa  menerima hasil Pelaksana langsung, MENJALANKAN programnya, lalu MENENTUKAN
+                 benar atau salah: dinyatakan jadi (selesai) atau memberi koreksi yang dikirim
+                 balik ke Pelaksana. Tidak ada jalan pintas dari kode yang melewati Pemeriksa.
+
+    Bila akhirnya belum sempurna, hasil putaran terbaik dipulihkan supaya koreksi yang keliru
+    tidak merusak hasil yang lebih baik."""
     mp, me, mc, maks = cfg["model_p"], cfg["model_e"], cfg["model_c"], cfg["maks"]
     koreksi = ""
-    rekam = []    # per putaran: skor (2 lolos+harapan, 1 lolos, 0 gagal), isi berkas, hasil cek
+    rekam = []    # per putaran: skor, isi berkas, hasil pemeriksaan
     for putaran in range(1, maks + 1):
         meta["putaran"] = putaran
         yield {"t": "putaran", "n": putaran, "maks": maks}
+
+        # 1. Pelaksana: menulis berkas (tidak menjalankan apa pun)
         yield event_tahap("tulis", me, putaran)
         yield from pemuat.pakai(me)
         ditulis, masalah = yield from tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran)
 
-        # Pemeriksaan otomatis (kode): sintaks, berkas ada, uji jalan, harapan keluaran
-        yield {"t": "cek_mulai"}
-        ok_statis, baris = cek_statis(hasil_dir, spec, ditulis)
-        baris = ["GAGAL format: " + m for m in masalah] + baris
-        ok = ok_statis and not masalah
-        status_jalan, keluaran, harapan = "dilewati", None, None
-        if ok:
-            if spec["jalankan"] and cfg["uji"]:
-                yield {"t": "uji_mulai", "d": " ".join(spec["jalankan"])}
-            status_jalan, jalan, keluaran = cek_jalan(hasil_dir, spec, ctx, izin, cfg["uji"])
-            baris += jalan
-            ok = status_jalan != "gagal"
-        if ok and keluaran is not None and spec["harapan"]:
-            harapan, hilang = cocok_keluaran(keluaran, spec["harapan"])
-            if harapan:
-                baris.append("OK keluaran memuat harapan Perencana: " + ", ".join(spec["harapan"]))
-            else:
-                baris.append("CATATAN: keluaran tidak memuat harapan Perencana (%s); harapan "
-                             "ini bisa keliru." % ", ".join(hilang))
+        # 2. Hasilnya langsung ke Pemeriksa
+        yield from pemuat.selesai_tahap(mc)
+        yield event_tahap("periksa", mc, putaran)
+        yield from pemuat.pakai(mc)
+
+        # 2a. Pemeriksa menjalankan program (sintaks, berkas ada, uji jalan)
+        bukti = yield from pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah, ctx, izin)
         akhir.clear()
-        akhir.update(cek=baris, jalan=status_jalan, keluaran=keluaran, harapan=harapan,
-                     nilai=None, pulih=None)
-        rekam.append({"skor": ((2 if harapan else 1) if ok else 0), "putaran": putaran,
-                      "berkas": dict(baca_proyek(hasil_dir)), "akhir": dict(akhir)})
-        yield {"t": "cek", "ok": ok, "jalan": status_jalan, "harapan": harapan,
-               "d": "\n".join(baris)}
+        akhir.update(cek=bukti["baris"], jalan=bukti["jalan"], keluaran=bukti["keluaran"],
+                     harapan=bukti["harapan"], fakta_ok=bukti["ok"], nilai=None, pulih=None)
         if ctx.batal.is_set():
             raise Batal()
 
-        if ok and harapan:     # bukti cukup: Pemeriksa tidak perlu dimuat
-            yield {"t": "ringkas", "d": "Keluaran sesuai harapan Perencana; Pemeriksa dilewati."}
-            yield from pemuat.selesai_tahap(mp)
-            return "lolos"
-
-        berikut = mc if ok else (me if putaran < maks else mp)
-        yield from pemuat.selesai_tahap(berikut)
-        if not ok:   # kesalahan sudah pasti: langsung kembali ke Pelaksana tanpa memuat Pemeriksa
-            koreksi = teks_koreksi(baris, None)
-            (folder / ("koreksi_%d.md" % putaran)).write_text(koreksi, encoding="utf-8")
-            continue
-
-        yield event_tahap("periksa", mc, putaran)
-        yield from pemuat.pakai(mc)
-        nilai = yield from tahap_periksa(spec, baris, hasil_dir, mc, ctx, keluaran, jejak, putaran)
+        # 2b. Pemeriksa menentukan benar atau salah
+        nilai = yield from tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran)
         akhir["nilai"] = nilai
-        rekam[-1]["akhir"]["nilai"] = nilai
+        rekam.append({"skor": (2 if nilai["ok"] else 0) + (1 if bukti["ok"] else 0)
+                              + (1 if bukti["harapan"] else 0),
+                      "putaran": putaran, "berkas": dict(baca_proyek(hasil_dir)),
+                      "akhir": dict(akhir)})
         yield dict(nilai, t="nilai")
+
+        # 3. Keputusan Pemeriksa: jadi -> selesai; belum -> koreksi ke Pelaksana
         if nilai["ok"]:
             yield from pemuat.selesai_tahap(mp)
             return "lolos"
-        koreksi = teks_koreksi(baris, nilai)
+        koreksi = teks_koreksi(bukti["baris"], nilai)
         (folder / ("koreksi_%d.md" % putaran)).write_text(koreksi, encoding="utf-8")
         yield from pemuat.selesai_tahap(me if putaran < maks else mp)
 
