@@ -12,7 +12,7 @@ from .tim_berkas import baca_json, baca_proyek, pulihkan, salin_proyek
 from .tim_cek import teks_koreksi
 from .tim_config import Batal
 from .tim_model import Pemuat
-from .tim_riwayat import AKTIF_RUN
+from .tim_riwayat import AKTIF_RUN, tulis_meta
 from .tim_tahap import (
     Jejak,
     event_tahap,
@@ -24,7 +24,7 @@ from .tim_tahap import (
 )
 
 
-def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, izin, akhir, jejak):
+def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak):
     """Putaran Pelaksana -> Pemeriksa -> koreksi. Kembalian: 'lolos' atau 'belum'.
     `akhir` (dict) diisi hasil pemeriksaan terakhir untuk penjelasan.
 
@@ -41,6 +41,7 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, izin, akhir, jejak
     rekam = []    # per putaran: skor, isi berkas, hasil pemeriksaan
     for putaran in range(1, maks + 1):
         meta["putaran"] = putaran
+        tulis_meta(folder, meta)       # pemantau yang membuka halaman lagi melihat putaran terbaru
         yield {"t": "putaran", "n": putaran, "maks": maks}
 
         # 1. Pelaksana: menulis berkas (tidak menjalankan apa pun)
@@ -54,7 +55,7 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, izin, akhir, jejak
         yield from pemuat.pakai(mc)
 
         # 2a. Pemeriksa menjalankan program (sintaks, berkas ada, uji jalan)
-        bukti = yield from pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah, ctx, izin)
+        bukti = yield from pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah)
         akhir.clear()
         akhir.update(cek=bukti["baris"], jalan=bukti["jalan"], keluaran=bukti["keluaran"],
                      harapan=bukti["harapan"], fakta_ok=bukti["ok"], nilai=None, pulih=None)
@@ -99,7 +100,7 @@ def _jalankan(tugas, cfg, ctx, lanjut=None):
     hasil_dir = folder / "hasil"
     hasil_dir.mkdir(parents=True)
     meta = {"id": run_id, "tugas": tugas, "judul": " ".join(tugas.split())[:40],
-            "status": "error", "dibuat": datetime.now().isoformat(timespec="seconds"),
+            "status": "berjalan", "dibuat": datetime.now().isoformat(timespec="seconds"),
             "model": {"perencana": cfg["model_p"], "pelaksana": cfg["model_e"],
                       "pemeriksa": cfg["model_c"]},
             "putaran": 0, "maks": cfg["maks"], "lanjut": None, "laporan": "", "spec": None}
@@ -114,8 +115,8 @@ def _jalankan(tugas, cfg, ctx, lanjut=None):
     pemuat = Pemuat(ctx, cfg["bongkar"])
     jejak = Jejak(folder)
     AKTIF_RUN.add(run_id)
-    izin = {"nilai": None}
     akhir = {}
+    tulis_meta(folder, meta)       # langsung tercatat di riwayat dengan status "berjalan"
     status, spec = "error", None
     try:
         spec, pertanyaan = yield from tahap_rencana(tugas, spec_lama, hasil_dir, folder,
@@ -127,9 +128,10 @@ def _jalankan(tugas, cfg, ctx, lanjut=None):
             yield from pemuat.lepas_semua()
         else:
             meta["spec"], meta["judul"] = spec, spec["judul"]
+            tulis_meta(folder, meta)
             yield from pemuat.selesai_tahap(cfg["model_e"])
             status = yield from kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat,
-                                          izin, akhir, jejak)
+                                          akhir, jejak)
             meta["laporan"] = yield from tahap_jelaskan(status, spec, hasil_dir, meta, akhir,
                                                    cfg["model_p"], ctx, pemuat, jejak)
             yield from pemuat.lepas_semua()
@@ -146,10 +148,9 @@ def _jalankan(tugas, cfg, ctx, lanjut=None):
         try:
             if meta["laporan"]:
                 (folder / "laporan.md").write_text(meta["laporan"], encoding="utf-8")
-            (folder / "run.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2),
-                                             encoding="utf-8")
         except OSError:
             pass
+        tulis_meta(folder, meta)
     yield {"t": "selesai", "status": status, "id": run_id,
            "teks": conf.STATUS_TEKS.get(status, status), "dir": str(folder)}
 
