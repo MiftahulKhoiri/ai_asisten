@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import agen  # noqa: E402
 import asisten  # noqa: E402
 import tim  # noqa: E402
-from tim import tim_config, tim_llm, tim_model  # noqa: E402
+from tim import tim_config, tim_llm, tim_model, tim_tahap  # noqa: E402
 
 RENCANA = json.dumps({
     "judul": "Halo", "ringkasan": "Cetak halo", "bahasa": "python",
@@ -340,39 +340,42 @@ class TestPemeriksaanOtomatis(DasarAgent):
         (hasil / "x.json").write_text("{rusak")
         self.assertFalse(tim.cek_statis(hasil, self.spec(), ["x.json"])[0])
 
-    def test_jalan_perlu_izin_dan_ditanya_sekali(self):
+    def test_jalan_bila_diizinkan_di_pengaturan(self):
         hasil = Path(self._tmp.name) / "hasil"
         hasil.mkdir()
         (hasil / "main.py").write_text("print('ok-jalan')\n")
-        ctx, izin = CtxPalsu(True), {"nilai": None}
-        st, baris, out = tim.cek_jalan(hasil, self.spec(), ctx, izin, True)
+        st, baris, out = tim.cek_jalan(hasil, self.spec(), True)
         self.assertEqual(st, "lolos")
         self.assertIn("ok-jalan", "\n".join(baris))
         self.assertEqual(out.strip(), "ok-jalan")
-        tim.cek_jalan(hasil, self.spec(), ctx, izin, True)
-        self.assertEqual(ctx.ditanya, ["uji"])       # hanya sekali per proses
 
-    def test_jalan_ditolak_atau_dimatikan(self):
+    def test_jalan_dimatikan_di_pengaturan(self):
         hasil = Path(self._tmp.name) / "hasil"
         hasil.mkdir()
         (hasil / "main.py").write_text("open('dibuat.txt', 'w')\n")
-        self.assertEqual(tim.cek_jalan(hasil, self.spec(), CtxPalsu(False), {"nilai": None}, True)[0],
-                         "dilewati")
-        ctx = CtxPalsu(True)
-        self.assertEqual(tim.cek_jalan(hasil, self.spec(), ctx, {"nilai": None}, False)[0], "dilewati")
-        self.assertEqual(ctx.ditanya, [])
+        st, baris, out = tim.cek_jalan(hasil, self.spec(), False)
+        self.assertEqual(st, "dilewati")
+        self.assertIn("pengaturan", baris[0])
         self.assertFalse((hasil / "dibuat.txt").exists())   # tidak pernah dijalankan
+
+    def test_izin_uji_mati_bila_tidak_disebut(self):
+        cfg, _ = tim.siapkan_cfg({"model_p": "A", "model_e": "B"}, {"A", "B"})
+        self.assertIs(cfg["uji"], False)
+        cfg, _ = tim.siapkan_cfg({"model_p": "A", "model_e": "B", "uji": "true"}, {"A", "B"})
+        self.assertIs(cfg["uji"], False)             # hanya boolean true yang dianggap izin
+        cfg, _ = tim.siapkan_cfg({"model_p": "A", "model_e": "B", "uji": True}, {"A", "B"})
+        self.assertIs(cfg["uji"], True)
 
     def test_jalan_gagal_dan_timeout(self):
         hasil = Path(self._tmp.name) / "hasil"
         hasil.mkdir()
         (hasil / "main.py").write_text("raise SystemExit(3)\n")
-        st, baris, out = tim.cek_jalan(hasil, self.spec(), CtxPalsu(), {"nilai": True}, True)
+        st, baris, out = tim.cek_jalan(hasil, self.spec(), True)
         self.assertEqual(st, "gagal")
         self.assertIn("exit code 3", baris[0])
         (hasil / "main.py").write_text("import time\ntime.sleep(30)\n")
         with mock.patch.object(tim_config, "UJI_DETIK", 1):
-            st, baris, out = tim.cek_jalan(hasil, self.spec(), CtxPalsu(), {"nilai": True}, True)
+            st, baris, out = tim.cek_jalan(hasil, self.spec(), True)
         self.assertEqual(st, "gagal")
         self.assertIn("batas waktu", baris[0])
 
@@ -390,7 +393,8 @@ class TestAlur(DasarAgent):
         # tiap model dibongkar begitu tahapnya selesai
         self.assertEqual(llama.log, ["muat A", "bongkar A", "muat B", "bongkar B", "muat A",
                                      "bongkar A", "muat B", "bongkar B", "muat A", "bongkar A"])
-        self.assertEqual(ctx.ditanya, ["uji"])
+        self.assertEqual(ctx.ditanya, [])             # tidak ada pertanyaan izin di tengah proses
+        self.assertIn("uji_mulai", jenis(ev))
         self.assertEqual(set(llama.state.values()), {"unloaded"})
         self.assertFalse(tim.DIMUAT)
         run = tim.baca_run(ev[-1]["id"])
@@ -433,16 +437,17 @@ class TestAlur(DasarAgent):
         llama = LlamaPalsu("A", "B")
         self.pasang(llama, StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK]))
 
-        class CtxCatat(CtxPalsu):
-            def konfirmasi(self, jenis, ringkas, detail=""):
-                self.keadaan = dict(llama.state)
-                self.ringkas = ringkas
-                return super().konfirmasi(jenis, ringkas, detail)
-        ctx = CtxCatat()
-        self.jalan(self.cfg(), ctx)
-        # saat izin uji diminta, model Pemeriksa (A) termuat dan Pelaksana (B) sudah dibongkar
-        self.assertEqual(ctx.keadaan, {"A": "loaded", "B": "unloaded"})
-        self.assertIn("Pemeriksa akan menjalankan", ctx.ringkas)
+        keadaan = []
+        asli = tim_tahap.cek_jalan
+
+        def catat(*a, **k):
+            keadaan.append(dict(llama.state))
+            return asli(*a, **k)
+        with mock.patch.object(tim_tahap, "cek_jalan", catat):
+            ev, ctx = self.jalan(self.cfg())
+        # saat program dijalankan, model Pemeriksa (A) termuat dan Pelaksana (B) sudah dibongkar
+        self.assertEqual(keadaan, [{"A": "loaded", "B": "unloaded"}])
+        self.assertEqual(ctx.ditanya, [])
 
     def test_pemeriksa_menerima_hasil_menjalankan_di_prompt(self):
         llama = LlamaPalsu("A", "B")
@@ -502,7 +507,8 @@ class TestAlur(DasarAgent):
         self.pasang(llama, s)
         ev, ctx = self.jalan(self.cfg())
         self.assertEqual(ev[-1]["status"], "lolos")
-        self.assertEqual(ctx.ditanya, ["uji"])                       # program benar-benar dijalankan
+        self.assertIn("uji_mulai", jenis(ev))                        # program benar-benar dijalankan
+        self.assertEqual(ctx.ditanya, [])
         self.assertIn("PEMERIKSA", [p for p, _ in s.panggilan])
         teks = "".join(e["d"] for e in ev if e["t"] == "token")
         self.assertIn("**Keluaran uji jalan**", teks)
@@ -870,7 +876,16 @@ class TestEndpoint(DasarAgent):
                      "uji": False}
         kode, isi = self.req("POST", "/api/agent/jalankan", ctx_dasar)
         self.assertEqual(kode, 200)
-        ev = [json.loads(b) for b in isi.splitlines() if b.strip()]
+        sesi = json.loads(isi)["sesi"]
+        ev, nomor = [], 0
+        for _ in range(100):        # proses jalan di latar belakang: event dibaca lewat long-poll
+            kode, isi = self.req("GET", "/api/agent/event?sesi=%s&dari=%d&tunggu=5" % (sesi, nomor))
+            self.assertEqual(kode, 200)
+            d = json.loads(isi)
+            ev += d["events"]
+            nomor = d["next"]
+            if d["habis"]:
+                break
         self.assertEqual(ev[0]["t"], "mulai")
         self.assertEqual(ev[-1]["t"], "selesai")
         self.assertEqual(ev[-1]["status"], "lolos")
@@ -885,6 +900,206 @@ class TestEndpoint(DasarAgent):
         kode, isi = self.req("GET", "/api/agent/run/" + ev[-1]["id"])
         self.assertEqual(json.loads(isi)["berkas"][0]["nama"], "main.py")
         self.assertEqual(self.req("GET", "/api/agent/run/20260101-000000-abcd")[0], 404)
+
+
+    # ---- proses di latar belakang: halaman boleh ditutup, dibuka lagi untuk memantau ----
+    DASAR = {"teks": "buat halo", "mode": 2, "model_p": "A", "model_e": "B", "maks": 2}
+
+    def mulai(self, **tambahan):
+        kode, isi = self.req("POST", "/api/agent/jalankan", dict(self.DASAR, **tambahan))
+        self.assertEqual(kode, 200, isi)
+        return json.loads(isi)["sesi"]
+
+    def baca(self, sesi, dari=0, tunggu=0):
+        kode, isi = self.req("GET", "/api/agent/event?sesi=%s&dari=%d&tunggu=%d" % (sesi, dari, tunggu))
+        return kode, json.loads(isi)
+
+    def baca_semua(self, sesi):
+        ev, nomor = [], 0
+        for _ in range(100):
+            kode, d = self.baca(sesi, nomor, 5)
+            self.assertEqual(kode, 200)
+            ev += d["events"]
+            nomor = d["next"]
+            if d["habis"]:
+                return ev, d
+        self.fail("proses tidak selesai")
+
+    def tahan_pelaksana(self, stream):
+        """Proses berhenti di tahap Pelaksana sampai `lepas` dipanggil (meniru proses lama)."""
+        masuk, boleh = threading.Event(), threading.Event()
+
+        def sebelum(peran):
+            if peran == "PELAKSANA":
+                masuk.set()
+                boleh.wait(20)
+        stream.sebelum = sebelum
+        self.addCleanup(boleh.set)
+        return masuk, boleh
+
+    def reset_agent(self):
+        with asisten.AGENT_COND:
+            asisten.AGENT.update(sesi=None, id=None, tugas="", events=[], awal=0, aktif=False,
+                                 mulai=0.0, status=None)
+
+    def test_proses_lanjut_tanpa_klien_lalu_dibaca_kemudian(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        s = StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK])
+        self.pasang(LlamaPalsu("A", "B"), s)
+        sesi = self.mulai(uji=False)
+        # tidak ada yang membaca (halaman ditutup); proses tetap selesai sendiri
+        for _ in range(100):
+            if not asisten.AGENT["aktif"]:
+                break
+            time.sleep(0.05)
+        self.assertFalse(asisten.AGENT["aktif"])
+        self.assertEqual(asisten.AGENT["status"], "lolos")
+        self.assertFalse(asisten.GEN_LOCK.locked())
+        # halaman dibuka lagi: semua yang sudah terjadi bisa dibaca dari awal
+        kode, d = self.baca(sesi, 0, 0)
+        self.assertEqual(kode, 200)
+        self.assertTrue(d["habis"])
+        self.assertEqual(d["events"][0]["t"], "mulai")
+        self.assertEqual(d["events"][-1]["status"], "lolos")
+        self.assertTrue(all("ts" in e for e in d["events"]))        # waktu tiap event, untuk log
+        self.assertIn("berkas", jenis(d["events"]))
+
+    def test_pemantau_baru_melihat_proses_yang_masih_berjalan(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        s = StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK])
+        masuk, boleh = self.tahan_pelaksana(s)
+        self.pasang(LlamaPalsu("A", "B"), s)
+        sesi = self.mulai(uji=False)
+        self.assertTrue(masuk.wait(10))
+        d = json.loads(self.req("GET", "/api/agent/status")[1])
+        self.assertTrue(d["sibuk"])
+        self.assertTrue(d["proses"]["aktif"])
+        self.assertEqual(d["proses"]["sesi"], sesi)
+        self.assertEqual(d["proses"]["tugas"], "buat halo")
+        kode, d = self.baca(sesi, 0, 0)
+        self.assertFalse(d["habis"])
+        self.assertIn("rencana", jenis(d["events"]))                # sudah terjadi sebelum halaman dibuka
+        self.assertNotIn("selesai", jenis(d["events"]))
+        # pemantau kedua (mis. HP lain) membaca mulai dari awal dan dari tengah
+        _, d2 = self.baca(sesi, d["next"], 0)
+        self.assertEqual(d2["events"], [])
+        boleh.set()
+        ev, akhir = self.baca_semua(sesi)
+        self.assertEqual(ev[-1]["status"], "lolos")
+
+    def test_long_poll_menunggu_event_baru(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        s = StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK])
+        masuk, boleh = self.tahan_pelaksana(s)
+        self.pasang(LlamaPalsu("A", "B"), s)
+        sesi = self.mulai(uji=False)
+        self.assertTrue(masuk.wait(10))
+        _, d = self.baca(sesi, 0, 0)
+        mulai = time.time()
+        threading.Timer(0.5, boleh.set).start()
+        _, d2 = self.baca(sesi, d["next"], 10)          # menunggu sampai Pelaksana menulis
+        self.assertGreater(len(d2["events"]), 0)
+        self.assertLess(time.time() - mulai, 8)         # tidak menunggu sampai batas 10 detik
+        self.baca_semua(sesi)
+
+    def test_potongan_teks_digabung_dan_nomor_tetap_konsisten(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        self.pasang(LlamaPalsu("A", "B"), StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK]))
+        sesi = self.mulai(uji=False)
+        ev, akhir = self.baca_semua(sesi)
+        mentah = asisten.AGENT["events"]
+        self.assertLess(len(ev), len(mentah))                       # 'isi' beruntun digabung
+        self.assertEqual("".join(e["d"] for e in mentah if e["t"] == "isi"),
+                         "".join(e["d"] for e in ev if e["t"] == "isi"))
+        self.assertEqual(akhir["next"], len(mentah))
+        _, ulang = self.baca(sesi, 0, 0)
+        self.assertEqual(ulang["events"], ev)                       # baca ulang dari awal sama persis
+
+    def test_sesi_lama_ditolak_410(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        self.pasang(LlamaPalsu("A", "B"), StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK]))
+        self.assertEqual(self.baca("tidak-ada", 0, 0)[0], 410)
+        self.assertEqual(self.req("GET", "/api/agent/event?sesi=x", token=False)[0], 401)
+
+    def test_ditolak_saat_berjalan_tidak_menghapus_buffer(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        s = StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK])
+        masuk, boleh = self.tahan_pelaksana(s)
+        self.pasang(LlamaPalsu("A", "B"), s)
+        sesi = self.mulai(uji=False)
+        self.assertTrue(masuk.wait(10))
+        kode, _ = self.req("POST", "/api/agent/jalankan", dict(self.DASAR))
+        self.assertEqual(kode, 409)
+        self.assertEqual(asisten.AGENT["sesi"], sesi)
+        boleh.set()
+        self.baca_semua(sesi)
+
+    def test_proses_baru_mengganti_buffer(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        self.pasang(LlamaPalsu("A", "B"), StreamPalsu([RENCANA, RENCANA], [KODE_BAIK, KODE_BAIK],
+                                                       [NILAI_OK, NILAI_OK], ["a.", "b."]))
+        s1 = self.mulai(uji=False)
+        self.baca_semua(s1)
+        s2 = self.mulai(uji=False)
+        self.assertNotEqual(s1, s2)
+        self.baca_semua(s2)
+        self.assertEqual(self.baca(s1, 0, 0)[0], 410)
+
+    def test_stop_membatalkan_proses_latar_belakang(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        s = StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK])
+        masuk, boleh = self.tahan_pelaksana(s)
+        self.pasang(LlamaPalsu("A", "B"), s)
+        sesi = self.mulai(uji=False)
+        self.assertTrue(masuk.wait(10))
+        self.assertEqual(json.loads(self.req("POST", "/api/stop", {})[1]), {"ok": True})
+        boleh.set()
+        ev, _ = self.baca_semua(sesi)
+        self.assertEqual(ev[-1]["status"], "batal")
+
+    def test_izin_uji_dari_pengaturan_tanpa_pertanyaan(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        self.pasang(LlamaPalsu("A", "B"), StreamPalsu([RENCANA, RENCANA], [KODE_BAIK, KODE_BAIK],
+                                                       [NILAI_OK, NILAI_OK], ["a.", "b."]))
+        ev, _ = self.baca_semua(self.mulai(uji=True))
+        self.assertIn("uji_mulai", jenis(ev))
+        self.assertNotIn("konfirmasi", jenis(ev))
+        self.assertIn("halo", [e for e in ev if e["t"] == "cek"][0]["d"])
+        ev, _ = self.baca_semua(self.mulai())               # izin tidak disebut = uji jalan mati
+        self.assertNotIn("uji_mulai", jenis(ev))
+        self.assertEqual([e for e in ev if e["t"] == "cek"][0]["jalan"], "dilewati")
+
+    def test_riwayat_menampilkan_proses_berjalan_lalu_terhenti(self):
+        self.reset_agent()
+        self.addCleanup(self.reset_agent)
+        s = StreamPalsu([RENCANA], [KODE_BAIK], [NILAI_OK])
+        masuk, boleh = self.tahan_pelaksana(s)
+        self.pasang(LlamaPalsu("A", "B"), s)
+        sesi = self.mulai(uji=False)
+        self.assertTrue(masuk.wait(10))
+        run = json.loads(self.req("GET", "/api/agent/riwayat")[1])["run"]
+        self.assertEqual((len(run), run[0]["status"], run[0]["putaran"]), (1, "berjalan", 1))
+        rid = run[0]["id"]
+        self.assertEqual(self.req("DELETE", "/api/agent/run/" + rid)[0], 409)   # masih berjalan
+        boleh.set()
+        self.baca_semua(sesi)
+        self.assertEqual(json.loads(self.req("GET", "/api/agent/run/" + rid)[1])["status"], "lolos")
+        # aplikasi dimatikan di tengah proses: run.json tertinggal "berjalan" -> dibaca "terhenti"
+        d = Path(self._tmp.name) / "20261001-000000-abcd"
+        d.mkdir()
+        (d / "run.json").write_text(json.dumps({"id": d.name, "judul": "x", "status": "berjalan"}))
+        run = {r["id"]: r["status"] for r in json.loads(self.req("GET", "/api/agent/riwayat")[1])["run"]}
+        self.assertEqual(run[d.name], "terhenti")
+        self.assertEqual(self.req("DELETE", "/api/agent/run/" + d.name)[0], 200)   # boleh dihapus
 
 
 class TestHapusRiwayat(DasarAgent):
@@ -964,6 +1179,7 @@ class TestAsapJs(DasarAgent):
         berkas = Path(self._tmp.name) / "events.ndjson"
         berkas.write_text("\n".join(json.dumps(e) for e in ev) + "\n", encoding="utf-8")
         skrip = Path(__file__).resolve().parent / "agent_smoke.js"
+        self.berkas, self.skrip, self.node = berkas, skrip, node
         r = subprocess.run([node, str(skrip), str(berkas)], capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         d = json.loads(r.stdout.strip().splitlines()[-1])
@@ -980,6 +1196,39 @@ class TestAsapJs(DasarAgent):
                       "Pemeriksa: perlu perbaikan", "Hasil Pemeriksa menjalankan program: gagal",
                       "Pemeriksa: dinyatakan jadi", "Selesai: dinyatakan jadi"):
             self.assertIn(harus, log)
+        self.assertGreater(len(d["poll_dari"]), 1)                       # dipantau lewat beberapa long-poll
+        self.assertEqual(d["poll_dari"][0], 0)
+        self.assertIn("boleh ditutup", " ".join(d["info"]))               # pengguna diberi tahu
+        self.assertNotIn("Terputus", log)
+
+        # jaringan putus di tengah pemantauan: pemantauan lanjut sendiri dari event terakhir
+        r = subprocess.run([node, str(skrip), str(berkas), "putus"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        d2 = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertEqual(d2["putus"], 2)
+        self.assertTrue(d2["lencana_selesai"])
+        self.assertEqual(d2["teks_log"][-1].count("Selesai: dinyatakan jadi"), 1)   # tak ada event ganda
+        self.assertEqual(d2["poll_dari"], sorted(d2["poll_dari"]))                  # tak pernah mundur
+        log2 = "\n".join(d2["teks_log"])
+        self.assertIn("Terputus dari server, mencoba lagi", log2)
+        self.assertIn("Tersambung lagi", log2)
+        self.assertEqual(log2.count("Pelaksana mulai menulis kode"), log.count("Pelaksana mulai menulis kode"))
+
+        # halaman dibuka lagi saat proses sudah berjalan: semua yang terjadi diputar ulang
+        r = subprocess.run([node, str(skrip), str(berkas), "lampirkan"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        d3 = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertIsNone(d3["dikirim"])                                  # tidak mengirim perintah baru
+        self.assertEqual(d3["poll_dari"][0], 0)
+        self.assertTrue(d3["lencana_selesai"])
+        log3 = "\n".join(d3["teks_log"])
+        for harus in ("Pelaksana mulai menulis kode", "Pemeriksa: perlu perbaikan",
+                      "Pemeriksa: dinyatakan jadi", "Selesai: dinyatakan jadi"):
+            self.assertIn(harus, log3)
+        self.assertIn("buat program halo", log3)
+        self.assertTrue(d3["teks_log"][1].startswith("0:00"))             # waktu log mengikuti server,
+        self.assertFalse(d3["teks_log"][-1].startswith("0:"))             # bukan saat halaman dibuka
+        self.assertIn("Tersambung ke proses yang berjalan", " ".join(d3["info"]))
 
 
 if __name__ == "__main__":
