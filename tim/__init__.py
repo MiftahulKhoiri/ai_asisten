@@ -10,7 +10,7 @@ Peran (2 model: Perencana = Pemeriksa = model 1, Pelaksana = model 2;
   Pelaksana  membaca lembar tugas lalu HANYA menulis program ke folder hasil/. Ia tidak
              menjalankan apa pun.
   Pemeriksa  menerima hasil Pelaksana langsung, MENJALANKAN programnya (berkas ada, sintaks
-             Python/JSON/JS/Bash, uji jalan bila pengguna mengizinkan), lalu MENENTUKAN benar
+             Python/JSON/JS/Bash, uji jalan bila diizinkan di pengaturan), lalu MENENTUKAN benar
              atau salah: dinyatakan jadi (selesai) atau memberi koreksi yang dikirim balik ke
              Pelaksana. Batas putaran ditentukan pengguna.
 
@@ -125,6 +125,7 @@ from .tim_riwayat import (
     daftar_run,
     hapus_run,
     hapus_semua_run,
+    tulis_meta,
 )
 from .tim_alur import (
     jalankan,
