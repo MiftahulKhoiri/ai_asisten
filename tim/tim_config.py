@@ -57,7 +57,7 @@ PERAN = {"rencana": "Perencana", "tulis": "Pelaksana", "periksa": "Pemeriksa",
          "jelaskan": "Penjelas"}
 
 
-STATUS_TEKS = {"lolos": "lolos pemeriksaan",
+STATUS_TEKS = {"lolos": "dinyatakan jadi oleh Pemeriksa",
                "belum": "belum sempurna (batas putaran tercapai)",
                "butuh_info": "menunggu info tambahan dari pengguna",
                "batal": "dibatalkan", "error": "berhenti karena error"}
