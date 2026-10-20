@@ -753,10 +753,10 @@ def catat_event(ev):
         log("TOOL", f"agent {'membuat' if ev.get('baru') else 'mengubah'} {ev['nama']}")
     elif t == "cek":
         log("OK" if ev["ok"] else "WARN",
-            "pemeriksaan otomatis " + ("lolos" if ev["ok"] else "GAGAL"))
+            "pemeriksa menjalankan program: " + ("tanpa kesalahan" if ev["ok"] else "GAGAL"))
     elif t == "nilai":
         log("OK" if ev["ok"] else "WARN",
-            "pemeriksa: " + ("OK" if ev["ok"] else "perlu perbaikan") + " - " + ev.get("ringkas", "")[:100])
+            "keputusan pemeriksa: " + ("jadi" if ev["ok"] else "perlu perbaikan") + " - " + ev.get("ringkas", "")[:100])
     elif t == "putaran":
         log("INFO", f"Agent putaran {ev['n']}/{ev['maks']}")
     elif t == "tanya":
