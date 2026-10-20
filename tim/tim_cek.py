@@ -1,4 +1,7 @@
-"""Pemeriksaan otomatis (kode, bukan model) dan validasi penilaian Pemeriksa.
+"""Alat Pemeriksa: pemeriksaan berkas/sintaks, uji jalan program, dan perapian penilaian.
+
+Semua fungsi di sini hanya mengumpulkan fakta atau merapikan bentuk jawaban. Keputusan benar/salah
+ada pada Pemeriksa (lihat tim_tahap.tahap_periksa).
 """
 import ast
 import json
@@ -69,8 +72,9 @@ def cek_jalan(hasil_dir, spec, ctx, izin, boleh):
     """Uji jalan program. Kembalian: (status, baris, keluaran); status: lolos / gagal / dilewati.
     `keluaran` adalah keluaran program yang sebenarnya (None bila tidak dijalankan).
 
-    Program buatan model dijalankan HANYA setelah pengguna mengizinkan (ditanya sekali per
-    proses, juga di mode AUTO), tanpa shell, di folder hasil/, dengan batas waktu."""
+    Dijalankan oleh Pemeriksa. Program buatan model dijalankan HANYA setelah pengguna
+    mengizinkan (ditanya sekali per proses, juga di mode AUTO), tanpa shell, di folder hasil/,
+    dengan batas waktu."""
     if not spec.get("jalankan"):
         return "dilewati", ["Uji jalan dilewati: lembar tugas tidak punya perintah uji."], None
     if not boleh:
@@ -79,9 +83,10 @@ def cek_jalan(hasil_dir, spec, ctx, izin, boleh):
     tampil = " ".join(spec["jalankan"])
     if izin.get("nilai") is None:
         izin["nilai"] = bool(ctx.konfirmasi(
-            "uji", "Jalankan program hasil agent: " + tampil,
-            "Program ini ditulis oleh model AI, dijalankan di %s (batas %d detik, tanpa "
-            "input keyboard). Periksa kodenya dulu bila ragu." % (hasil_dir, conf.UJI_DETIK)))
+            "uji", "Pemeriksa akan menjalankan program hasil Pelaksana: " + tampil,
+            "Program ini ditulis oleh model AI (Pelaksana) dan dijalankan oleh Pemeriksa di %s "
+            "(batas %d detik, tanpa input keyboard). Periksa kodenya dulu bila ragu."
+            % (hasil_dir, conf.UJI_DETIK)))
     if not izin["nilai"]:
         return "dilewati", ["Uji jalan dilewati: pengguna tidak mengizinkan."], None
     kode, out = _run(cmd, timeout=conf.UJI_DETIK, cwd=str(hasil_dir),
@@ -127,39 +132,41 @@ def _masalah_bersih(m):
     return s[:300]
 
 
-def rapikan_nilai(d, sumber=None):
-    """Penilaian Pemeriksa yang sudah divalidasi.
-
-    Model kecil sering menolak hasil yang benar, jadi penolakan hanya berlaku bila konkret:
-    ada masalah yang bermakna dan (bila `sumber` = keluaran program + kode tersedia) kutipan
-    "dilihat" benar-benar ada di sana. Selain itu hasil diterima dengan catatan."""
+def rapikan_nilai(d):
+    """Penilaian Pemeriksa yang dirapikan bentuknya (tipe data, panjang, kerangka kosong).
+    Keputusan ok/tidak ok TIDAK diubah di sini: itu hak Pemeriksa."""
     ok = d.get("ok")
     if isinstance(ok, str):
         ok = ok.strip().lower() in ("true", "ya", "ok", "yes")
     masalah = [x for x in (_masalah_bersih(m) for m in (d.get("masalah") or [])) if x][:8]
-    dilihat = " ".join(str(d.get("dilihat") or "").split())[:200]
-    nilai = {"ok": bool(ok), "masalah": masalah, "dilihat": dilihat,
+    nilai = {"ok": bool(ok), "masalah": masalah,
+             "dilihat": " ".join(str(d.get("dilihat") or "").split())[:200],
              "ringkas": " ".join(str(d.get("ringkas") or "").split())[:300],
              "perbaikan": " ".join(str(d.get("perbaikan") or "").split())[:600]}
-    if nilai["ok"]:      # lolos: daftar masalah/perbaikan hanya membingungkan (sering berisi kriteria)
+    if nilai["ok"]:      # dinyatakan jadi: daftar masalah/perbaikan hanya membingungkan
         nilai.update(masalah=[], perbaikan="", dilihat="")
-    if not nilai["ok"]:
-        alasan = ""
-        if not masalah:
-            alasan = "ditolak tanpa masalah yang konkret"
-        elif sumber is not None and dilihat and _norm(dilihat) not in _norm(sumber):
-            alasan = "kutipan Pemeriksa tidak ada di keluaran/kode, kemungkinan keliru"
-        if alasan:
-            nilai.update(ok=True, masalah=[], perbaikan="",
-                         ringkas=(nilai["ringkas"] + " (" + alasan + "; diterima)").strip())
     return nilai
+
+
+def nilai_cadangan(bukti):
+    """Dipakai hanya bila Pemeriksa dua kali tidak memberi JSON yang terbaca: keputusan
+    mengikuti hasil menjalankan program (`bukti`), dan ini dicatat jelas di 'ringkas'."""
+    if bukti["ok"]:
+        return {"ok": True, "masalah": [], "dilihat": "", "perbaikan": "",
+                "ringkas": "Pemeriksa tidak memberi penilaian yang terbaca; keputusan memakai "
+                           "hasil menjalankan program (tanpa kesalahan)."}
+    gagal = [b[:300] for b in bukti["baris"] if b.startswith("GAGAL")][:5]
+    return {"ok": False, "masalah": gagal or ["Menjalankan program gagal."], "dilihat": "",
+            "perbaikan": "Perbaiki kesalahan yang tercatat di hasil menjalankan program.",
+            "ringkas": "Pemeriksa tidak memberi penilaian yang terbaca; hasil menjalankan "
+                       "program gagal."}
 
 
 def teks_koreksi(cek_baris, nilai):
     bagian = []
     gagal = [b for b in cek_baris if not b.startswith("OK ")]
     if gagal:
-        bagian.append("HASIL PEMERIKSAAN OTOMATIS:\n" + "\n".join(cek_baris))
+        bagian.append("HASIL PEMERIKSA MENJALANKAN PROGRAM:\n" + "\n".join(cek_baris))
     if nilai and not nilai["ok"]:
         s = "MASUKAN PEMERIKSA:\n" + (nilai["ringkas"] or "")
         if nilai["masalah"]:
