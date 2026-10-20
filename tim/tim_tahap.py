@@ -1,11 +1,14 @@
 """Tahap kerja model: Perencana, Pelaksana, Pemeriksa, Penjelas (generator event).
+
+Pelaksana hanya menulis. Pemeriksa yang menjalankan programnya (pemeriksa_menjalankan) dan yang
+menentukan benar/salah (tahap_periksa).
 """
 import json
 from pathlib import Path
 
 from . import tim_config as conf
 from .tim_berkas import aman_nama, baca_proyek, tulis_berkas, urai_berkas
-from .tim_cek import rapikan_nilai
+from .tim_cek import cek_jalan, cek_statis, cocok_keluaran, nilai_cadangan, rapikan_nilai
 from .tim_config import Batal
 from .tim_laporan import blok_fakta
 from .tim_llm import ambil_json, tanya
@@ -15,6 +18,7 @@ from .tim_prompt import (
     SYSTEM_PENJELAS,
     SYSTEM_PERENCANA,
     pesan_chat,
+    pesan_minta_masalah,
     pesan_ulang_json,
     prompt_jelas,
     prompt_periksa,
@@ -117,9 +121,53 @@ def tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran):
     return ditulis, masalah
 
 
-def tahap_periksa(spec, cek_baris, hasil_dir, mc, ctx, keluaran, jejak, putaran):
+def pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah, ctx, izin):
+    """Pemeriksa menjalankan hasil Pelaksana: berkas ada, sintaks benar, lalu uji jalan program
+    (bila diizinkan pengguna). Kembalian: bukti {ok, baris, jalan, keluaran, harapan}.
+
+    Ini hanya mengumpulkan FAKTA untuk Pemeriksa; keputusan benar/salah ada di tahap_periksa.
+    Harapan Perencana juga hanya fakta tambahan (bisa keliru), bukan jalan pintas lolos."""
+    yield {"t": "cek_mulai", "oleh": "Pemeriksa"}
+    ok_statis, baris = cek_statis(hasil_dir, spec, ditulis)
+    baris = ["GAGAL format: " + m for m in masalah] + baris
+    ok = ok_statis and not masalah
+    status_jalan, keluaran, harapan = "dilewati", None, None
+    if ok:
+        if spec["jalankan"] and cfg["uji"]:
+            yield {"t": "uji_mulai", "d": " ".join(spec["jalankan"]), "oleh": "Pemeriksa"}
+        status_jalan, jalan, keluaran = cek_jalan(hasil_dir, spec, ctx, izin, cfg["uji"])
+        baris += jalan
+        ok = status_jalan != "gagal"
+    if ok and keluaran is not None and spec["harapan"]:
+        harapan, hilang = cocok_keluaran(keluaran, spec["harapan"])
+        if harapan:
+            baris.append("OK keluaran memuat harapan Perencana: " + ", ".join(spec["harapan"]))
+        else:
+            baris.append("CATATAN: keluaran tidak memuat harapan Perencana (%s); harapan "
+                         "ini bisa keliru." % ", ".join(hilang))
+    yield {"t": "cek", "ok": ok, "jalan": status_jalan, "harapan": harapan,
+           "d": "\n".join(baris), "oleh": "Pemeriksa"}
+    return {"ok": ok, "baris": baris, "jalan": status_jalan, "keluaran": keluaran,
+            "harapan": harapan}
+
+
+def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran):
+    """Pemeriksa menentukan benar atau salah. Kembalian: nilai {ok, masalah, perbaikan, ...}.
+
+    ok=True  -> hasil dinyatakan jadi.
+    ok=False -> berisi masalah + perbaikan, dikirim ke Pelaksana sebagai koreksi.
+    Kode tidak membalik keputusan itu. Pengecualian yang disengaja, semuanya tercatat di
+    'ringkas': (1) tidak ada berkas sama sekali, tidak ada yang bisa dinilai; (2) jawaban tidak
+    terbaca sebagai JSON dua kali, keputusan memakai hasil menjalankan program; (3) menolak
+    tanpa menyebut satu masalah pun setelah ditanya ulang, karena koreksi kosong tidak bisa
+    dikirim ke Pelaksana."""
     berkas = baca_proyek(hasil_dir)
-    user = prompt_periksa(spec, cek_baris, berkas)
+    if not berkas:
+        return {"ok": False, "dilihat": "", "masalah": ["Tidak ada berkas hasil untuk diperiksa."],
+                "ringkas": "Pelaksana belum menghasilkan berkas.",
+                "perbaikan": "Tulis semua berkas lembar tugas dengan format "
+                             "=== FILE: nama === ... === END ==="}
+    user = prompt_periksa(spec, bukti["baris"], berkas)
     pesan = pesan_chat(SYSTEM_PEMERIKSA, user)
     teks, _ = yield from tanya(mc, pesan, ctx, conf.TOKEN_PERIKSA, 0.1, True)
     jejak.simpan("periksa-%d" % putaran, user, teks)
@@ -130,13 +178,20 @@ def tahap_periksa(spec, cek_baris, hasil_dir, mc, ctx, keluaran, jejak, putaran)
         jejak.simpan("periksa-%d-ulang" % putaran, "(permintaan ulang JSON)", teks)
         d = ambil_json(teks)
     if d is None:
-        return {"ok": True, "masalah": [], "perbaikan": "", "dilihat": "",
-                "ringkas": "Pemeriksa tidak memberi penilaian yang terbaca; pemeriksaan "
-                           "otomatis lolos sehingga hasil diterima."}
-    sumber = None
-    if keluaran is not None:      # kutipan Pemeriksa bisa dicocokkan dengan keluaran dan kode nyata
-        sumber = keluaran + "\n" + "\n".join(isi for _, isi in berkas)
-    return rapikan_nilai(d, sumber)
+        return nilai_cadangan(bukti)
+    nilai = rapikan_nilai(d)
+    if not nilai["ok"] and not nilai["masalah"]:
+        pesan += pesan_minta_masalah(teks)
+        teks, _ = yield from tanya(mc, pesan, ctx, conf.TOKEN_PERIKSA, 0.1, True)
+        jejak.simpan("periksa-%d-masalah" % putaran, "(minta masalah konkret)", teks)
+        d2 = ambil_json(teks)
+        if d2 is not None:
+            nilai = rapikan_nilai(d2)
+        if not nilai["ok"] and not nilai["masalah"]:
+            nilai.update(ok=True, perbaikan="", dilihat="",
+                         ringkas=(nilai["ringkas"] + " (menolak tanpa menyebut masalah "
+                                  "konkret; diterima)").strip())
+    return nilai
 
 
 def tahap_jelaskan(status, spec, hasil_dir, meta, akhir, mp, ctx, pemuat, jejak):
