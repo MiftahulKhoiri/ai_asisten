@@ -354,8 +354,8 @@ dibongkar saat selesai (bila "Bongkar model tiap tahap" aktif).
 | Peran | Tugas |
 |---|---|
 | **Perencana** (Model 1) | menerima perintah, menyusun lembar tugas `tugas.json` + `tugas.md`, lalu menjelaskan hasil akhir kepada kamu |
-| **Pelaksana** (Model 2) | membaca lembar tugas dan menulis program ke folder `hasil/` |
-| **Pemeriksa** | memeriksa hasil; lolos = selesai, belum = koreksi dikirim ke Pelaksana |
+| **Pelaksana** (Model 2) | membaca lembar tugas dan **hanya menulis** program ke folder `hasil/` (tidak menjalankan apa pun) |
+| **Pemeriksa** | menerima hasil Pelaksana langsung, **menjalankan** programnya, lalu **menentukan benar/salah**: dinyatakan jadi (selesai) atau memberi koreksi yang dikirim ke Pelaksana |
 
 Pilihan di halaman Agent:
 
@@ -364,34 +364,42 @@ Pilihan di halaman Agent:
   Minimal harus ada 2 model yang berbeda.
 - **Maksimal putaran koreksi** (1-10): berapa kali Pelaksana boleh mengulang.
 - **Bongkar model tiap tahap**: hemat RAM; model yang dipakai tahap berikutnya tidak dibongkar.
-- **Boleh uji jalan program**: program dijalankan setelah kamu mengizinkan.
+- **Boleh uji jalan program**: Pemeriksa menjalankan program setelah kamu mengizinkan.
 
-Alur satu proses: Perencana -> Pelaksana -> pemeriksaan -> (ulang ke Pelaksana bila belum
-sempurna) -> Perencana menjelaskan. Pesan lanjutan di halaman yang sama **melanjutkan proyek
+Alur satu proses: Perencana -> Pelaksana (menulis) -> Pemeriksa (menjalankan + menentukan) ->
+(koreksi kembali ke Pelaksana bila belum jadi) -> Perencana menjelaskan. Pesan lanjutan di halaman yang sama **melanjutkan proyek
 yang sama** (berkas lama ikut dibawa); tombol **Proyek baru** memulai dari nol. Bila
 Perencana butuh info, ia bertanya dulu; jawabanmu digabung dengan permintaan awal.
 
 **Log langsung.** Selama proses berjalan, lencana kecil muncul di pojok kanan atas chat Agent
-dengan aktivitas saat ini: memuat model, berpikir, menulis kode, membongkar model, pemeriksaan
-otomatis, menjalankan program uji, atau menunggu izin (disertai nama model dan detik berjalan).
+dengan aktivitas saat ini: memuat model, berpikir, menulis kode, membongkar model, Pemeriksa
+memeriksa dan menjalankan program, atau menunggu izin (disertai nama model dan detik berjalan).
 Ketuk lencana untuk membuka panel: aktivitas sekarang, status tiap model (belum dimuat / sedang
 dimuat / termuat / sedang dibongkar / sudah dibongkar), keluaran model yang sedang ditulis, dan
 riwayat proses bertanda waktu. Tombol **Salin log** menyalin seluruhnya. Setelah selesai, lencana
 tetap ada agar log bisa ditinjau. Log hidup selama halaman terbuka (tidak disimpan ke riwayat).
 
-Pemeriksaan tidak hanya mengandalkan model kecil, karena model 1-4B sering salah menilai.
-Bukti dari kode lebih berat daripada pendapat model:
+Pembagian tugas dibuat tegas, karena model 1-4B sering salah menilai dan sering salah format:
 
-- Orkestrator (kode, bukan model) selalu memeriksa dulu: berkas yang diminta ada, sintaks
-  Python/JSON/JavaScript/Bash benar, dan uji jalan bila diizinkan. Bila gagal, hasilnya langsung
-  dikembalikan ke Pelaksana tanpa memuat model Pemeriksa (hemat waktu muat).
-- **Harapan keluaran**: Perencana boleh mengisi `harapan` (teks yang pasti muncul di keluaran,
-  mis. `88` untuk jumlah 10 bilangan Fibonacci). Bila keluaran program memuatnya, hasil langsung
-  **lolos** dan Pemeriksa dilewati. (Program yang sekadar mencetak jawabannya tanpa menghitung
-  juga akan lolos; Agent memeriksa hasil, bukan cara kerjanya.)
-- **Penolakan Pemeriksa harus konkret**: masalah kosong ("?:? -") diabaikan, dan Pemeriksa wajib
-  mengutip (`dilihat`) bagian keluaran/kode yang salah. Kutipan yang tidak ada di keluaran atau
-  kode dianggap halusinasi dan penolakannya diabaikan.
+- **Pelaksana hanya menulis.** Ia tidak menjalankan dan tidak menilai programnya.
+- **Pemeriksa menjalankan dan menentukan.** Hasil Pelaksana langsung ke Pemeriksa, setiap putaran
+  (juga bila sintaksnya rusak). Di tahap Pemeriksa, programnya dijalankan (berkas ada, sintaks
+  Python/JSON/JavaScript/Bash benar, uji jalan bila kamu mengizinkan; izin ditanya sekali per
+  proses). Hasilnya jadi **fakta** di prompt Pemeriksa, lalu **Pemeriksa yang memutuskan**:
+  `ok=true` = dinyatakan jadi (selesai), `ok=false` = koreksinya (masalah + perbaikan) dikirim ke
+  Pelaksana untuk putaran berikutnya.
+- **Tidak ada jalan pintas dari kode.** Kode tidak lagi meloloskan hasil di belakang Pemeriksa
+  (mis. karena `harapan` terpenuhi) dan tidak membalik penolakan Pemeriksa. `harapan` dari
+  Perencana (teks yang pasti muncul di keluaran, mis. `88`) hanya menjadi fakta tambahan, dan
+  bisa keliru.
+- **Penolakan harus punya koreksi.** `ok=false` wajib menyebut masalah konkret; bila kosong,
+  Pemeriksa ditanya sekali lagi. Bila tetap kosong, hasil diterima (koreksi kosong tidak bisa
+  dikirim ke Pelaksana) dan itu dicatat di ringkasan.
+- **Pengecualian yang tercatat**: (1) tidak ada berkas sama sekali, Pemeriksa menolak tanpa
+  memanggil model; (2) jawaban Pemeriksa dua kali bukan JSON, keputusan mengikuti hasil
+  menjalankan program.
+- **Laporan jujur.** Bila Pemeriksa menyatakan jadi padahal hasil menjalankan mencatat `GAGAL`,
+  laporan akhir menambahkan peringatan. Kamu tetap yang terakhir menilai.
 - **Hasil terbaik dipulihkan**: bila akhirnya belum sempurna, berkas dikembalikan ke putaran
   terbaik, supaya koreksi yang keliru tidak merusak hasil yang sudah baik.
 - **Laporan akhir**: Penjelas hanya menulis prosa tentang programnya. Status, berkas, keluaran uji
@@ -430,9 +438,9 @@ berkas yang relevan:
 |---|---|
 | teks prompt Perencana/Pelaksana/Pemeriksa/Penjelas, susunan isi prompt | `tim/tim_prompt.py` |
 | batas token, batas waktu uji, folder kerja, batas berkas, validasi pengaturan dari web | `tim/tim_config.py` |
-| alur putaran, kapan Pemeriksa dilewati, pemulihan hasil terbaik | `tim/tim_alur.py` |
-| tiap tahap model (Perencana, Pelaksana, Pemeriksa, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
-| aturan pemeriksaan otomatis, uji jalan, validasi penilaian Pemeriksa | `tim/tim_cek.py` |
+| alur putaran (Pelaksana menulis -> Pemeriksa menjalankan + menentukan), pemulihan hasil terbaik | `tim/tim_alur.py` |
+| tiap tahap model (Perencana, Pelaksana menulis, Pemeriksa menjalankan + menentukan, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
+| alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian | `tim/tim_cek.py` |
 | cara membaca keluaran Pelaksana (`=== FILE: ===`), nama berkas aman | `tim/tim_berkas.py` |
 | lembar tugas: perintah uji yang diizinkan, harapan keluaran | `tim/tim_spec.py` |
 | muat/bongkar model di llama-server | `tim/tim_model.py` |
@@ -580,7 +588,7 @@ agen dan skill (`tests/test_agen.py`, memakai model palsu),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
-Agent: urutan muat/bongkar model, putaran koreksi, pemeriksaan otomatis, keamanan nama berkas, dan
+Agent: urutan muat/bongkar model, putaran koreksi, Pemeriksa yang menjalankan dan menentukan, keamanan nama berkas, dan
 endpoint `/api/agent`, dan log langsung di halaman Agent (`tests/test_tim.py` + `tests/agent_smoke.js`,
 memakai llama-server dan model palsu; tes `agent_smoke.js` butuh `node`).
 rotasi `aksi.log` (`tests/test_aksilog.py`), serta `start.sh` dan `deploy/pasang-layanan.sh`
