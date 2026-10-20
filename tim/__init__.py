@@ -7,14 +7,17 @@ Peran (2 model: Perencana = Pemeriksa = model 1, Pelaksana = model 2;
 
   Perencana  menerima perintah pengguna, menyusun "lembar tugas" (tugas.json + tugas.md)
              dan, di akhir, menjelaskan hasilnya kepada pengguna.
-  Pelaksana  membaca lembar tugas lalu menulis program ke folder hasil/.
-  Pemeriksa  memeriksa hasilnya. Lolos -> selesai; belum -> koreksi dikirim balik ke
+  Pelaksana  membaca lembar tugas lalu HANYA menulis program ke folder hasil/. Ia tidak
+             menjalankan apa pun.
+  Pemeriksa  menerima hasil Pelaksana langsung, MENJALANKAN programnya (berkas ada, sintaks
+             Python/JSON/JS/Bash, uji jalan bila pengguna mengizinkan), lalu MENENTUKAN benar
+             atau salah: dinyatakan jadi (selesai) atau memberi koreksi yang dikirim balik ke
              Pelaksana. Batas putaran ditentukan pengguna.
 
-Pemeriksaan tidak hanya mengandalkan model: orkestrator (kode ini, bukan model) selalu
-menjalankan pemeriksaan otomatis dulu (sintaks Python/JSON/JS/Bash, berkas yang diminta ada,
-dan uji jalan bila pengguna mengizinkan). Bila pemeriksaan otomatis gagal, hasilnya langsung
-dikembalikan ke Pelaksana tanpa memuat model Pemeriksa (hemat waktu muat model di Pi).
+Tidak ada jalan pintas dari kode yang melewati Pemeriksa: hasil menjalankan program dan
+"harapan" Perencana hanya menjadi fakta bagi Pemeriksa. Pengecualian yang tercatat di
+tim_tahap.tahap_periksa: tidak ada berkas sama sekali, atau jawaban Pemeriksa tidak terbaca.
+Laporan akhir memberi peringatan bila Pemeriksa menyatakan jadi padahal program gagal.
 
 Memori: model dimuat satu per satu lewat llama-server mode router (/models/load dan
 /models/unload). Dengan "bongkar tiap tahap", model dibongkar begitu tahapnya selesai,
@@ -38,9 +41,9 @@ Susunan paket (tiap berkas satu tanggung jawab; lihat docstring masing-masing):
   tim_llm      aliran jawaban model dan pengambilan JSON
   tim_berkas   nama berkas aman, tulis/baca proyek, penguraian keluaran Pelaksana
   tim_spec     lembar tugas dari Perencana
-  tim_cek      pemeriksaan otomatis dan validasi penilaian Pemeriksa
+  tim_cek      alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian
   tim_laporan  bagian fakta laporan akhir
-  tim_tahap    tahap kerja model (generator event)
+  tim_tahap    tahap kerja model: Pelaksana menulis, Pemeriksa menjalankan + menentukan
   tim_riwayat  riwayat proses: daftar, baca, hapus
   tim_alur     orkestrator dan pintu masuk jalankan()
 
@@ -62,6 +65,7 @@ from .tim_prompt import (
     anggaran_prompt,
     blok_berkas,
     pesan_chat,
+    pesan_minta_masalah,
     pesan_ulang_json,
     prompt_jelas,
     prompt_periksa,
@@ -98,6 +102,7 @@ from .tim_cek import (
     cek_jalan,
     cek_statis,
     cocok_keluaran,
+    nilai_cadangan,
     perintah_uji,
     rapikan_nilai,
     teks_koreksi,
@@ -108,6 +113,7 @@ from .tim_laporan import (
 from .tim_tahap import (
     Jejak,
     event_tahap,
+    pemeriksa_menjalankan,
     tahap_jelaskan,
     tahap_periksa,
     tahap_rencana,
