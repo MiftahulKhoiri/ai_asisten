@@ -13,10 +13,10 @@ KERJA = Path(os.environ.get("ASISTEN_AGENT_DIR", str(Path.home() / "agent_kerja"
 TOKEN_TAHAP = agen._env_int("ASISTEN_AGENT_TOKENS", 3000, 256)   # tahap Pelaksana (menulis kode)
 
 
-TOKEN_RENCANA = 1000
+TOKEN_RENCANA = 1500
 
 
-TOKEN_PERIKSA = 800
+TOKEN_PERIKSA = 1000
 
 
 TOKEN_JELAS = 800
