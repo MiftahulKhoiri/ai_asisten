@@ -389,7 +389,7 @@
     const model = cfg.mode === 3 ? [cfg.p, cfg.e, cfg.c] : [cfg.p, cfg.e, cfg.p];
     const baris = [['rencana', '🧭', 'Perencana', model[0], 'menyusun lembar tugas, lalu menjelaskan hasil'],
       ['tulis', '✏️', 'Pelaksana', model[1], 'menulis program'],
-      ['periksa', '🔎', 'Pemeriksa', model[2], 'memeriksa dan memberi koreksi']];
+      ['periksa', '🔎', 'Pemeriksa', model[2], 'menjalankan program, menentukan benar/salah, memberi koreksi']];
     const k = el('div', 'kartu tim');
     k.appendChild(el('b', 'jdl', 'Tim siap · maks ' + cfg.maks + ' putaran'));
     for (const [kunci, ik, nama, mdl, tugas] of baris) {
@@ -418,7 +418,7 @@
     URUT.forEach((k, i) => { if (selesaiSet.has(k)) terjauh = i; });
     URUT.forEach((k, i) => {
       const c = $('st_' + k), akt = (k === kunci), sel = !akt && selesaiSet.has(k);
-      const lewat = alurTutup && !akt && !sel && i < terjauh;      // mis. Pemeriksa dilewati
+      const lewat = alurTutup && !akt && !sel && i < terjauh;      // tahap yang tidak dilalui
       c.className = 'lk' + (akt ? ' aktif' : sel ? ' selesai' : lewat ? ' lewat' : '');
       c.querySelector('.bl').textContent = sel ? '✓' : lewat ? '–' : String(i + 1);
       c.querySelector('.nm').textContent = PERAN[k] +
@@ -489,15 +489,15 @@
   }
   function kartuCek(ev) {
     const d = el('details', 'tool'), s = el('summary');
-    s.append(el('span', 'ik', '🔧'), el('span', 'rg', 'Pemeriksaan otomatis' + (ev.jalan && ev.jalan !== 'dilewati' ? ' · uji jalan ' + ev.jalan : '')),
-      lencana(ev.ok ? 'ok' : 'gagal', ev.ok ? 'lolos' : 'gagal'));
+    s.append(el('span', 'ik', '🔧'), el('span', 'rg', 'Pemeriksa menjalankan program' + (ev.jalan && ev.jalan !== 'dilewati' ? ' · uji jalan ' + ev.jalan : '')),
+      lencana(ev.ok ? 'ok' : 'gagal', ev.ok ? 'tanpa kesalahan' : 'gagal'));
     const pre = el('pre'); pre.textContent = ev.d;
     d.append(s, pre); if (!ev.ok) d.open = true;
     $('pesan').appendChild(d); gulir();
   }
   function kartuNilai(ev) {
     const k = el('div', 'kartu nilai ' + (ev.ok ? 'ok' : 'gagal'));
-    const b = el('div', 'baris'); b.append(lencana(ev.ok ? 'ok' : 'ditolak', ev.ok ? 'Pemeriksa: OK' : 'Pemeriksa: perlu perbaikan'));
+    const b = el('div', 'baris'); b.append(lencana(ev.ok ? 'ok' : 'ditolak', ev.ok ? 'Pemeriksa: jadi' : 'Pemeriksa: perlu perbaikan'));
     k.appendChild(b);
     if (ev.ringkas) k.appendChild(el('div', '', ev.ringkas));
     if ((ev.masalah || []).length) { k.appendChild(el('div', 'sub', 'Masalah')); k.appendChild(daftarUl(ev.masalah)); }
@@ -565,7 +565,7 @@
         await apij('/api/konfirmasi', {method: 'POST', body: {kid: ev.kid, setuju}});
         row.textContent = setuju ? '✔ Diizinkan' : '✖ Ditolak';
         catatLog(setuju ? '✔' : '✖', setuju ? 'Izin diberikan' : 'Izin ditolak', setuju ? 'ok' : 'izin');
-        if (ev.jenis === 'uji') setAktif(setuju ? 'Menjalankan program uji' : 'Pemeriksaan otomatis', '');
+        if (ev.jenis === 'uji') setAktif(setuju ? 'Pemeriksa menjalankan program' : 'Pemeriksa memeriksa tanpa uji jalan', '');
         else setAktif('Melanjutkan proses', '');
       } catch (e) { row.textContent = 'Gagal: ' + e.message; }
     };
@@ -662,7 +662,7 @@
     if (keluaran.length > 6000) keluaran = keluaran.slice(-4000);
     if (panelBuka) gambarKeluaran();
   }
-  const LABEL_AKHIR = {lolos: 'Selesai · lolos pemeriksaan', belum: 'Selesai · belum sempurna',
+  const LABEL_AKHIR = {lolos: 'Selesai · dinyatakan jadi', belum: 'Selesai · belum sempurna',
     butuh_info: 'Menunggu infomu', batal: 'Dibatalkan', error: 'Berhenti karena error'};
   function tangani(ev, st) {
     switch (ev.t) {
@@ -712,22 +712,22 @@
         kartuBerkas(ev.nama, ev.isi, ev.baru, ev.dipotong);
         catatLog('✏', (ev.baru ? 'Membuat ' : 'Mengubah ') + ev.nama); break;
       case 'cek_mulai':
-        setAktif('Pemeriksaan otomatis', '');
-        catatLog('🔧', 'Pemeriksaan otomatis: berkas dan sintaks'); break;
+        setAktif('Pemeriksa memeriksa hasil', '');
+        catatLog('🔧', 'Pemeriksa memeriksa berkas dan sintaks'); break;
       case 'uji_mulai':
-        setAktif('Menjalankan program uji', '');
-        catatLog('▶', 'Menjalankan uji: ' + ev.d); break;
+        setAktif('Pemeriksa menjalankan program', '');
+        catatLog('▶', 'Pemeriksa menjalankan uji: ' + ev.d); break;
       case 'cek': {
         kartuCek(ev);
         const jalan = (ev.jalan === 'lolos' || ev.jalan === 'gagal') ? ' · uji jalan ' + ev.jalan : '';
         const harap = ev.harapan === true ? ' · sesuai harapan Perencana' : '';
-        catatLog(ev.ok ? '✔' : '✖', 'Pemeriksaan otomatis ' + (ev.ok ? 'lolos' : 'gagal') + jalan + harap, ev.ok ? 'ok' : 'gagal');
+        catatLog(ev.ok ? '✔' : '✖', 'Hasil Pemeriksa menjalankan program: ' + (ev.ok ? 'tanpa kesalahan' : 'gagal') + jalan + harap, ev.ok ? 'ok' : 'gagal');
         for (const b of ev.d.split('\n').filter(x => x.indexOf('GAGAL') === 0).slice(0, 3)) catatLog('', b.slice(0, 160), 'sub gagal');
         break;
       }
       case 'nilai':
         tutupKartu(st, ev.ok ? 'ok' : 'ditolak', ev.ok ? 'OK' : 'perlu perbaikan'); kartuNilai(ev);
-        catatLog(ev.ok ? '✔' : '✖', 'Pemeriksa: ' + (ev.ok ? 'OK' : 'perlu perbaikan') + (ev.ringkas ? ' - ' + ev.ringkas : ''), ev.ok ? 'ok' : 'izin');
+        catatLog(ev.ok ? '✔' : '✖', 'Pemeriksa: ' + (ev.ok ? 'dinyatakan jadi' : 'perlu perbaikan') + (ev.ringkas ? ' - ' + ev.ringkas : ''), ev.ok ? 'ok' : 'izin');
         for (const m of (ev.masalah || []).slice(0, 3)) catatLog('', m.slice(0, 160), 'sub');
         break;
       case 'token':     // penjelasan akhir dari Perencana
