@@ -55,7 +55,7 @@ def _rapikan_jalankan(v, nama_berkas):
         return []
     if v[0] not in conf.INTERPRETER or v[1] not in nama_berkas:
         return []
-    if any(not re.fullmatch(r"[\w./=:,+-]{1,60}", a) for a in v[2:]):
+    if any(not re.fullmatch(r"[\w./=:,+*%-]{1,60}", a) for a in v[2:]):
         return []
     if v[0] == "python":
         v[0] = "python3"
