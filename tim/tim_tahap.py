@@ -121,9 +121,9 @@ def tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran):
     return ditulis, masalah
 
 
-def pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah, ctx, izin):
+def pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah):
     """Pemeriksa menjalankan hasil Pelaksana: berkas ada, sintaks benar, lalu uji jalan program
-    (bila diizinkan pengguna). Kembalian: bukti {ok, baris, jalan, keluaran, harapan}.
+    (bila diizinkan di pengaturan). Kembalian: bukti {ok, baris, jalan, keluaran, harapan}.
 
     Ini hanya mengumpulkan FAKTA untuk Pemeriksa; keputusan benar/salah ada di tahap_periksa.
     Harapan Perencana juga hanya fakta tambahan (bisa keliru), bukan jalan pintas lolos."""
@@ -135,7 +135,7 @@ def pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah, ctx, izin):
     if ok:
         if spec["jalankan"] and cfg["uji"]:
             yield {"t": "uji_mulai", "d": " ".join(spec["jalankan"]), "oleh": "Pemeriksa"}
-        status_jalan, jalan, keluaran = cek_jalan(hasil_dir, spec, ctx, izin, cfg["uji"])
+        status_jalan, jalan, keluaran = cek_jalan(hasil_dir, spec, cfg["uji"])
         baris += jalan
         ok = status_jalan != "gagal"
     if ok and keluaran is not None and spec["harapan"]:
