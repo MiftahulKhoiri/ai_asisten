@@ -97,7 +97,7 @@ def tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran):
         except ValueError as e:
             masalah.append(str(e))
             continue
-        if not lengkap:
+        if not lengkap and terpotong:    # lupa '=== END ===' tanpa terpotong tetap diterima
             masalah.append("%s: keluaran terpotong (batas token tercapai); tulis lebih ringkas "
                            "atau pecah menjadi berkas yang lebih kecil." % nama)
             continue
@@ -159,8 +159,9 @@ def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran):
     Kode tidak membalik keputusan itu. Pengecualian yang disengaja, semuanya tercatat di
     'ringkas': (1) tidak ada berkas sama sekali, tidak ada yang bisa dinilai; (2) jawaban tidak
     terbaca sebagai JSON dua kali, keputusan memakai hasil menjalankan program; (3) menolak
-    tanpa menyebut satu masalah pun setelah ditanya ulang, karena koreksi kosong tidak bisa
-    dikirim ke Pelaksana."""
+    tanpa menyebut satu masalah pun setelah ditanya ulang: bila program lolos dijalankan,
+    diterima; bila program gagal, penolakan tetap berlaku dan masalahnya diambil dari hasil
+    menjalankan (koreksi kosong tidak bisa dikirim ke Pelaksana)."""
     berkas = baca_proyek(hasil_dir)
     if not berkas:
         return {"ok": False, "dilihat": "", "masalah": ["Tidak ada berkas hasil untuk diperiksa."],
@@ -188,9 +189,15 @@ def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran):
         if d2 is not None:
             nilai = rapikan_nilai(d2)
         if not nilai["ok"] and not nilai["masalah"]:
-            nilai.update(ok=True, perbaikan="", dilihat="",
-                         ringkas=(nilai["ringkas"] + " (menolak tanpa menyebut masalah "
-                                  "konkret; diterima)").strip())
+            if bukti["ok"]:
+                nilai.update(ok=True, perbaikan="", dilihat="",
+                             ringkas=(nilai["ringkas"] + " (menolak tanpa menyebut masalah "
+                                      "konkret; diterima)").strip())
+            else:    # program gagal: penolakan tetap sah, masalahnya diambil dari hasil menjalankan
+                gagal = [b[:300] for b in bukti["baris"] if b.startswith("GAGAL")][:5]
+                nilai.update(masalah=gagal or ["Menjalankan program gagal."],
+                             perbaikan=nilai["perbaikan"]
+                             or "Perbaiki kesalahan yang tercatat di hasil menjalankan program.")
     return nilai
 
 
