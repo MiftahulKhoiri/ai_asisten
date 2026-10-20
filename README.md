@@ -364,28 +364,39 @@ Pilihan di halaman Agent:
   Minimal harus ada 2 model yang berbeda.
 - **Maksimal putaran koreksi** (1-10): berapa kali Pelaksana boleh mengulang.
 - **Bongkar model tiap tahap**: hemat RAM; model yang dipakai tahap berikutnya tidak dibongkar.
-- **Boleh uji jalan program**: Pemeriksa menjalankan program setelah kamu mengizinkan.
+- **Izinkan Pemeriksa menjalankan program hasil**: izin ada di pengaturan ini (mati secara bawaan).
+  Bila menyala, program dijalankan tanpa bertanya lagi, jadi proses yang lama tidak berhenti
+  menunggu jawabanmu. Bila mati, Pemeriksa hanya mengecek berkas dan sintaks.
 
 Alur satu proses: Perencana -> Pelaksana (menulis) -> Pemeriksa (menjalankan + menentukan) ->
 (koreksi kembali ke Pelaksana bila belum jadi) -> Perencana menjelaskan. Pesan lanjutan di halaman yang sama **melanjutkan proyek
 yang sama** (berkas lama ikut dibawa); tombol **Proyek baru** memulai dari nol. Bila
 Perencana butuh info, ia bertanya dulu; jawabanmu digabung dengan permintaan awal.
 
+**Berjalan di latar belakang.** Proses Agent berjalan di server, bukan di halaman. Menutup
+halaman, putus sinyal, atau HP tidur **tidak menghentikannya**; yang menghentikan hanya tombol
+**Stop** atau mematikan aplikasi. Buka halaman Agent lagi kapan saja: bila proses masih
+berjalan, halaman otomatis tersambung dan memutar ulang semua yang sudah terjadi (tahap,
+berkas, hasil pemeriksaan, log berwaktu), lalu memantau terus. Proses yang sudah selesai tetap
+bisa diputar ulang sampai proses berikutnya dimulai atau aplikasi dimatikan; setelah itu ada
+ringkasan di Riwayat. Proses tampil di Riwayat sejak mulai dengan status **berjalan**; bila
+aplikasi dimatikan di tengah proses, statusnya jadi **terhenti**. Satu proses Agent pada satu
+waktu. Catatan: aplikasi harus tetap hidup (terminal/Termux/layanan systemd jangan ditutup).
+
 **Log langsung.** Selama proses berjalan, lencana kecil muncul di pojok kanan atas chat Agent
-dengan aktivitas saat ini: memuat model, berpikir, menulis kode, membongkar model, Pemeriksa
-memeriksa dan menjalankan program, atau menunggu izin (disertai nama model dan detik berjalan).
+dengan aktivitas saat ini: memuat model, berpikir, menulis kode, membongkar model, atau Pemeriksa
+memeriksa dan menjalankan program (disertai nama model dan detik berjalan).
 Ketuk lencana untuk membuka panel: aktivitas sekarang, status tiap model (belum dimuat / sedang
 dimuat / termuat / sedang dibongkar / sudah dibongkar), keluaran model yang sedang ditulis, dan
 riwayat proses bertanda waktu. Tombol **Salin log** menyalin seluruhnya. Setelah selesai, lencana
-tetap ada agar log bisa ditinjau. Log hidup selama halaman terbuka (tidak disimpan ke riwayat).
+tetap ada agar log bisa ditinjau. Log disimpan di server selama aplikasi hidup, jadi bisa dibuka lagi dari halaman atau HP lain.
 
 Pembagian tugas dibuat tegas, karena model 1-4B sering salah menilai dan sering salah format:
 
 - **Pelaksana hanya menulis.** Ia tidak menjalankan dan tidak menilai programnya.
 - **Pemeriksa menjalankan dan menentukan.** Hasil Pelaksana langsung ke Pemeriksa, setiap putaran
   (juga bila sintaksnya rusak). Di tahap Pemeriksa, programnya dijalankan (berkas ada, sintaks
-  Python/JSON/JavaScript/Bash benar, uji jalan bila kamu mengizinkan; izin ditanya sekali per
-  proses). Hasilnya jadi **fakta** di prompt Pemeriksa, lalu **Pemeriksa yang memutuskan**:
+  Python/JSON/JavaScript/Bash benar, uji jalan bila diizinkan di pengaturan). Hasilnya jadi **fakta** di prompt Pemeriksa, lalu **Pemeriksa yang memutuskan**:
   `ok=true` = dinyatakan jadi (selesai), `ok=false` = koreksinya (masalah + perbaikan) dikirim ke
   Pelaksana untuk putaran berikutnya.
 - **Tidak ada jalan pintas dari kode.** Kode tidak lagi meloloskan hasil di belakang Pemeriksa
@@ -393,8 +404,8 @@ Pembagian tugas dibuat tegas, karena model 1-4B sering salah menilai dan sering 
   Perencana (teks yang pasti muncul di keluaran, mis. `88`) hanya menjadi fakta tambahan, dan
   bisa keliru.
 - **Penolakan harus punya koreksi.** `ok=false` wajib menyebut masalah konkret; bila kosong,
-  Pemeriksa ditanya sekali lagi. Bila tetap kosong, hasil diterima (koreksi kosong tidak bisa
-  dikirim ke Pelaksana) dan itu dicatat di ringkasan.
+  Pemeriksa ditanya sekali lagi. Bila tetap kosong: program yang lolos dijalankan diterima (dicatat di
+  ringkasan); program yang gagal tetap ditolak dengan masalah dari hasil menjalankan.
 - **Pengecualian yang tercatat**: (1) tidak ada berkas sama sekali, Pemeriksa menolak tanpa
   memanggil model; (2) jawaban Pemeriksa dua kali bukan JSON, keputusan mengikuti hasil
   menjalankan program.
@@ -417,8 +428,8 @@ hasil program (tidak masuk tempat sampah, tidak bisa dikembalikan), dan selalu m
 Proses yang sedang berjalan tidak bisa dihapus (dilewati oleh Hapus semua). Hanya folder proses
 (`AAAAMMDD-JJMMDD-xxxx`) yang disentuh; folder atau berkas lain di `~/agent_kerja` tetap aman.
 
-Keamanan: program buatan model dijalankan **hanya setelah kamu mengizinkan** (ditanya sekali per
-proses, juga di mode AUTO), tanpa shell, di folder `hasil/`, dengan batas waktu
+Keamanan: program buatan model dijalankan **hanya bila kamu menyalakan izinnya di pengaturan**
+(mati secara bawaan; menyalakannya berarti kamu mempercayai model dan tugasnya), tanpa shell, di folder `hasil/`, dengan batas waktu
 (`ASISTEN_AGENT_UJI_DTK`). Perintah uji dibatasi pada `python3`/`node` + berkas dari lembar tugas.
 Nama berkas dari model divalidasi (tanpa `..`, tanpa titik di depan, ekstensi yang dikenal).
 Tetap periksa kodenya bila ragu.
