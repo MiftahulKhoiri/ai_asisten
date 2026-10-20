@@ -61,6 +61,7 @@
   const aktv = {label: '', model: '', mulai: 0, selesai: false, gagal: false, izin: false};
   let logList = [], logMulai = 0, logAkhir = 0, modelState = {}, peranModel = {};
   let keluaran = '', keluaranJudul = '', panelBuka = false;
+  let evTs = null;   // detik sejak proses mulai, dari event server yang sedang diproses (null = sekarang)
 
   function mmss(ms) {
     const d = Math.max(0, Math.floor(ms / 1000));
@@ -75,7 +76,7 @@
     if (dekat) sc.scrollTop = sc.scrollHeight;
   }
   function catatLog(ikon, teks, kelas) {
-    const e = {t: Date.now() - logMulai, ikon, teks, kelas: kelas || '', el: null};
+    const e = {t: evTs !== null ? evTs * 1000 : Date.now() - logMulai, ikon, teks, kelas: kelas || '', el: null};
     logList.push(e);
     if (logList.length > LOG_MAKS) { const buang = logList.shift(); if (buang.el) buang.el.remove(); }
     if (panelBuka) { gambarBarisLog(e); gambarRingkas(); }
@@ -91,12 +92,13 @@
     if (panelBuka) gambarModel();
   }
   function setAktif(label, model, izin) {
-    aktv.label = label; aktv.model = model || ''; aktv.mulai = Date.now(); aktv.izin = !!izin;
+    aktv.label = label; aktv.model = model || ''; aktv.izin = !!izin;
+    aktv.mulai = evTs !== null ? logMulai + evTs * 1000 : Date.now();
     renderLencana();
   }
   function akhiriLog(label, gagal) {
     aktv.selesai = true; aktv.gagal = !!gagal; aktv.label = label; aktv.model = ''; aktv.izin = false;
-    logAkhir = Date.now();
+    logAkhir = evTs !== null ? logMulai + evTs * 1000 : Date.now();
     renderLencana();
   }
   function resetLog() {
@@ -104,19 +106,26 @@
     $('logDaftar').innerHTML = '';
     tutupPanel(); renderLencana();
   }
-  function mulaiLog(teks) {
-    logList = []; $('logDaftar').innerHTML = ''; logMulai = Date.now(); logAkhir = 0;
-    keluaran = ''; keluaranJudul = ''; aktv.selesai = false; aktv.gagal = false;
+  function susunModel(m) {   // {perencana, pelaksana, pemeriksa} -> peran per model, urutan tetap
     modelState = {}; peranModel = {};
-    const pm = cfg.mode === 3
-      ? [[cfg.p, 'Perencana · Penjelas'], [cfg.e, 'Pelaksana'], [cfg.c, 'Pemeriksa']]
-      : [[cfg.p, 'Perencana · Pemeriksa · Penjelas'], [cfg.e, 'Pelaksana']];
-    for (const [n, peran] of pm) {
-      peranModel[n] = peranModel[n] ? peranModel[n] + ' · ' + peran : peran;
-      modelState[n] = 'belum';
+    const peran = {};
+    for (const [n, r] of [[m.perencana, 'Perencana'], [m.pelaksana, 'Pelaksana'], [m.pemeriksa, 'Pemeriksa'], [m.perencana, 'Penjelas']]) {
+      if (!n) continue; (peran[n] = peran[n] || new Set()).add(r);
     }
-    setAktif('Menghubungi server', '');
-    catatLog('▶', 'Perintah dikirim: ' + teks.replace(/\s+/g, ' ').slice(0, 80));
+    for (const n of [m.perencana, m.pelaksana, m.pemeriksa]) {
+      if (!n || modelState[n]) continue;
+      modelState[n] = 'belum';
+      peranModel[n] = ['Perencana', 'Pemeriksa', 'Penjelas', 'Pelaksana'].filter(r => peran[n].has(r)).join(' · ');
+    }
+  }
+  function mulaiLog(teks, lalu) {   // `lalu`: detik yang sudah berjalan bila memantau proses yang sudah mulai
+    logList = []; $('logDaftar').innerHTML = ''; logMulai = Date.now() - (lalu || 0) * 1000; logAkhir = 0;
+    keluaran = ''; keluaranJudul = ''; aktv.selesai = false; aktv.gagal = false;
+    susunModel({perencana: cfg.p, pelaksana: cfg.e, pemeriksa: cfg.mode === 3 ? cfg.c : cfg.p});
+    evTs = lalu ? 0 : null;
+    setAktif(lalu ? 'Menyambung ke proses' : 'Menghubungi server', '');
+    catatLog('▶', (lalu ? 'Perintah: ' : 'Perintah dikirim: ') + teks.replace(/\s+/g, ' ').slice(0, 80));
+    evTs = null;
     if (panelBuka) bukaPanel();
   }
   function renderLencana() {
@@ -216,7 +225,7 @@
     try { Object.assign(cfg, JSON.parse(localStorage.getItem('ag_cfg') || '{}')); } catch (e) { /* abaikan */ }
     cfg.mode = cfg.mode === 3 ? 3 : 2;
     cfg.maks = Math.max(1, Math.min(10, parseInt(cfg.maks, 10) || 3));
-    cfg.bongkar = cfg.bongkar !== false; cfg.uji = cfg.uji !== false;
+    cfg.bongkar = cfg.bongkar !== false; cfg.izinUji = cfg.izinUji === true;   // izin harus sengaja dinyalakan
   }
   function simpanCfg() {
     try { localStorage.setItem('ag_cfg', JSON.stringify(cfg)); } catch (e) { /* abaikan */ }
@@ -257,7 +266,7 @@
       isiPilihan($('selP'), cfg.p); isiPilihan($('selE'), cfg.e); isiPilihan($('selC'), cfg.c);
     }
     $('inpMaks').value = cfg.maks;
-    $('cbBongkar').checked = cfg.bongkar; $('cbUji').checked = cfg.uji;
+    $('cbBongkar').checked = cfg.bongkar; $('cbUji').checked = cfg.izinUji;
     cekSetup();
   }
   function cekSetup() {
@@ -286,6 +295,8 @@
       models = statusSrv.models || [];
       bawaanModel();
       renderSetup(!!paksa);
+      const p = statusSrv.proses;
+      if (p && p.aktif && layar === 'setup' && !sibuk) lampirkan(p);   // proses masih jalan di server
     } catch (e) {
       if (e.message !== '401') { $('setupPesan').className = 'err'; $('setupPesan').textContent = 'Tidak bisa terhubung ke server.'; }
     }
@@ -304,7 +315,7 @@
   $('btnTambah').onclick = () => ubahMaks(cfg.maks + 1);
   $('inpMaks').addEventListener('change', e => ubahMaks(e.target.value));
   $('cbBongkar').onchange = e => { cfg.bongkar = e.target.checked; simpanCfg(); cekSetup(); };
-  $('cbUji').onchange = e => { cfg.uji = e.target.checked; simpanCfg(); };
+  $('cbUji').onchange = e => { cfg.izinUji = e.target.checked; simpanCfg(); };
   $('btnMuatUlang').onclick = async () => {
     const b = $('btnMuatUlang'); b.disabled = true;
     try { await apij('/api/model/muat-ulang', {method: 'POST', body: {}}); } catch (e) { if (e.message !== '401') toast(e.message); }
@@ -319,7 +330,7 @@
   };
 
   /* ---------- riwayat ---------- */
-  const LABEL_STATUS = {lolos: '✔ lolos', belum: '⚠ belum sempurna', butuh_info: '❓ butuh info', batal: 'dibatalkan', error: '✖ error'};
+  const LABEL_STATUS = {berjalan: '⏳ berjalan', terhenti: '⚠ terhenti', lolos: '✔ lolos', belum: '⚠ belum sempurna', butuh_info: '❓ butuh info', batal: 'dibatalkan', error: '✖ error'};
   const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   function waktuRingkas(iso) {   // 2026-10-19T00:35:05 -> "19 Okt · 00:35"
     const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso || '');
@@ -366,6 +377,9 @@
   }
   $('btnHapusRiwayat').onclick = hapusSemuaRiwayat;
   async function bukaRun(id) {
+    if (sibuk) { toast('Tunggu proses selesai atau tekan Stop.'); return; }
+    const p = statusSrv && statusSrv.proses;
+    if (p && p.id === id) { lampirkan(p); return; }
     let r;
     try { r = await apij('/api/agent/run/' + id); } catch (e) { if (e.message !== '401') toast(e.message); return; }
     masukKerja(true);
@@ -397,6 +411,10 @@
       rt.append(el('b', '', nama + ' · ' + mdl), el('small', '', tugas));
       r.append(el('span', 'rk', ik), rt); k.appendChild(r);
     }
+    k.appendChild(el('div', 'redup kecil', cfg.izinUji
+      ? 'Uji jalan: DIIZINKAN. Program hasil dijalankan Pemeriksa tanpa bertanya lagi.'
+      : 'Uji jalan: mati (Pemeriksa hanya cek sintaks). Nyalakan di Pengaturan bila perlu.'));
+    k.appendChild(el('div', 'redup kecil', 'Proses berjalan di server: halaman boleh ditutup lalu dibuka lagi untuk memantau.'));
     k.appendChild(el('div', 'redup kecil', 'Tulis apa yang ingin dibuat.'));
     $('pesan').appendChild(k);
   }
@@ -620,32 +638,77 @@
     tambahUser(diketik); setSibuk(true); resetAlur(); $('infoAlur').textContent = 'Menghubungi server ...';
     mulaiLog(diketik);
     const st = {kartu: null, bubble: null, raw: '', teks};
+    let sesi;
     try {
       const body = {teks, lanjut: lanjutId, mode: cfg.mode, model_p: cfg.p, model_e: cfg.e,
-        model_c: cfg.mode === 3 ? cfg.c : cfg.p, maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.uji};
-      const r = await api('/api/agent/jalankan', {method: 'POST', body});
-      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + r.status)); }
-      const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
-      while (true) {
-        const {value, done} = await rd.read(); if (done) break;
-        buf += dec.decode(value, {stream: true});
-        let i;
-        while ((i = buf.indexOf('\n')) >= 0) {
-          const baris = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-          if (!baris) continue;
-          let ev; try { ev = JSON.parse(baris); } catch (e) { continue; }
-          tangani(ev, st);
-        }
-      }
+        model_c: cfg.mode === 3 ? cfg.c : cfg.p, maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.izinUji};
+      sesi = (await apij('/api/agent/jalankan', {method: 'POST', body})).sesi;
     } catch (e) {
       if (e.message !== '401') {
+        tambahInfo('⚠ ' + e.message, true); catatLog('✖', 'Gagal memulai: ' + e.message, 'gagal');
+      }
+      $('infoAlur').textContent = ''; akhiriAlur(); setSibuk(false);
+      if (logMulai && !aktv.selesai) akhiriLog('Gagal memulai', true);
+      return;
+    }
+    tambahInfo('ℹ Proses berjalan di server. Halaman ini boleh ditutup; buka lagi kapan saja untuk memantau.');
+    await pantau(sesi, st);
+  }
+  /* Proses Agent berjalan di server. Halaman hanya MEMANTAU lewat long-poll: tertutup, putus sinyal,
+     atau HP tidur tidak menghentikannya. Setelah terputus, pemantauan lanjut dari event terakhir. */
+  const JEDA_ULANG = () => (window.AGENT_JEDA_ULANG !== undefined ? window.AGENT_JEDA_ULANG : 3000);
+  async function ikuti(sesi, st) {
+    let next = 0, putus = false;
+    while (true) {
+      let r, j;
+      try {
+        r = await api('/api/agent/event?sesi=' + encodeURIComponent(sesi) + '&dari=' + next + '&tunggu=20');
+      } catch (e) {
+        if (e.message === '401') throw e;
+        r = null;                                     // jaringan putus: coba lagi
+      }
+      if (r && (r.status === 410 || r.status === 404)) {
+        const jj = await r.json().catch(() => ({}));
+        throw new Error(jj.error || 'Proses tidak ditemukan di server.');
+      }
+      if (r && r.ok) j = await r.json().catch(() => null);
+      if (!j) {
+        if (!putus) { putus = true; $('infoAlur').textContent = 'Terputus, mencoba menyambung lagi ...'; catatLog('⚠', 'Terputus dari server, mencoba lagi (proses di server tetap jalan)', 'izin'); }
+        await new Promise(res => setTimeout(res, JEDA_ULANG()));
+        continue;
+      }
+      if (putus) { putus = false; $('infoAlur').textContent = ''; catatLog('✔', 'Tersambung lagi ke proses', 'ok'); }
+      for (const ev of (j.events || [])) {
+        evTs = typeof ev.ts === 'number' ? ev.ts : null;
+        try { tangani(ev, st); } finally { evTs = null; }
+      }
+      next = j.next;
+      if (j.habis) return;
+    }
+  }
+  async function pantau(sesi, st) {
+    try { await ikuti(sesi, st); }
+    catch (e) {
+      if (e.message !== '401') {
         tambahInfo('⚠ ' + e.message, true); $('infoAlur').textContent = '';
-        catatLog('✖', 'Terputus: ' + e.message, 'gagal');
+        catatLog('✖', e.message, 'gagal');
       }
     } finally {
       tutupKartu(st, 'gagal', 'berhenti'); akhiriAlur(); setSibuk(false); muatRiwayat();
       if (logMulai && !aktv.selesai) akhiriLog('Terputus dari server', true);
     }
+  }
+  /* Buka proses yang ada di server (sedang berjalan atau yang terakhir selesai): semua yang sudah
+     terjadi diputar ulang dari awal, lalu dipantau terus bila masih berjalan. */
+  async function lampirkan(p) {
+    if (sibuk) return;
+    setSibuk(true);
+    masukKerja(true);
+    tambahUser(p.tugas || '(proses di server)'); resetAlur();
+    mulaiLog(p.tugas || '', p.lalu || 1);
+    tambahInfo(p.aktif ? 'ℹ Tersambung ke proses yang berjalan di server. Halaman ini boleh ditutup lagi.'
+                       : 'ℹ Menampilkan ulang proses terakhir dari server.');
+    await pantau(p.sesi, {kartu: null, bubble: null, raw: '', teks: p.tugas || ''});
   }
   const KATA_AKTIF = {rencana: 'menyusun lembar tugas', tulis: 'menulis kode', periksa: 'menilai hasil',
     jelaskan: 'menjelaskan hasil'};
@@ -663,10 +726,11 @@
     if (panelBuka) gambarKeluaran();
   }
   const LABEL_AKHIR = {lolos: 'Selesai · dinyatakan jadi', belum: 'Selesai · belum sempurna',
-    butuh_info: 'Menunggu infomu', batal: 'Dibatalkan', error: 'Berhenti karena error'};
+    butuh_info: 'Menunggu infomu', batal: 'Dibatalkan', error: 'Berhenti karena error', terhenti: 'Terhenti'};
   function tangani(ev, st) {
     switch (ev.t) {
       case 'mulai':
+        if (ev.model) { susunModel(ev.model); if (panelBuka) gambarModel(); }
         $('infoAlur').textContent = 'Folder kerja: ' + ev.dir;
         catatLog('📁', 'Folder kerja: ' + ev.dir); break;
       case 'tahap':
