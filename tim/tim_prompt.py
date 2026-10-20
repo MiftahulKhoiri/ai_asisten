@@ -7,6 +7,9 @@ import agen
 from . import tim_config as conf
 from .tim_spec import spec_model
 
+# ---------------------------------------------------------------------------
+# Prompt sistem tiap peran
+# ---------------------------------------------------------------------------
 SYSTEM_PERENCANA = (
     "PERAN: Kamu PERENCANA dalam tim pembuat program. Tugasmu membaca permintaan pengguna, "
     "memahami MAKSUD-nya (termasuk yang tersirat), lalu menulis LEMBAR TUGAS untuk PELAKSANA "
@@ -50,7 +53,7 @@ SYSTEM_PERENCANA = (
     "keraguan sekecil apapun, kosongkan []. Kosongkan juga bila \"jalankan\" = [].\n"
     '- "catatan": string; hanya asumsi yang kamu ambil. Tanpa kode, tanpa library spesifik '
     "kecuali yang disebut pengguna.\n"
-    '- "tanya": string; satu pertanyaan singkat HANYA bila prinsip #3 terpenuhi. Bila "
+    '- "tanya": string; satu pertanyaan singkat HANYA bila prinsip #3 terpenuhi. Bila '
     '"tanya" tidak kosong, isi "berkas", "langkah", "kriteria", "jalankan", "harapan" '
     "dengan [] dan biarkan \"ringkasan\" ringkas.\n"
 
@@ -110,68 +113,105 @@ SYSTEM_PELAKSANA = (
 
 
 SYSTEM_PEMERIKSA = (
-    "Kamu PEMERIKSA dalam tim pembuat program. Kamulah yang MENJALANKAN program buatan "
-    "PELAKSANA dan yang MENENTUKAN benar atau salah. HASIL KAMU MENJALANKAN PROGRAM (sintaks dan "
-    "keluaran program yang benar-benar dijalankan) adalah fakta.\n"
-    "Balas HANYA dengan satu objek JSON:\n"
-    '{"ok": true atau false, "ringkas": "satu kalimat penilaian", '
-    '"masalah": ["berkas:baris - uraian bug nyata"], '
-    '"dilihat": "kutipan PERSIS dari keluaran program atau baris kode yang salah", '
-    '"perbaikan": "instruksi konkret untuk pelaksana"}\n'
-    "Aturan:\n"
+    "PERAN: Kamu PEMERIKSA dalam tim pembuat program. Kamu MELIHAT hasil eksekusi program "
+    "buatan PELAKSANA (disediakan oleh sistem) dan MENENTUKAN benar atau salah. Hasil "
+    "eksekusi yang kamu terima adalah FAKTA — bukan pendapat.\n"
+
+    "\nFORMAT KELUARAN:\n"
+    "Balas HANYA dengan satu objek JSON valid (bisa di-parse oleh json.loads()), TANPA teks "
+    "lain, TANPA pagar ```, TANPA komentar. Gunakan escape \\\" dan \\n di dalam string. "
+    "SEMUA kunci di bawah WAJIB ada; isi [] atau \"\" bila kosong.\n"
+
+    "\nSKEMA WAJIB:\n"
+    '- "ok": true atau false.\n'
+    '- "ringkas": string; satu kalimat penilaian.\n'
+    '- "masalah": list str; format "berkas:baris - uraian bug nyata"; maksimal 5 item. '
+    "Isi [] bila ok=true.\n"
+    '- "dilihat": string; kutipan PERSIS dari keluaran program atau baris kode yang salah. '
+    'Isi "" bila ok=true.\n'
+    '- "perbaikan": string; instruksi konkret untuk PELAKSANA. Isi "" bila ok=true.\n'
+
+    "\nATURAN:\n"
     "1. ok=true berarti hasil SUDAH JADI dan tim selesai. Pakai ok=true bila semua kriteria "
-    "utama terpenuhi dan tidak ada bug nyata.\n"
-    "2. ok=false berarti koreksimu dikirim ke PELAKSANA. Wajib isi \"masalah\" (kesalahan nyata), "
-    "\"dilihat\" (kutipan persis dari keluaran atau kode yang salah), dan \"perbaikan\" "
-    "(instruksi konkret). ok=false tanpa masalah konkret tidak bisa dikirim sebagai koreksi.\n"
-    "3. Bila hasil menjalankan memuat GAGAL (sintaks salah, berkas belum dibuat, program error), "
-    "itu kesalahan nyata: jangan jawab ok=true.\n"
-    "4. Harapan Perencana hanya petunjuk dan bisa keliru; kamu yang memutuskan.\n"
-    "5. Jangan menuntut gaya penulisan, fitur tambahan, atau hal di luar kriteria. Jangan "
+    "utama terpenuhi dan tidak ada bug nyata; isi \"masalah\"=[], \"dilihat\"=\"\", "
+    "\"perbaikan\"=\"\".\n"
+    "2. ok=false berarti koreksimu dikirim ke PELAKSANA. WAJIB isi \"masalah\" (minimal 1 "
+    "item), \"dilihat\", dan \"perbaikan\". ok=false tanpa masalah konkret TIDAK BOLEH.\n"
+    "3. Bila hasil eksekusi memuat GAGAL (sintaks salah, berkas belum dibuat, exit code "
+    "bukan 0, atau program error), itu kesalahan nyata: jangan jawab ok=true.\n"
+    "4. \"harapan\" Perencana hanya PETUNJUK dan bisa keliru; kamu yang memutuskan berdasarkan "
+    "keluaran program yang sebenarnya.\n"
+    "5. Jangan menuntut gaya penulisan, fitur tambahan, atau hal di luar \"kriteria\". Jangan "
     "mengarang masalah atau angka yang tidak ada di keluaran. Jangan menyarankan mengubah "
     "algoritma yang keluarannya sudah benar.\n"
-    "6. Maksimal 5 masalah.")
+    "6. Bila \"dilihat\" mengutip banyak hal, ringkas ke satu baris paling relevan."
+)
 
 
 SYSTEM_PENJELAS = (
-    "Kamu PENJELAS: wajah tim bagi pengguna. Jelaskan dalam bahasa Indonesia yang ramah, "
-    "3-5 kalimat, APA yang dibuat program dan cara kerjanya secara garis besar, berdasarkan "
-    "lembar tugas dan kode. JANGAN menulis status lolos/gagal, hasil uji, angka keluaran, atau "
-    "saran perbaikan: bagian itu ditulis oleh sistem. Jangan mengarang fitur yang tidak ada di kode.")
+    "PERAN: Kamu PENJELAS — wajah tim bagi pengguna. Tugasmu menjelaskan hasil kerja tim "
+    "kepada pengguna dalam bahasa Indonesia yang ramah dan jelas. Kamu TIDAK menilai benar/salah.\n"
+
+    "\nATURAN:\n"
+    "1. Panjang 3-5 kalimat. Tanpa markdown, tanpa daftar berpoin, tanpa pagar ```.\n"
+    "2. Jelaskan APA yang dibuat program dan cara kerjanya secara garis besar, berdasarkan "
+    "lembar tugas dan kode.\n"
+    "3. JANGAN menulis status lolos/gagal, hasil uji, exit code, angka keluaran, atau saran "
+    "perbaikan — bagian itu ditulis oleh sistem.\n"
+    "4. Jangan mengarang fitur yang tidak ada di kode. Jika kode belum tersedia, jelaskan dari "
+    "lembar tugas saja.\n"
+    "5. Bahasa Indonesia; nama teknis (perintah, nama berkas, nama fungsi) boleh apa adanya."
+)
 
 
+# ---------------------------------------------------------------------------
+# Utilitas: pemotongan berkas & anggaran prompt
+# ---------------------------------------------------------------------------
 def blok_berkas(berkas, anggaran, nomor=False):
-    """Teks berkas untuk prompt, dipotong rata bila melebihi anggaran karakter."""
+    """Teks berkas untuk prompt, dipotong rata bila melebihi anggaran karakter.
+
+    Potong di batas baris agar isi tetap koheren; tambahkan penanda bila dipotong.
+    """
     if not berkas:
         return "(belum ada berkas)"
     per = max(500, anggaran // len(berkas))
     bagian = []
     for nama, isi in berkas:
-        teks = isi
+        baris = isi.splitlines()
         if nomor:
-            teks = "\n".join("%d: %s" % (i, b) for i, b in enumerate(isi.splitlines(), 1))
+            baris = ["%d: %s" % (i, b) for i, b in enumerate(baris, 1)]
+        teks = "\n".join(baris)
         if len(teks) > per:
-            teks = teks[:per] + "\n...[dipotong]"
+            potong = teks[:per].rsplit("\n", 1)[0] if "\n" in teks[:per] else teks[:per]
+            sisa = len(teks) - len(potong)
+            teks = potong + "\n...[dipotong %d karakter]" % sisa
         bagian.append("--- %s ---\n%s" % (nama, teks))
     return "\n".join(bagian)
 
 
 def anggaran_prompt(token_keluar):
-    """Karakter yang aman untuk isi prompt, menurut konteks model (ASISTEN_CTX)."""
-    return max(3000, (agen.CTX_MAKS - token_keluar - 900) * 3)
+    """Karakter yang aman untuk isi prompt, menurut konteks model (ASISTEN_CTX).
+
+    Rasio 2.5 karakter/token = perkiraan konservatif untuk bahasa Indonesia
+    (Inggris ~3.5–4, Indonesia ~2–2.5 karena kata lebih panjang & berimbuhan).
+    """
+    sisa_token = agen.CTX_MAKS - token_keluar - 900
+    return max(3000, int(sisa_token * 2.5))
 
 
 # ---------------------------------------------------------------------------
 # Penyusun isi prompt (pesan "user") dan susunan pesan chat
 # ---------------------------------------------------------------------------
-PESAN_ULANG_JSON = ("Balasanmu bukan JSON valid. Balas ulang HANYA dengan objek JSON sesuai "
-                    "format.")
+PESAN_ULANG_JSON = ("Balasanmu bukan JSON valid. Balas ulang HANYA dengan satu objek JSON "
+                    "valid sesuai skema (SEMUA kunci wajib ada, isi [] atau \"\" bila kosong), "
+                    "tanpa teks lain, tanpa pagar ```.")
 
 
-PESAN_MINTA_MASALAH = ("Kamu menjawab ok=false tanpa masalah yang konkret, sehingga tidak ada koreksi "
-                       "untuk Pelaksana. Balas ulang HANYA dengan objek JSON: bila ada kesalahan "
-                       "nyata, isi \"masalah\" (berkas:baris - uraian), \"dilihat\", dan "
-                       "\"perbaikan\"; bila tidak ada bug nyata, jawab ok=true.")
+PESAN_MINTA_MASALAH = ("Kamu menjawab ok=false tanpa masalah yang konkret, sehingga tidak ada "
+                       "koreksi untuk Pelaksana. Balas ulang HANYA dengan objek JSON: bila ada "
+                       "kesalahan nyata, isi \"masalah\" (minimal 1 item, format "
+                       "\"berkas:baris - uraian\"), \"dilihat\", dan \"perbaikan\"; bila tidak "
+                       "ada bug nyata, jawab ok=true dengan \"masalah\"=[].")
 
 
 def pesan_chat(system, user):
@@ -195,8 +235,18 @@ def prompt_rencana(tugas, spec_lama=None, berkas_ada=()):
     """Isi prompt Perencana. `spec_lama` + `berkas_ada` hanya ada saat melanjutkan proyek."""
     user = "PERMINTAAN PENGGUNA:\n" + tugas
     if spec_lama:
-        user += ("\n\nPROYEK SEBELUMNYA (lembar tugas lama):\n"
-                 + json.dumps(spec_lama, ensure_ascii=False)[:2500]
+        # Ringkas spec_lama agar tidak meledak; JANGAN potong JSON mentah (bisa rusak).
+        spec_ringkas = {
+            "judul": spec_lama.get("judul", ""),
+            "ringkasan": spec_lama.get("ringkasan", ""),
+            "bahasa": spec_lama.get("bahasa", ""),
+            "berkas": spec_lama.get("berkas", []),
+            "kriteria": spec_lama.get("kriteria", []),
+        }
+        teks_spec = json.dumps(spec_ringkas, ensure_ascii=False)
+        if len(teks_spec) > 2500:
+            teks_spec = teks_spec[:2500] + "...[dipotong]"
+        user += ("\n\nPROYEK SEBELUMNYA (lembar tugas lama):\n" + teks_spec
                  + "\nBerkas yang sudah ada: " + (", ".join(berkas_ada) or "-")
                  + "\nBuat lembar tugas BARU yang mencakup perubahan yang diminta; daftar "
                    "\"berkas\" berisi semua berkas yang perlu ditulis ulang.")
@@ -211,20 +261,30 @@ def prompt_tulis(spec, koreksi, berkas_ada):
         user += "\n\nBERKAS SAAT INI:\n" + blok_berkas(
             berkas_ada, max(1500, anggaran - len(user) - 3000))
     if koreksi:
-        user += "\n\nKOREKSI YANG HARUS DIPERBAIKI:\n" + koreksi[:2500]
+        teks_koreksi = koreksi if len(koreksi) <= 2500 else koreksi[:2500] + "...[dipotong]"
+        user += "\n\nKOREKSI YANG HARUS DIPERBAIKI:\n" + teks_koreksi
     user += ("\n\nTulis semua berkas yang tercantum di lembar tugas (isi LENGKAP) dengan "
-             "format === FILE: nama === ... === END ===.")
+             "format === FILE: nama === ... === END ===. "
+             "Tanpa teks apa pun di luar blok berkas.")
     return user
 
 
 def prompt_periksa(spec, cek_baris, berkas):
-    """Isi prompt Pemeriksa: lembar tugas, kode bernomor baris, dan hasil ia menjalankan program."""
+    """Isi prompt Pemeriksa: lembar tugas, kode bernomor baris, dan hasil eksekusi program.
+
+    `cek_baris` sebaiknya sudah memuat exit code dan status (mis. "[exit 0]",
+    "[timeout]", "[stderr] ..."), agar Pemeriksa tahu program berhasil atau gagal.
+    """
     anggaran = anggaran_prompt(conf.TOKEN_PERIKSA)
+    teks_cek = "\n".join(cek_baris)
+    if len(teks_cek) > 1800:
+        # Tampilkan AWAL dan AKHIR — error paling sering muncul di ekor.
+        teks_cek = teks_cek[:1200] + "\n...[dipotong]...\n" + teks_cek[-500:]
     return ("LEMBAR TUGAS:\n" + json.dumps(spec_model(spec), ensure_ascii=False, indent=1)
             + "\n\nBERKAS (dengan nomor baris):\n"
             + blok_berkas(berkas, max(1500, anggaran - 2500), nomor=True)
-            + "\n\nHASIL KAMU MENJALANKAN PROGRAM (fakta, bukan pendapat):\n"
-            + "\n".join(cek_baris)[:1800])
+            + "\n\nHASIL MENJALANKAN PROGRAM (fakta, bukan pendapat):\n"
+            + teks_cek)
 
 
 def prompt_jelas(spec, berkas):
