@@ -1,12 +1,18 @@
 // Tes asap web/agent.js: memutar event NDJSON asli dari orkestrator ke halaman dengan DOM tiruan.
-// Dipakai oleh tests/test_web.py (dilewati bila node tidak terpasang).
-// Pemakaian: node tests/agent_smoke.js <berkas-ndjson>
+// Dipakai oleh tests/test_tim.py (dilewati bila node tidak terpasang).
+// Pemakaian: node tests/agent_smoke.js <berkas-ndjson> [mode]
+//   mode kosong      kirim perintah, proses dipantau lewat long-poll
+//   mode putus       sama, tetapi jaringan putus dua kali di tengah pemantauan (harus lanjut sendiri)
+//   mode lampirkan   halaman dibuka saat proses sudah berjalan di server (tanpa mengirim apa pun)
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
 const ndjson = fs.readFileSync(process.argv[2], 'utf8');
+const MODE = process.argv[3] || '';
+// server menambahkan 'ts' (detik sejak proses mulai) ke tiap event: dipakai untuk waktu di log
+const EVENTS = ndjson.split('\n').filter(b => b.trim()).map((b, i) => Object.assign(JSON.parse(b), {ts: i * 2}));
 const kode = fs.readFileSync(path.join(__dirname, '..', 'web', 'agent.js'), 'utf8');
 
 const semua = [];          // semua elemen yang dibuat
@@ -52,9 +58,27 @@ const panggilan = [];      // semua fetch DELETE/POST penghapusan riwayat
 function respon(obj, status) {
   return { ok: (status || 200) < 400, status: status || 200, json: async () => obj };
 }
+const poll = {dari: [], gagal: 0};     // nomor 'dari' tiap long-poll, dan berapa kali jaringan sengaja diputus
+function potong(dari, jumlah) {
+  const akhir = Math.min(EVENTS.length, dari + jumlah);
+  return {sesi: 's1', aktif: akhir < EVENTS.length, habis: akhir >= EVENTS.length, dari, next: akhir,
+          lalu: 42, events: EVENTS.slice(dari, akhir)};
+}
 async function fetchPalsu(url, opt) {
   if (url === '/api/agent/status') {
-    return respon({models: [{id: 'A', mb: 1100}, {id: 'B', mb: 2300}], chat_aktif: false, sibuk: false});
+    const proses = MODE === 'lampirkan'
+      ? {sesi: 's1', id: null, tugas: 'buat program halo', aktif: true, status: null, lalu: 42} : null;
+    return respon({models: [{id: 'A', mb: 1100}, {id: 'B', mb: 2300}], chat_aktif: false,
+                   sibuk: false, proses});
+  }
+  if (url.startsWith('/api/agent/event?')) {
+    const q = new URLSearchParams(url.split('?')[1]);
+    poll.dari.push(Number(q.get('dari')));
+    if (MODE === 'putus' && poll.dari.length > 1 && poll.gagal < 2 && poll.dari.length % 2 === 0) {
+      poll.gagal++;
+      throw new TypeError('Failed to fetch');
+    }
+    return respon(potong(Number(q.get('dari')), MODE === 'lampirkan' ? 5000 : 7));   // beberapa event per jawaban
   }
   if (url === '/api/agent/riwayat') {
     return respon({run: [
@@ -68,11 +92,7 @@ async function fetchPalsu(url, opt) {
   }
   if (url === '/api/agent/jalankan') {
     kirimBody.teks = JSON.parse(opt.body);
-    const enc = new TextEncoder().encode(ndjson);
-    let sudah = false;
-    return {ok: true, status: 200, body: {getReader() {
-      return {read: async () => { if (sudah) return {done: true}; sudah = true; return {value: enc, done: false}; }};
-    }}};
+    return respon({ok: true, sesi: 's1'});
   }
   return respon({});
 }
@@ -85,14 +105,20 @@ const konteks = {
   setInterval: () => 0, clearInterval() {}, setTimeout, clearTimeout,
 };
 konteks.window.document = document;
+konteks.window.AGENT_JEDA_ULANG = 5;   // jeda coba-lagi dipercepat untuk tes
 vm.createContext(konteks);
 
 (async () => {
   try {
     vm.runInContext(kode, konteks, {filename: 'agent.js'});
-    await new Promise(r => setTimeout(r, 30));
-    byId['input'].value = 'buat program halo';
-    await byId['bawah'].handlers.submit({preventDefault() {}});
+    await new Promise(r => setTimeout(r, 60));
+    if (MODE !== 'lampirkan') {
+      byId['input'].value = 'buat program halo';
+      await byId['bawah'].handlers.submit({preventDefault() {}});
+    }
+    for (let i = 0; i < 100 && !byId['lencanaLog'].classes.has('selesai') && !byId['lencanaLog'].classes.has('gagal'); i++) {
+      await new Promise(r => setTimeout(r, 20));
+    }
     await new Promise(r => setTimeout(r, 30));
   } catch (e) {
     galat.push(String(e && e.stack || e));
@@ -120,6 +146,8 @@ vm.createContext(konteks);
     teks_log: baris.map(teksPohon),
     model, hapus: panggilan, tombol_x: semua.filter(e => e.className === 'x').length,
     kartu: semua.filter(e => /\btahap\b/.test(e.className)).length,
+    poll_dari: poll.dari, putus: poll.gagal, sibuk_akhir: byId['btnKirim'].className,
+    info: semua.filter(e => /\binfo\b/.test(e.className)).map(teksPohon),
   };
   console.log(JSON.stringify(hasil));
   process.exit(galat.length || err.length ? 1 : 0);
