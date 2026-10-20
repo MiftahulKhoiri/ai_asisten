@@ -138,7 +138,12 @@ def rapikan_nilai(d):
     ok = d.get("ok")
     if isinstance(ok, str):
         ok = ok.strip().lower() in ("true", "ya", "ok", "yes")
-    masalah = [x for x in (_masalah_bersih(m) for m in (d.get("masalah") or [])) if x][:8]
+    mentah = d.get("masalah") or []
+    if isinstance(mentah, (str, dict)):
+        mentah = [mentah]
+    if not isinstance(mentah, (list, tuple)):
+        mentah = []
+    masalah = [x for x in (_masalah_bersih(m) for m in mentah) if x][:8]
     nilai = {"ok": bool(ok), "masalah": masalah,
              "dilihat": " ".join(str(d.get("dilihat") or "").split())[:200],
              "ringkas": " ".join(str(d.get("ringkas") or "").split())[:300],
