@@ -1,5 +1,6 @@
 """Riwayat proses Agent: daftar, baca, dan hapus folder proses.
 """
+import json
 import shutil
 
 from . import tim_config as conf
@@ -8,6 +9,23 @@ from .tim_config import id_valid
 
 
 AKTIF_RUN = set()            # id proses yang sedang berjalan (tidak boleh dihapus)
+
+
+def tulis_meta(folder, meta):
+    """Simpan run.json. Dipanggil sejak proses mulai (status "berjalan") supaya proses yang
+    lama di latar belakang sudah tampil di riwayat dan bisa dipantau dari halaman mana pun."""
+    try:
+        (folder / "run.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2),
+                                         encoding="utf-8")
+    except (OSError, TypeError, ValueError):
+        pass
+
+
+def _status_nyata(m):
+    """"berjalan" yang tidak ada di AKTIF_RUN berarti aplikasi dimatikan di tengah proses."""
+    if m.get("status") == "berjalan" and m.get("id") not in AKTIF_RUN:
+        return "terhenti"
+    return m.get("status")
 
 
 def daftar_run(maks=30):
@@ -20,7 +38,9 @@ def daftar_run(maks=30):
         m = baca_json(d / "run.json")
         if not isinstance(m, dict):
             continue
-        hasil.append({k: m.get(k) for k in ("id", "judul", "status", "dibuat", "putaran", "maks")})
+        item = {k: m.get(k) for k in ("id", "judul", "status", "dibuat", "putaran", "maks")}
+        item["status"] = _status_nyata(m)
+        hasil.append(item)
         if len(hasil) >= maks:
             break
     return hasil
@@ -67,6 +87,7 @@ def baca_run(run_id):
     m = baca_json(d / "run.json")
     if not isinstance(m, dict):
         raise FileNotFoundError(run_id)
+    m["status"] = _status_nyata(m)
     m["berkas"] = [{"nama": n, "isi": isi[:60000]} for n, isi in baca_proyek(d / "hasil")]
     m["dir"] = str(d)
     return m
