@@ -68,27 +68,20 @@ def perintah_uji(spec):
     return cmd
 
 
-def cek_jalan(hasil_dir, spec, ctx, izin, boleh):
+def cek_jalan(hasil_dir, spec, boleh):
     """Uji jalan program. Kembalian: (status, baris, keluaran); status: lolos / gagal / dilewati.
     `keluaran` adalah keluaran program yang sebenarnya (None bila tidak dijalankan).
 
-    Dijalankan oleh Pemeriksa. Program buatan model dijalankan HANYA setelah pengguna
-    mengizinkan (ditanya sekali per proses, juga di mode AUTO), tanpa shell, di folder hasil/,
+    Dijalankan oleh Pemeriksa. Izin ada di pengaturan (`boleh`, dikirim dari web): proses Agent
+    bisa berjalan lama di latar belakang, jadi tidak ada lagi pertanyaan di tengah jalan.
+    Program buatan model dijalankan tanpa shell, di folder hasil/, tanpa input keyboard, dan
     dengan batas waktu."""
     if not spec.get("jalankan"):
         return "dilewati", ["Uji jalan dilewati: lembar tugas tidak punya perintah uji."], None
     if not boleh:
-        return "dilewati", ["Uji jalan dilewati: dimatikan di pengaturan."], None
+        return "dilewati", ["Uji jalan dilewati: belum diizinkan di pengaturan."], None
     cmd = perintah_uji(spec)
     tampil = " ".join(spec["jalankan"])
-    if izin.get("nilai") is None:
-        izin["nilai"] = bool(ctx.konfirmasi(
-            "uji", "Pemeriksa akan menjalankan program hasil Pelaksana: " + tampil,
-            "Program ini ditulis oleh model AI (Pelaksana) dan dijalankan oleh Pemeriksa di %s "
-            "(batas %d detik, tanpa input keyboard). Periksa kodenya dulu bila ragu."
-            % (hasil_dir, conf.UJI_DETIK)))
-    if not izin["nilai"]:
-        return "dilewati", ["Uji jalan dilewati: pengguna tidak mengizinkan."], None
     kode, out = _run(cmd, timeout=conf.UJI_DETIK, cwd=str(hasil_dir),
                      env={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"})
     penuh = out or ""
