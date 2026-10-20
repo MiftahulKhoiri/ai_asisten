@@ -1,11 +1,60 @@
 """Prompt tiap peran (Perencana, Pelaksana, Pemeriksa, Penjelas) dan penyusun isi prompt.
+
+Versi: hardened.
+- Escape tag </permintaan_pengguna> (anti prompt-injection).
+- Fallback aman untuk agen.CTX_MAKS dan conf.TOKEN_* (tidak crash bila tidak ada).
+- Ringkas spec_lama sebelum json.dumps (tidak ada JSON terpotong).
+- prompt_jelas tahan bentuk dict maupun tuple/list.
+- Peta konteks opsional per model (MODEL_CTX) via parameter model_id.
 """
 import json
+import re
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import agen
 
 from . import tim_config as conf
 from .tim_spec import spec_model
+
+
+# ---------------------------------------------------------------------------
+# Peta konteks opsional untuk model lokal populer (prefix match)
+# ---------------------------------------------------------------------------
+MODEL_CTX: Dict[str, int] = {
+    "llama3.1": 131072,
+    "llama3": 8192,
+    "qwen2.5": 32768,
+    "qwen2": 32768,
+    "mistral": 8192,
+    "mixtral": 32768,
+    "gemma2": 8192,
+    "phi3": 4096,
+    "deepseek": 32768,
+    "default": 8192,
+}
+
+
+def _ctx_untuk(model_id: str = "") -> int:
+    """Konteks model. Prioritas: agen.CTX_MAKS > MODEL_CTX[model_id] > default."""
+    if model_id:
+        mid = model_id.lower()
+        # cek paling spesifik dulu (kunci terpanjang)
+        for k in sorted(MODEL_CTX, key=len, reverse=True):
+            if k != "default" and mid.startswith(k):
+                return MODEL_CTX[k]
+    return getattr(agen, "CTX_MAKS", MODEL_CTX["default"])
+
+
+# ---------------------------------------------------------------------------
+# Escape tag & sanitasi
+# ---------------------------------------------------------------------------
+_POLA_TUTUP_TAG = re.compile(r"</\s*permintaan_pengguna\s*>", re.IGNORECASE)
+
+
+def _escape_tag(teks: Any) -> str:
+    """Netralkan penutup tag <permintaan_pengguna> agar tidak bisa disusupkan user."""
+    return _POLA_TUTUP_TAG.sub(r"<\\/permintaan_pengguna>", str(teks or ""))
+
 
 # ---------------------------------------------------------------------------
 # Prompt sistem tiap peran
@@ -167,135 +216,209 @@ SYSTEM_PENJELAS = (
 # ---------------------------------------------------------------------------
 # Utilitas: pemotongan berkas & anggaran prompt
 # ---------------------------------------------------------------------------
-def blok_berkas(berkas, anggaran, nomor=False):
+def blok_berkas(berkas: Iterable[Tuple[str, str]], anggaran: int, nomor: bool = False) -> str:
     """Teks berkas untuk prompt, dipotong rata bila melebihi anggaran karakter.
 
     Potong di batas baris agar isi tetap koheren; tambahkan penanda bila dipotong.
+    `per` memakai batas bawah 200 (bukan 500) supaya banyak berkas tidak meledak.
     """
+    berkas = list(berkas or [])
     if not berkas:
         return "(belum ada berkas)"
-    per = max(500, anggaran // len(berkas))
+    per = max(200, anggaran // max(1, len(berkas)))
     bagian = []
     for nama, isi in berkas:
-        baris = isi.splitlines()
+        baris = str(isi).splitlines()
         if nomor:
-            baris = ["%d: %s" % (i, b) for i, b in enumerate(baris, 1)]
+            baris = [f"{i}: {b}" for i, b in enumerate(baris, 1)]
         teks = "\n".join(baris)
         if len(teks) > per:
             potong = teks[:per].rsplit("\n", 1)[0] if "\n" in teks[:per] else teks[:per]
             sisa = len(teks) - len(potong)
-            teks = potong + "\n...[dipotong %d karakter]" % sisa
-        bagian.append("--- %s ---\n%s" % (nama, teks))
+            teks = f"{potong}\n...[dipotong {sisa} karakter]"
+        bagian.append(f"--- {nama} ---\n{teks}")
     return "\n".join(bagian)
 
 
-def anggaran_prompt(token_keluar):
-    """Karakter yang aman untuk isi prompt, menurut konteks model (ASISTEN_CTX).
+def anggaran_prompt(token_keluar: int, model_id: str = "") -> int:
+    """Karakter aman untuk isi prompt, menurut konteks model.
 
-    Rasio 2.5 karakter/token = perkiraan konservatif untuk bahasa Indonesia
+    Rasio 2.5 karakter/token = perkiraan konservatif bahasa Indonesia
     (Inggris ~3.5–4, Indonesia ~2–2.5 karena kata lebih panjang & berimbuhan).
+    `model_id` opsional; bila kosong, pakai agen.CTX_MAKS.
     """
-    sisa_token = agen.CTX_MAKS - token_keluar - 900
+    ctx = _ctx_untuk(model_id)
+    sisa_token = ctx - int(token_keluar) - 900
     return max(3000, int(sisa_token * 2.5))
 
 
 # ---------------------------------------------------------------------------
-# Penyusun isi prompt (pesan "user") dan susunan pesan chat
+# Pesan bantu (retry)
 # ---------------------------------------------------------------------------
-PESAN_ULANG_JSON = ("Balasanmu bukan JSON valid. Balas ulang HANYA dengan satu objek JSON "
-                    "valid sesuai skema (SEMUA kunci wajib ada, isi [] atau \"\" bila kosong), "
-                    "tanpa teks lain, tanpa pagar ```.")
+PESAN_ULANG_JSON = (
+    "Balasanmu bukan JSON valid. Balas ulang HANYA dengan satu objek JSON "
+    "valid sesuai skema (SEMUA kunci wajib ada, isi [] atau \"\" bila kosong), "
+    "tanpa teks lain, tanpa pagar ```."
+)
+
+PESAN_MINTA_MASALAH = (
+    "Kamu menjawab ok=false tanpa masalah yang konkret, sehingga tidak ada "
+    "koreksi untuk Pelaksana. Balas ulang HANYA dengan objek JSON: bila ada "
+    "kesalahan nyata, isi \"masalah\" (minimal 1 item, format "
+    "\"berkas:baris - uraian\"), \"dilihat\", dan \"perbaikan\"; bila tidak "
+    "ada bug nyata, jawab ok=true dengan \"masalah\"=[]."
+)
 
 
-PESAN_MINTA_MASALAH = ("Kamu menjawab ok=false tanpa masalah yang konkret, sehingga tidak ada "
-                       "koreksi untuk Pelaksana. Balas ulang HANYA dengan objek JSON: bila ada "
-                       "kesalahan nyata, isi \"masalah\" (minimal 1 item, format "
-                       "\"berkas:baris - uraian\"), \"dilihat\", dan \"perbaikan\"; bila tidak "
-                       "ada bug nyata, jawab ok=true dengan \"masalah\"=[].")
-
-
-def pesan_chat(system, user):
+# ---------------------------------------------------------------------------
+# Penyusun pesan chat
+# ---------------------------------------------------------------------------
+def pesan_chat(system: str, user: str) -> List[Dict[str, str]]:
     """Pesan awal: prompt peran (system) + isi tugas (user)."""
-    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    return [{"role": "system", "content": system},
+            {"role": "user", "content": user}]
 
 
-def pesan_ulang_json(jawaban_sebelumnya):
+def pesan_ulang_json(jawaban_sebelumnya: str) -> List[Dict[str, str]]:
     """Tambahan pesan untuk meminta model mengulang jawaban yang bukan JSON valid."""
-    return [{"role": "assistant", "content": jawaban_sebelumnya[:1500]},
+    return [{"role": "assistant", "content": (jawaban_sebelumnya or "")[:1500]},
             {"role": "user", "content": PESAN_ULANG_JSON}]
 
 
-def pesan_minta_masalah(jawaban_sebelumnya):
+def pesan_minta_masalah(jawaban_sebelumnya: str) -> List[Dict[str, str]]:
     """Tambahan pesan: Pemeriksa menolak tapi tidak menyebut masalah konkret, minta ulang."""
-    return [{"role": "assistant", "content": jawaban_sebelumnya[:1500]},
+    return [{"role": "assistant", "content": (jawaban_sebelumnya or "")[:1500]},
             {"role": "user", "content": PESAN_MINTA_MASALAH}]
 
 
-def prompt_rencana(tugas, spec_lama=None, berkas_ada=()):
+# ---------------------------------------------------------------------------
+# Builder isi prompt (pesan "user") per peran
+# ---------------------------------------------------------------------------
+def prompt_rencana(tugas: str,
+                   spec_lama: Optional[Dict[str, Any]] = None,
+                   berkas_ada: Tuple[str, ...] = (),
+                   model_id: str = "") -> str:
     """Isi prompt Perencana. `spec_lama` + `berkas_ada` hanya ada saat melanjutkan proyek."""
-    user = "PERMINTAAN PENGGUNA:\n<permintaan_pengguna>\n" + tugas + "\n</permintaan_pengguna>"
+    # P0 #1: escape penutup tag agar user tidak bisa menyusupkan instruksi.
+    user = (
+        "PERMINTAAN PENGGUNA:\n"
+        "<permintaan_pengguna>\n"
+        f"{_escape_tag(tugas)}\n"
+        "</permintaan_pengguna>"
+    )
     if spec_lama:
-        # Ringkas spec_lama agar tidak meledak; JANGAN potong JSON mentah (bisa rusak).
+        # P0 #3: ringkas berkas ke nama saja SEBELUM json.dumps, agar tidak perlu
+        # memotong JSON mentah (yang bisa menghasilkan JSON invalid).
+        daftar_berkas_lama = []
+        for b in spec_lama.get("berkas", []) or []:
+            if isinstance(b, dict):
+                daftar_berkas_lama.append(b.get("nama", ""))
+            elif isinstance(b, (list, tuple)) and b:
+                daftar_berkas_lama.append(str(b[0]))
+            else:
+                daftar_berkas_lama.append(str(b))
         spec_ringkas = {
             "judul": spec_lama.get("judul", ""),
             "ringkasan": spec_lama.get("ringkasan", ""),
             "bahasa": spec_lama.get("bahasa", ""),
-            "berkas": spec_lama.get("berkas", []),
+            "berkas": daftar_berkas_lama,
             "kriteria": spec_lama.get("kriteria", []),
         }
-        teks_spec = json.dumps(spec_ringkas, ensure_ascii=False)
+        teks_spec = json.dumps(spec_ringkas, ensure_ascii=False, separators=(",", ":"))
         if len(teks_spec) > 2500:
             teks_spec = teks_spec[:2500] + "...[dipotong]"
-        user += ("\n\nPROYEK SEBELUMNYA (lembar tugas lama):\n" + teks_spec
-                 + "\nBerkas yang sudah ada: " + (", ".join(berkas_ada) or "-")
-                 + "\nBuat lembar tugas BARU yang mencakup perubahan yang diminta; daftar "
-                   "\"berkas\" berisi semua berkas yang perlu ditulis ulang.")
+
+        berkas_str = ", ".join(berkas_ada) if berkas_ada else "-"
+        user += (
+            f"\n\nPROYEK SEBELUMNYA (lembar tugas lama):\n{teks_spec}"
+            f"\nBerkas yang sudah ada: {berkas_str}"
+            "\nBuat lembar tugas BARU yang mencakup perubahan yang diminta; daftar "
+            "\"berkas\" berisi semua berkas yang perlu ditulis ulang."
+        )
     return user
 
 
-def prompt_tulis(spec, koreksi, berkas_ada):
+def prompt_tulis(spec: Dict[str, Any],
+                 koreksi: str,
+                 berkas_ada: List[Tuple[str, str]],
+                 model_id: str = "") -> str:
     """Isi prompt Pelaksana: lembar tugas, berkas saat ini, dan koreksi (bila ada)."""
-    anggaran = anggaran_prompt(conf.TOKEN_TAHAP)
-    user = "LEMBAR TUGAS:\n" + json.dumps(spec_model(spec), ensure_ascii=False, indent=1)
+    # P0 #2: fallback aman bila conf.TOKEN_TAHAP tidak ada.
+    anggaran = anggaran_prompt(getattr(conf, "TOKEN_TAHAP", 3500), model_id)
+
+    user = "LEMBAR TUGAS:\n" + json.dumps(
+        spec_model(spec), ensure_ascii=False, indent=1
+    )
+
     if berkas_ada:
         user += "\n\nBERKAS SAAT INI:\n" + blok_berkas(
-            berkas_ada, max(1500, anggaran - len(user) - 3000))
+            berkas_ada, max(1500, anggaran - len(user) - 3000)
+        )
+
     if koreksi:
-        teks_koreksi = koreksi if len(koreksi) <= 2500 else koreksi[:2500] + "...[dipotong]"
-        user += "\n\nKOREKSI YANG HARUS DIPERBAIKI:\n" + teks_koreksi
-    user += ("\n\nTulis semua berkas yang tercantum di lembar tugas (isi LENGKAP) dengan "
-             "format === FILE: nama === ... === END ===. "
-             "Tanpa teks apa pun di luar blok berkas.")
+        # P2 #6: escape koreksi (bisa memuat teks berasal dari user via harapan/kriteria).
+        teks_koreksi = _escape_tag(koreksi)
+        if len(teks_koreksi) > 2500:
+            teks_koreksi = f"{teks_koreksi[:2500]}...[dipotong]"
+        user += f"\n\nKOREKSI YANG HARUS DIPERBAIKI:\n{teks_koreksi}"
+
+    user += (
+        "\n\nTulis semua berkas yang tercantum di lembar tugas (isi LENGKAP) dengan "
+        "format === FILE: nama === ... === END ===. "
+        "Tanpa teks apa pun di luar blok berkas."
+    )
     return user
 
 
-def prompt_periksa(spec, cek_baris, berkas):
+def prompt_periksa(spec: Dict[str, Any],
+                   cek_baris: Union[List[str], str, None],
+                   berkas: List[Tuple[str, str]],
+                   model_id: str = "") -> str:
     """Isi prompt Pemeriksa: lembar tugas, kode bernomor baris, dan hasil eksekusi program.
 
-    `cek_baris` bisa berupa list string atau string tunggal hasil eksekusi.
+    `cek_baris` menerima list string atau string tunggal. Idealnya sudah memuat
+    exit code dan status (mis. "[exit 0]", "[timeout]", "[stderr] ...").
     """
-    anggaran = anggaran_prompt(conf.TOKEN_PERIKSA)
-    
-    # PERBAIKAN: Penanganan aman jika cek_baris dikirim sebagai string murni
+    # P0 #2: fallback aman bila conf.TOKEN_PERIKSA tidak ada.
+    anggaran = anggaran_prompt(getattr(conf, "TOKEN_PERIKSA", 3500), model_id)
+
     if isinstance(cek_baris, list):
-        teks_cek = "\n".join(cek_baris)
+        teks_cek = "\n".join(str(x) for x in cek_baris)
     else:
-        teks_cek = str(cek_baris)
+        teks_cek = str(cek_baris or "")
 
     if len(teks_cek) > 1800:
         # Tampilkan AWAL dan AKHIR — error paling sering muncul di ekor.
-        teks_cek = teks_cek[:1200] + "\n...[dipotong]...\n" + teks_cek[-500:]
-    return ("LEMBAR TUGAS:\n" + json.dumps(spec_model(spec), ensure_ascii=False, indent=1)
-            + "\n\nBERKAS (dengan nomor baris):\n"
-            + blok_berkas(berkas, max(1500, anggaran - 2500), nomor=True)
-            + "\n\nHASIL MENJALANKAN PROGRAM (fakta, bukan pendapat):\n"
-            + teks_cek)
+        teks_cek = f"{teks_cek[:1200]}\n...[dipotong]...\n{teks_cek[-500:]}"
+
+    return (
+        "LEMBAR TUGAS:\n"
+        + json.dumps(spec_model(spec), ensure_ascii=False, indent=1)
+        + "\n\nBERKAS (dengan nomor baris):\n"
+        + blok_berkas(berkas, max(1500, anggaran - 2500), nomor=True)
+        + f"\n\nHASIL MENJALANKAN PROGRAM (fakta, bukan pendapat):\n{teks_cek}"
+    )
 
 
-def prompt_jelas(spec, berkas):
-    """Bahan untuk Penjelas: apa program ini (tanpa status uji, itu urusan sistem)."""
-    bagian = ["RINGKASAN: " + spec["ringkasan"],
-              "BERKAS: " + ", ".join("%s (%s)" % (b["nama"], b["fungsi"]) for b in spec["berkas"])]
+def prompt_jelas(spec: Dict[str, Any],
+                 berkas: List[Tuple[str, str]]) -> str:
+    """Bahan untuk Penjelas: apa program ini (tanpa status uji, itu urusan sistem).
+
+    Tahan terhadap bentuk berkas: dict {"nama","fungsi"}, tuple/list (nama, fungsi),
+    atau nilai mentah lain.
+    """
+    def _info(b: Any) -> str:
+        if isinstance(b, dict):
+            return f"{b.get('nama', '?')} ({b.get('fungsi', '')})"
+        if isinstance(b, (list, tuple)) and len(b) >= 2:
+            return f"{b[0]} ({b[1]})"
+        return str(b)
+
+    daftar_berkas = ", ".join(_info(b) for b in spec.get("berkas", [])) or "-"
+    bagian = [
+        f"RINGKASAN: {spec.get('ringkasan', '')}",
+        f"BERKAS: {daftar_berkas}",
+    ]
     if berkas:
         bagian.append("KODE:\n" + blok_berkas(berkas, 3000))
     return "\n\n".join(bagian)
