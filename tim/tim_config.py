@@ -57,7 +57,9 @@ PERAN = {"rencana": "Perencana", "tulis": "Pelaksana", "periksa": "Pemeriksa",
          "jelaskan": "Penjelas"}
 
 
-STATUS_TEKS = {"lolos": "dinyatakan jadi oleh Pemeriksa",
+STATUS_TEKS = {"berjalan": "sedang berjalan",
+               "terhenti": "terhenti (aplikasi dimatikan saat proses berjalan)",
+               "lolos": "dinyatakan jadi oleh Pemeriksa",
                "belum": "belum sempurna (batas putaran tercapai)",
                "butuh_info": "menunggu info tambahan dari pengguna",
                "batal": "dibatalkan", "error": "berhenti karena error"}
@@ -86,7 +88,7 @@ def siapkan_cfg(b, tersedia):
         maks = LANGKAH_BAWAAN
     maks = max(LANGKAH_MIN, min(LANGKAH_MAKS, maks))
     return {"mode": mode, "model_p": mp, "model_e": me, "model_c": mc, "maks": maks,
-            "bongkar": bool(b.get("bongkar", True)), "uji": bool(b.get("uji", True))}, ""
+            "bongkar": bool(b.get("bongkar", True)), "uji": b.get("uji") is True}, ""
 
 
 def id_valid(run_id):
