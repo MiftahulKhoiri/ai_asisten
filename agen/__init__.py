@@ -1,4 +1,4 @@
- """agen - inti agen AI Asisten (dulu satu berkas agen.py).
+"""agen - inti agen AI Asisten (dulu satu berkas agen.py).
 
 Berisi: klien llama-server dengan streaming, riwayat, dan loop agen (function calling).
 Semua tool ada di paket src/ (pintu masuknya src/tolls.py). Hanya library standar Python.
