@@ -77,7 +77,7 @@ def ambil_url(ctx, url, simpan_ke=""):
 # Keamanan: hanya alamat PUBLIK yang boleh dibuka (alamat lokal/privat/loopback
 # ditolak, termasuk lewat pengalihan), supaya isi halaman web tidak bisa menyuruh
 # model membuka layanan di jaringan rumah. Isi halaman tetap diperlakukan sebagai
-# DATA, bukan perintah (lihat PROMPT_WEB di agen.py).
+# DATA, bukan perintah (lihat PROMPT_WEB di agen/agen_prompt.py).
 UA_WEB = ("Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) "
           "Chrome/124.0 Safari/537.36")
 WEB_MAKS_BYTE = 600_000
