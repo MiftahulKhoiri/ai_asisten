@@ -462,6 +462,22 @@ berkas yang relevan:
 Dari luar cukup `import tim` (`tim.jalankan`, `tim.daftar_run`, ...). Konstanta pengaturan
 (`tim.KERJA`, `tim.TOKEN_TAHAP`, ...) dibaca langsung dari `tim_config`.
 
+### Mengubah perilaku chat (paket `agen/`)
+
+| Ingin mengubah | Berkas |
+|---|---|
+| alamat llama-server, `CTX_MAKS`, `MAX_TOKENS`, gerbang tool, batas putaran, lokasi `aksi.log` | `agen/agen_config.py` |
+| teks prompt sistem (`SYSTEM_PROMPT`, skill web, berpikir kritis), kata pemicu tool, jatah riwayat | `agen/agen_prompt.py` |
+| cara bicara dengan llama-server, membaca stream jawaban | `agen/agen_llama.py` |
+| pemangkasan dan peringkasan riwayat percakapan | `agen/agen_memori.py` |
+| tahap pemeriksaan jawaban (skill berpikir kritis) | `agen/agen_kritik.py` |
+| loop agen: urutan putaran, eksekusi tool, anti-loop, perlindungan setelah tool web | `agen/agen_giliran.py` |
+
+Dari luar cukup `import agen` (`agen.giliran`, `agen.llama`, `agen.CTX_MAKS`, ...). Nilai yang
+diubah lewat paket (`agen.GERBANG = False`, `mock.patch.object(agen, "stream_chat", ...)`)
+diteruskan ke modul pemiliknya. Antar modul, nilai konfigurasi dibaca lewat `cfg.NAMA` saat
+dipakai, bukan disalin saat impor, supaya perubahan itu langsung berlaku.
+
 ## Tools
 
 | Tool | Fungsi | Izin |
@@ -565,7 +581,13 @@ di alamat itu dan tidak menyalakan yang lokal.
 | Berkas | Fungsi |
 |---|---|
 | `asisten.py` | server web, siklus model, log terminal |
-| `agen.py` | klien llama-server, riwayat, loop agen, skill web dan berpikir kritis |
+| `agen/` | paket inti agen (dulu satu berkas `agen.py`); `import agen` tetap dipakai seperti biasa |
+| `agen/agen_config.py` | konfigurasi: `LLAMA_URL`, `CTX_MAKS`, `MAX_TOKENS`, `GERBANG`, `LOG_AKSI`, batas peringkasan |
+| `agen/agen_prompt.py` | prompt sistem, skill web dan berpikir kritis, gerbang tool, jatah riwayat |
+| `agen/agen_llama.py` | klien llama-server: permintaan biasa, stream SSE, pembaca jawaban satu putaran |
+| `agen/agen_memori.py` | pemangkasan riwayat agar muat di konteks dan peringkasan pesan lama |
+| `agen/agen_kritik.py` | skill berpikir kritis tahap 2 (model memeriksa drafnya sendiri) |
+| `agen/agen_giliran.py` | loop agen: `giliran()` dan eksekusi tool calls |
 | `src/tolls.py` | pintu masuk: menggabungkan semua modul tool dan menjaga urutan tool |
 | `src/registri.py` | dekorator `@tool`, skill, skema untuk model, eksekusi tool |
 | `src/util.py` | konstanta dan fungsi bantu bersama (path, izin, menjalankan proses) |
@@ -595,7 +617,7 @@ python3 -m unittest discover -s tests -v
 
 Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
-agen dan skill (`tests/test_agen.py`, memakai model palsu),
+agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
