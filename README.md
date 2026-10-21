@@ -478,6 +478,23 @@ diubah lewat paket (`agen.GERBANG = False`, `mock.patch.object(agen, "stream_cha
 diteruskan ke modul pemiliknya. Antar modul, nilai konfigurasi dibaca lewat `cfg.NAMA` saat
 dipakai, bukan disalin saat impor, supaya perubahan itu langsung berlaku.
 
+### Mengubah perilaku server (paket `server/`)
+
+| Ingin mengubah | Berkas |
+|---|---|
+| lokasi folder, `MODELS_DIR`, batas buffer proses Agent | `server/server_config.py` |
+| rute `/api/...`, izin token, file statis web, alur `kirim` dan `agent_jalankan` | `server/server_http.py` |
+| cara memuat/membongkar model, idle, tombol Selesai | `server/server_model.py` |
+| menyimpan dan membaca riwayat obrolan | `server/server_chat.py` |
+| izin lewat web (mode AUTO, konfirmasi) | `server/server_ctx.py` |
+| buffer dan long-poll proses Agent di latar belakang | `server/server_agent.py` |
+| argumen baris perintah (`--port`, `--idle`, ...), penutupan rapi | `server/server_main.py` |
+
+Dari luar tetap `import asisten` (`asisten.GEN_LOCK`, `asisten.H`, `asisten.daftar_model`, ...). Antar
+modul, nilai bersama dibaca lewat modul pemilik saat dipakai (`conf.TOKEN`, `state.S`), dan
+penetapan nilai lewat `asisten` atau `mock.patch.object(asisten, ...)` diteruskan ke pemiliknya
+(`server/server_shim.py`).
+
 ## Tools
 
 | Tool | Fungsi | Izin |
@@ -580,7 +597,16 @@ di alamat itu dan tidak menyalakan yang lokal.
 
 | Berkas | Fungsi |
 |---|---|
-| `asisten.py` | server web, siklus model, log terminal |
+| `asisten.py` | pintu masuk (`python3 asisten.py`); isinya dipecah ke paket `server/` |
+| `server/server_config.py` | folder (`web/`, `riwayat/`, `.token`), `MODELS_DIR`, token, batas buffer Agent |
+| `server/server_state.py` | keadaan bersama: model aktif, `GEN_LOCK`, izin menunggu, buffer proses Agent |
+| `server/server_log.py`, `server_akses.py` | log berwarna di terminal; token akses dan alamat IP |
+| `server/server_model.py` | daftar model, muat/bongkar di llama-server, idle, tombol Selesai |
+| `server/server_chat.py` | penyimpanan riwayat obrolan |
+| `server/server_ctx.py` | konteks satu proses generasi: mode AUTO, batal, izin lewat web |
+| `server/server_agent.py`, `server_status.py` | buffer event Agent di latar belakang; isi `/api/status` |
+| `server/server_http.py` | penangan HTTP: rute `/api`, file statis, proses generasi di thread |
+| `server/server_main.py` | argumen baris perintah, siklus hidup server, penutupan rapi |
 | `agen/` | paket inti agen (dulu satu berkas `agen.py`); `import agen` tetap dipakai seperti biasa |
 | `agen/agen_config.py` | konfigurasi: `LLAMA_URL`, `CTX_MAKS`, `MAX_TOKENS`, `GERBANG`, `LOG_AKSI`, batas peringkasan |
 | `agen/agen_prompt.py` | prompt sistem, skill web dan berpikir kritis, gerbang tool, jatah riwayat |
@@ -617,7 +643,7 @@ python3 -m unittest discover -s tests -v
 
 Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
-agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`),
+agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
