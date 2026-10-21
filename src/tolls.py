@@ -14,7 +14,7 @@ File ini hanya menggabungkan modul-modul di bawah. Kodenya ada di:
 
 Cara menambah tool baru: tulis satu fungsi dengan dekorator @tool di salah satu
 modul tool_*.py (atau modul baru, lalu tambahkan `from . import nama_modul` di bawah).
-Skema untuk model dibuat otomatis, agen.py tidak perlu diubah.
+Skema untuk model dibuat otomatis, paket agen/ tidak perlu diubah.
 
     from .registri import tool
 
@@ -37,15 +37,15 @@ Variabel lingkungan (opsional):
   ASISTEN_TOOLS=dasar        skill bawaan: hanya 4 tool inti (hemat konteks model)
                              (di web, skill dipilih saat memilih model; boleh lebih dari satu)
   ASISTEN_AKAR_TULIS=/a:/b   folder tambahan yang boleh ditulis/dihapus
-  ASISTEN_CTX / ASISTEN_MAX_TOKENS   ukuran konteks dan batas token jawaban (lihat agen.py)
+  ASISTEN_CTX / ASISTEN_MAX_TOKENS   ukuran konteks dan batas token jawaban (lihat agen/agen_config.py)
 
 Skill (bisa digabung): tanpa (chat saja), web (cari info/berita di internet),
 dasar (4 tool inti), kompleks (semua tool), kritis (periksa & perbaiki jawaban).
 Tool aktif = gabungan tool dari semua skill yang dipilih. "kritis" tidak punya tool;
-ia mengubah cara model menjawab (ditangani agen.py).
+ia mengubah cara model menjawab (ditangani paket agen/).
 Hanya memakai library standar Python.
 """
-# Nama-nama publik yang dipakai agen.py, asisten.py, dan pengujian.
+# Nama-nama publik yang dipakai paket agen/, asisten.py, dan pengujian.
 from .pengaman import BAHAYA, KONFIRMASI_SELALU, cek_perintah  # noqa: F401
 from .registri import (  # noqa: F401
     MODE_SKILL, REGISTRY, SKILL_ALIAS, SKILL_IDS, eksekusi, mode_awal, mode_ctx,
