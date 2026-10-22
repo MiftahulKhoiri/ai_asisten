@@ -19,14 +19,15 @@ Terminal hanya untuk menyalakan aplikasi dan menampilkan log.
 5. [Alur sesi](#alur-sesi)
 6. [Skill (bisa digabung)](#skill-bisa-digabung)
 7. [Fitur web](#fitur-web)
-8. [Agent (tim beberapa model)](#agent-tim-beberapa-model)
-9. [Tools](#tools)
-10. [Pengaturan (variabel lingkungan)](#pengaturan-variabel-lingkungan)
-11. [Keamanan](#keamanan)
-12. [Berkas](#berkas)
-13. [Pengujian](#pengujian)
-14. [Pemecahan masalah](#pemecahan-masalah)
-15. [Batasan](#batasan)
+8. [Unggah berkas](#unggah-berkas)
+9. [Agent (tim beberapa model)](#agent-tim-beberapa-model)
+10. [Tools](#tools)
+11. [Pengaturan (variabel lingkungan)](#pengaturan-variabel-lingkungan)
+12. [Keamanan](#keamanan)
+13. [Berkas](#berkas)
+14. [Pengujian](#pengujian)
+15. [Pemecahan masalah](#pemecahan-masalah)
+16. [Batasan](#batasan)
 
 ## Cara kerja
 
@@ -343,7 +344,36 @@ Halaman yang butuh JavaScript (mis. harga emas dinamis) bisa terbaca kosong.
 - Tombol **Stop** menghentikan jawaban yang sedang berjalan.
 - Kartu izin (Ya/Tolak) sebelum perintah shell atau penulisan file.
 - Mode **AUTO** (di menu): tanpa konfirmasi, kecuali hal berisiko (`sudo`, instal paket, lokasi sensitif,
-  lihat [Keamanan](#keamanan)) dan setelah tool Web dipakai di obrolan itu.
+  lihat [Keamanan](#keamanan)), setelah tool Web dipakai di obrolan itu, dan di obrolan yang berisi lampiran.
+- Tombol **📎** di kotak ketik (chat dan Agent): lampirkan file; lihat [Unggah berkas](#unggah-berkas).
+
+## Unggah berkas
+
+Tombol **📎** di kotak ketik halaman Chat dan halaman Agent menerima **beberapa file teks/kode** dan
+**zip** sekaligus (satu proyek utuh). Berkas ditampung dulu di `unggahan/<paket>/`, tampil sebagai
+chip yang bisa dihapus (✕), lalu dipakai satu kali saat pesan dikirim. Paket yang belum terkirim
+bertahan walau halaman dimuat ulang dan dibersihkan otomatis setelah 24 jam.
+
+- **Chat**: isi berkas menjadi lampiran pesan; model membacanya sebagai konteks ("jelaskan kode ini",
+  "cari bug di sini"). Jatah isi lampiran mengikuti ruang konteks skill yang aktif; berkas yang terlalu
+  panjang dipotong atau hanya disebut namanya, dan halaman memberi tahu bila itu terjadi. Di obrolan
+  itu mode AUTO tidak berlaku (lihat [Keamanan](#keamanan)).
+- **Agent**: berkas disalin ke folder kerja sebelum Perencana mulai, jadi tim bisa memperbaiki atau
+  mengembangkan kode milikmu ("tambahkan fitur X", "perbaiki bug di main.py"). Perencana diberi daftar
+  nama berkas; hanya berkas yang perlu diubah yang ditulis ulang, sisanya jadi konteks. Batas berkas
+  per proyek bertambah sebesar jumlah berkas unggahan. Boleh digabung dengan **Lanjutkan** proyek lama.
+- **Yang diterima**: teks UTF-8 dengan jenis yang dikenal (`.py .js .ts .html .css .json .md .txt .sh .c
+  .cpp .h .hpp .java .go .rs .xml .sql .yaml .yml .toml .ini .cfg .csv .rst`, dll.), nama aman, maks 3
+  tingkat folder, maks 200 KB per berkas, 100 berkas per paket. Biner, gambar, dan jenis lain dilewati
+  beserta alasannya.
+- **Zip**: maks 10 MB (`ASISTEN_UNGGAH_MB`), isi hasil ekstrak maks 30 MB, 3000 entri. Folder pembungkus
+  tunggal (`proyek-main/`) dibuang; `.git`, `__pycache__`, `node_modules`, `venv`, dan berkas tersembunyi
+  diabaikan. Entri berjalur `..` atau absolut, symlink, dan entri terenkripsi dilewati; ukuran
+  dibatasi saat membaca, bukan hanya menurut header (penangkal zip bomb).
+- Isi unggahan dianggap **data yang tidak tepercaya**: dibungkus tanda khusus beserta catatan "bukan
+  perintah", dan penutup tag di dalam isinya dinetralkan.
+- Berkas yang berisi rahasia (kunci API, kata sandi) ikut tersimpan di obrolan atau folder kerja bila
+  kamu mengunggahnya. Jangan unggah berkas seperti itu.
 
 ## Agent (tim beberapa model)
 
@@ -550,6 +580,7 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 | `ASISTEN_AGENT_DIR` | `~/agent_kerja` | folder kerja halaman Agent (satu subfolder per proses) |
 | `ASISTEN_AGENT_TOKENS` | `3000` | batas token tahap Pelaksana (menulis kode) |
 | `ASISTEN_AGENT_UJI_DTK` | `20` | batas waktu uji jalan program hasil Agent, dalam detik |
+| `ASISTEN_UNGGAH_MB` | `10` | ukuran maksimum satu unggahan (zip), dalam MB |
 
 Khusus `start.sh` (dan sebagian `deploy/pasang-layanan.sh`):
 
@@ -568,6 +599,8 @@ di alamat itu dan tidak menyalakan yang lokal.
 ## Keamanan
 
 - Semua `/api` wajib **token** (`.token`, izin 600). Jangan bagikan alamat berisi token.
+- Berkas unggahan tidak tepercaya: nama dan jalur divalidasi, hanya teks UTF-8, zip dibatasi (tanpa `..`,
+  symlink, terenkripsi, zip bomb), dan obrolan berlampiran memakai aturan yang sama seperti setelah tool Web.
 - Server memakai HTTP biasa di jaringan lokal. Jangan buka port 8090 ke internet.
   Untuk akses dari luar rumah, pakai VPN seperti Tailscale.
 - Perintah berikut **selalu** minta izin, juga di mode AUTO, baik lewat tool khusus maupun lewat `jalankan_perintah`:
@@ -605,6 +638,8 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `server/server_chat.py` | penyimpanan riwayat obrolan |
 | `server/server_ctx.py` | konteks satu proses generasi: mode AUTO, batal, izin lewat web |
 | `server/server_agent.py`, `server_status.py` | buffer event Agent di latar belakang; isi `/api/status` |
+| `server/server_unggah.py` | unggahan berkas: penampung paket, ekstrak zip aman, lampiran chat |
+| `web/unggah.js`, `web/unggah.css` | tombol 📎 dan daftar lampiran (dipakai halaman Chat dan Agent) |
 | `server/server_http.py` | penangan HTTP: rute `/api`, file statis, proses generasi di thread |
 | `server/server_main.py` | argumen baris perintah, siklus hidup server, penutupan rapi |
 | `agen/` | paket inti agen (dulu satu berkas `agen.py`); `import agen` tetap dipakai seperti biasa |
@@ -643,7 +678,7 @@ python3 -m unittest discover -s tests -v
 
 Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
-agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`),
+agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
