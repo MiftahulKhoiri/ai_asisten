@@ -456,8 +456,9 @@
   }
 
   /* ---------- render pesan ---------- */
-  function tambahUser(teks) {
+  function tambahUser(teks, lampiran) {
     const p = el('div', 'p user'), g = el('div', 'gel', teks);
+    if (lampiran && lampiran.length) g.appendChild(el('div', 'lamp', '📎 ' + lampiran.join(', ')));
     p.appendChild(g); $('pesan').appendChild(p); gulir(true);
   }
   function tambahAsisten(teks) {
@@ -630,19 +631,23 @@
   async function kirim() {
     const diketik = $('input').value.trim();
     if (!diketik || sibuk) return;
+    if (unggah && unggah.sibuk()) { toast('Tunggu unggahan selesai.'); return; }
+    const lamp = unggah ? unggah.nama() : [];
     let teks = diketik;
     if (awalTanya) {   // jawaban atas pertanyaan Perencana: gabungkan dengan permintaan awal
       teks = 'Permintaan awal: ' + awalTanya + '\nJawaban/tambahan pengguna: ' + diketik;
     }
     $('input').value = ''; ukuranInput();
-    tambahUser(diketik); setSibuk(true); resetAlur(); $('infoAlur').textContent = 'Menghubungi server ...';
+    tambahUser(diketik, lamp); setSibuk(true); resetAlur(); $('infoAlur').textContent = 'Menghubungi server ...';
     mulaiLog(diketik);
     const st = {kartu: null, bubble: null, raw: '', teks};
     let sesi;
     try {
       const body = {teks, lanjut: lanjutId, mode: cfg.mode, model_p: cfg.p, model_e: cfg.e,
-        model_c: cfg.mode === 3 ? cfg.c : cfg.p, maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.izinUji};
+        model_c: cfg.mode === 3 ? cfg.c : cfg.p, maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.izinUji,
+        unggahan: unggah ? unggah.paket() : null};
       sesi = (await apij('/api/agent/jalankan', {method: 'POST', body})).sesi;
+      if (unggah) unggah.lepas();       // berkas sudah disalin ke folder kerja di server
     } catch (e) {
       if (e.message !== '401') {
         tambahInfo('⚠ ' + e.message, true); catatLog('✖', 'Gagal memulai: ' + e.message, 'gagal');
@@ -729,6 +734,13 @@
     butuh_info: 'Menunggu infomu', batal: 'Dibatalkan', error: 'Berhenti karena error', terhenti: 'Terhenti'};
   function tangani(ev, st) {
     switch (ev.t) {
+      case 'bahan': {      // berkas unggahan masuk folder kerja
+        const n = (ev.nama || []).length;
+        if (n) tambahInfo('📎 ' + n + ' berkas unggahan masuk ke folder kerja: ' + ev.nama.slice(0, 8).join(', ') + (n > 8 ? ' ...' : ''));
+        if ((ev.dilewati || []).length) tambahInfo('📎 Dilewati: ' + ev.dilewati.slice(0, 5).join('; '), true);
+        catatLog('📎', n + ' berkas unggahan masuk folder kerja', 'ok');
+        break;
+      }
       case 'mulai':
         if (ev.model) { susunModel(ev.model); if (panelBuka) gambarModel(); }
         $('infoAlur').textContent = 'Folder kerja: ' + ev.dir;
@@ -824,6 +836,9 @@
   }
 
   /* ---------- event ---------- */
+  /* ---------- lampiran berkas (bahan kerja tim) ---------- */
+  const unggah = window.Unggah ? window.Unggah.pasang({form: $('bawah'), token: () => TOKEN, kunci: 'aa_paket_agent', info: tambahInfo}) : null;
+
   $('bawah').addEventListener('submit', e => {
     e.preventDefault();
     if (sibuk) {
