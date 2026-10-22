@@ -47,6 +47,9 @@ def catat_event(ev):
         log("OK", f"Model dibongkar dari memori: {ev['model']}")
     elif t == "pulih":
         log("WARN", ev["d"])
+    elif t == "bahan":
+        log("INFO", f"Agent: {len(ev.get('nama') or [])} berkas unggahan masuk folder kerja"
+            + (f", {len(ev['dilewati'])} dilewati" if ev.get("dilewati") else ""))
     elif t == "uji_mulai":
         log("TOOL", f"agent menjalankan uji: {ev['d']}")
     elif t == "berkas":
