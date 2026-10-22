@@ -37,6 +37,12 @@ MAKS_BERKAS_TOTAL = 12      # berkas per proyek
 MAKS_UKURAN = 200_000       # byte per berkas
 
 
+MAKS_BAHAN = 100            # berkas unggahan pengguna yang boleh masuk satu proses
+
+
+MAKS_BACA = 200             # berkas yang dibaca sekaligus dari folder hasil (snapshot, pemeriksaan)
+
+
 MAKS_TUGAS = 4000           # karakter perintah pengguna
 
 
@@ -44,7 +50,8 @@ BATAS_MUAT = 300            # detik menunggu satu model siap
 
 
 EKSTENSI = {".py", ".js", ".html", ".css", ".json", ".md", ".txt", ".sh", ".c", ".cpp",
-            ".h", ".hpp", ".ini", ".toml", ".yaml", ".yml", ".csv", ".cfg"}
+            ".h", ".hpp", ".ini", ".toml", ".yaml", ".yml", ".csv", ".cfg", ".ts", ".tsx", ".jsx",
+            ".java", ".go", ".rs", ".xml", ".sql", ".rst"}
 
 
 INTERPRETER = {"python3", "python", "node"}
