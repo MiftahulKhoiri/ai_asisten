@@ -48,9 +48,12 @@ def _luar(nama):
 
 
 def _riwayat_tercemar(riwayat):
-    """True bila obrolan ini pernah memanggil tool sumber luar (hasilnya ada di riwayat)."""
-    return any(_luar((c.get("function") or {}).get("name"))
-               for m in riwayat for c in (m.get("tool_calls") or []))
+    """True bila obrolan ini memuat isi dari luar: hasil tool sumber luar (web) atau berkas
+    unggahan pengguna (isinya bisa berisi instruksi tersembunyi). Sesudah itu aksi pengubah
+    selalu minta izin, juga di mode AUTO."""
+    return any(m.get("lampiran") or any(_luar((c.get("function") or {}).get("name"))
+                                        for c in (m.get("tool_calls") or []))
+               for m in riwayat)
 
 
 def _jalankan_tool_calls(daftar, riwayat, ctx, sudah, terpotong=False):
