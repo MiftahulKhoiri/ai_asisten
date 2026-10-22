@@ -14,6 +14,9 @@ def siapkan(riwayat, batas, tanpa_tool=False):
     """Salinan riwayat yang dipangkas supaya muat di konteks model.
     tanpa_tool=True: buang jejak tool dari riwayat (mode chat saja)."""
     pesan = json.loads(json.dumps(riwayat))
+    for m in pesan:                  # kunci tampilan web; isi lampiran sudah ada di 'content'
+        m.pop("tampil", None)
+        m.pop("lampiran", None)
     if tanpa_tool:
         pesan = [m for m in pesan if m.get("role") != "tool"]
         for m in pesan:
