@@ -25,4 +25,14 @@ AGENT_BATCH = 4000            # event paling banyak per jawaban /api/agent/event
 AGENT_TUNGGU_MAKS = 25        # detik paling lama satu long-poll menunggu event baru
 
 
-__all__ = ['BASE', 'WEB', 'RIWAYAT', 'TOKEN_FILE', 'MODELS_DIR', 'ID_RE', 'TOKEN', 'IDLE_MENIT', 'WARNA', 'AGENT_MAKS_EVENT', 'AGENT_BATCH', 'AGENT_TUNGGU_MAKS']
+# Unggahan berkas (teks/kode dan zip) untuk chat dan Agent: ditampung dulu di UNGGAH/<paket>/.
+UNGGAH = BASE / "unggahan"
+ID_PAKET = re.compile(r"^[0-9a-f]{12}$")
+MAKS_UNGGAH_BYTE = int(os.environ.get("ASISTEN_UNGGAH_MB", "10")) * 1_000_000   # satu unggahan (zip)
+MAKS_ZIP_TOTAL = 30_000_000     # byte hasil ekstrak satu zip (penangkal zip bomb)
+MAKS_ZIP_ENTRI = 3000           # entri zip yang diperiksa
+MAKS_BERKAS_PAKET = 100         # berkas dalam satu paket
+UNGGAH_UMUR_JAM = 24            # paket yang tidak dipakai dibersihkan setelah ini
+
+__all__ = ['UNGGAH', 'ID_PAKET', 'MAKS_UNGGAH_BYTE', 'MAKS_ZIP_TOTAL', 'MAKS_ZIP_ENTRI',
+           'MAKS_BERKAS_PAKET', 'UNGGAH_UMUR_JAM', 'BASE', 'WEB', 'RIWAYAT', 'TOKEN_FILE', 'MODELS_DIR', 'ID_RE', 'TOKEN', 'IDLE_MENIT', 'WARNA', 'AGENT_MAKS_EVENT', 'AGENT_BATCH', 'AGENT_TUNGGU_MAKS']
