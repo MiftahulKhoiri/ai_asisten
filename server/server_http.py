@@ -9,7 +9,7 @@ import threading
 import time
 import traceback
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 import agen
 import tim
 from . import server_agent as agt
@@ -20,6 +20,7 @@ from . import server_model as mdl
 from . import server_chat as rwy
 from . import server_state as state
 from . import server_status as sts
+from . import server_unggah as ung
 
 
 # File statis tampilan web (hanya yang ada di daftar ini yang boleh diakses)
@@ -32,6 +33,8 @@ STATIS = {
     "/agent.html": ("agent.html", "text/html; charset=utf-8"),
     "/agent.css": ("agent.css", "text/css; charset=utf-8"),
     "/agent.js": ("agent.js", "application/javascript; charset=utf-8"),
+    "/unggah.css": ("unggah.css", "text/css; charset=utf-8"),
+    "/unggah.js": ("unggah.js", "application/javascript; charset=utf-8"),
 }
 
 
@@ -120,6 +123,12 @@ class H(BaseHTTPRequestHandler):
                 return self._json(409, {"error": str(e)})
             lg.log("INFO", f"Proses Agent dihapus: {m.group(1)}")
             return self._json(200, {"ok": True})
+        if path == "/api/unggah" and metode == "POST":
+            return self.unggah()
+        if path == "/api/unggah" and metode == "GET":
+            return self.unggah_daftar()
+        if path == "/api/unggah/hapus" and metode == "POST":
+            return self.unggah_hapus()
         if metode == "POST":
             b = self._body()
             if path == "/api/chat/baru":
@@ -190,6 +199,63 @@ class H(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True})
         self._json(404, {"error": "Tidak ditemukan"})
 
+    def _id_paket(self):
+        return (parse_qs(urlparse(self.path).query).get("paket") or [""])[0]
+
+    def unggah(self):
+        """Terima satu berkas (teks/kode atau zip) sebagai byte mentah.
+
+        POST /api/unggah[?paket=ID] dengan header X-Nama (nama berkas, URL-encoded). Tanpa paket,
+        paket baru dibuat. Jawaban: paket, berkas (isi paket), baru, dilewati (beserta alasan)."""
+        try:
+            n = int(self.headers.get("Content-Length") or -1)
+        except ValueError:
+            n = -1
+        if n < 0:
+            return self._json(411, {"error": "Content-Length wajib ada"})
+        if n > conf.MAKS_UNGGAH_BYTE:
+            return self._json(413, {"error": "Unggahan terlalu besar (maks %d MB)"
+                                             % (conf.MAKS_UNGGAH_BYTE // 1_000_000)})
+        data = self.rfile.read(n)
+        nama = unquote(self.headers.get("X-Nama", ""))
+        paket, baru = self._id_paket(), False
+        try:
+            if not paket:
+                paket, baru = ung.baru_paket(), True
+            hasil = ung.terima(paket, nama, data)
+        except FileNotFoundError:
+            return self._json(404, {"error": "Paket unggahan tidak ditemukan (sudah kedaluwarsa). Unggah lagi."})
+        except ValueError as e:
+            if baru:
+                ung.buang(paket)
+            return self._json(400, {"error": str(e)})
+        berkas = ung.daftar(paket)
+        if baru and not berkas:                  # tidak ada yang diterima: jangan tinggalkan paket kosong
+            ung.buang(paket)
+            paket = None
+        lg.log("INFO", f"Unggahan {nama[:60]}: {len(hasil['baru'])} berkas diterima, "
+                       f"{len(hasil['dilewati']) + hasil.get('lainnya', 0)} dilewati")
+        self._json(200, dict(hasil, paket=paket, berkas=berkas))
+
+    def unggah_daftar(self):
+        paket = self._id_paket()
+        try:
+            return self._json(200, {"paket": paket, "berkas": ung.daftar(paket)})
+        except (FileNotFoundError, ValueError):
+            return self._json(404, {"error": "Paket unggahan tidak ditemukan"})
+
+    def unggah_hapus(self):
+        b = self._body()
+        try:
+            ung.hapus(b.get("paket"), b.get("nama") or None)
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
+        try:
+            berkas = ung.daftar(b.get("paket"))
+        except (FileNotFoundError, ValueError):
+            berkas = []
+        self._json(200, {"ok": True, "berkas": berkas})
+
     def pilih(self, b):
         nama = b.get("model")
         skill = b.get("skill")
@@ -209,12 +275,23 @@ class H(BaseHTTPRequestHandler):
 
     def kirim(self, b):
         cid, teks = b.get("id"), (b.get("teks") or "").strip()
+        paket = b.get("unggahan") or None
         with state.S_LOCK:
             siap, model, skill = state.S["status"] == "siap", state.S["model"], state.S["skill"]
         if not siap:
             return self._json(409, {"error": "Model belum dimuat. Pilih model dulu."})
-        if not teks:
+        if not teks and not paket:
             return self._json(400, {"error": "Pesan kosong"})
+        entri, ringkas = {"role": "user", "content": teks}, []
+        if paket:       # lampiran dibaca sebelum kunci diambil: galat di sini tidak perlu melepas apa pun
+            try:
+                teks = teks or "Tolong baca berkas terlampir."
+                isi, ringkas = ung.susun_lampiran_chat(paket, ung.anggaran_chat(skill, teks))
+            except FileNotFoundError:
+                return self._json(404, {"error": "Berkas unggahan tidak ditemukan (kedaluwarsa). Unggah lagi."})
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
+            entri = {"role": "user", "content": teks + "\n\n" + isi, "tampil": teks, "lampiran": ringkas}
         if not state.GEN_LOCK.acquire(blocking=False):
             return self._json(409, {"error": "Masih ada proses berjalan"})
         # Kunci generasi dipegang mulai dari sini. Bila ada yang gagal sebelum thread kerja()
@@ -232,14 +309,18 @@ class H(BaseHTTPRequestHandler):
                 diserahkan = True
                 return self._json(404, {"error": "Obrolan tidak ditemukan"})
             chat["model"] = model
-            chat["pesan"].append({"role": "user", "content": teks})
+            chat["pesan"].append(entri)
             if chat.get("judul") in (None, "", "Obrolan baru"):
                 chat["judul"] = teks[:40]
             rwy.simpan_chat(chat)
+            if paket:
+                ung.buang(paket)        # isinya sudah ada di obrolan
             mdl.sentuh()
-            lg.log("CHAT", f"kamu: {teks[:100]}")
+            lg.log("CHAT", f"kamu: {teks[:100]}" + (f" (+{len(ringkas)} berkas)" if ringkas else ""))
 
             q = queue.Queue()
+            if ringkas:
+                q.put({"t": "lampiran", "berkas": ringkas})
             ctx = kts.Ctx(q, threading.Event())
             ctx.skill = skill
             state.AKTIF["ctx"] = ctx
@@ -285,6 +366,14 @@ class H(BaseHTTPRequestHandler):
         lanjut = b.get("lanjut")
         if lanjut is not None and not tim.id_valid(lanjut):
             return self._json(400, {"error": "id proyek tidak valid"})
+        paket, bahan = b.get("unggahan") or None, None
+        if paket:
+            try:
+                bahan = ung.bahan_dir(paket)
+            except FileNotFoundError:
+                return self._json(404, {"error": "Berkas unggahan tidak ditemukan (kedaluwarsa). Unggah lagi."})
+            except ValueError as e:
+                return self._json(400, {"error": str(e)})
         try:
             tersedia = {m["id"] for m in mdl.daftar_model()}
         except Exception:  # noqa: BLE001
@@ -317,11 +406,13 @@ class H(BaseHTTPRequestHandler):
 
             def kerja():
                 try:
-                    for ev in tim.jalankan(tugas, cfg, ctx, lanjut):
+                    for ev in tim.jalankan(tugas, cfg, ctx, lanjut, bahan):
                         agt.agent_tambah(sesi, ev)
                 except Exception as e:  # noqa: BLE001
                     agt.agent_tambah(sesi, {"t": "error", "d": f"{type(e).__name__}: {e}"})
                 finally:
+                    if paket:
+                        ung.buang(paket)       # sudah disalin ke folder kerja
                     with state.AGENT_COND:   # kunci dilepas sebelum 'aktif' dimatikan: klien bisa langsung mulai lagi
                         state.AKTIF["ctx"] = None
                         mdl.sentuh()
