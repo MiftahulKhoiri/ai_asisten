@@ -64,16 +64,30 @@ def baca_proyek(hasil_dir, maks=30):
     return hasil
 
 
-def salin_proyek(sumber, tujuan):
+def salin_proyek(sumber, tujuan, maks=None):
     """Salin berkas proyek lama (untuk melanjutkan). Symlink dan berkas tak dikenal dilewati."""
     n = 0
-    for rel, isi in baca_proyek(sumber, conf.MAKS_BERKAS_TOTAL * 3):
+    for rel, isi in baca_proyek(sumber, maks or conf.MAKS_BERKAS_TOTAL * 3):
         try:
             tulis_berkas(tujuan, rel, isi)
             n += 1
         except ValueError:
             continue
     return n
+
+
+def masukkan_bahan(sumber, tujuan):
+    """Salin berkas unggahan pengguna ke folder kerja. Kembalian: (nama yang masuk, [(nama, alasan)]).
+
+    Setiap berkas tetap lewat tulis_berkas (nama aman, jenis dikenal, ukuran, tanpa symlink),
+    jadi paket unggahan yang tidak tepercaya pun tidak bisa menulis di luar folder hasil."""
+    masuk, lewat = [], []
+    for rel, isi in baca_proyek(sumber, conf.MAKS_BAHAN):
+        try:
+            masuk.append(tulis_berkas(tujuan, rel, isi))
+        except ValueError as e:
+            lewat.append((rel, str(e)))
+    return masuk, lewat
 
 
 _HEAD = re.compile(
@@ -182,7 +196,7 @@ def pulihkan(hasil_dir, berkas):
     """Kembalikan folder hasil ke isi `berkas` ({nama: isi})."""
     for nama, isi in berkas.items():
         tulis_berkas(hasil_dir, nama, isi)
-    for nama, _ in baca_proyek(hasil_dir):
+    for nama, _ in baca_proyek(hasil_dir, conf.MAKS_BACA):
         if nama not in berkas:
             try:
                 (Path(hasil_dir) / nama).unlink()
