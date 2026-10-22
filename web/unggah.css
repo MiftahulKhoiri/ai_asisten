@@ -1,0 +1,12 @@
+/* unggah.css - tombol 📎 dan daftar lampiran (dipakai halaman chat dan Agent) */
+.lampiran-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px 0;background:var(--panel);border-top:1px solid var(--garis);font-size:13px}
+.lampiran-bar[hidden]{display:none}
+.lampiran-bar .chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 6px 4px 10px;border:1px solid var(--garis);border-radius:999px;background:var(--bg);color:var(--teks)}
+.lampiran-bar .chip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46vw}
+.lampiran-bar .chip small{color:var(--redup)}
+.lampiran-bar .chip button{border:0;background:none;color:var(--redup);font-size:16px;line-height:1;padding:2px 6px;cursor:pointer}
+.lampiran-bar .chip.proses{opacity:.7}
+.lampiran-bar .semua{border:0;background:none;color:var(--aksen);font-size:13px;padding:4px 6px;cursor:pointer}
+.lampiran-bar .catatan{flex-basis:100%;color:var(--izin);font-size:12px;overflow-wrap:anywhere}
+#bawah .lampir{flex:none;padding:8px 12px;font-size:18px;line-height:1.2}
+.lamp{margin-top:4px;font-size:12px;opacity:.85;overflow-wrap:anywhere}
