@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import tim_config as conf
-from .tim_berkas import baca_json, baca_proyek, pulihkan, salin_proyek
+from .tim_berkas import baca_json, baca_proyek, masukkan_bahan, pulihkan, salin_proyek
 from .tim_cek import teks_koreksi
 from .tim_config import Batal
 from .tim_model import Pemuat
@@ -47,7 +47,9 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak):
         # 1. Pelaksana: menulis berkas (tidak menjalankan apa pun)
         yield event_tahap("tulis", me, putaran)
         yield from pemuat.pakai(me)
-        ditulis, masalah = yield from tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran)
+        batas = conf.MAKS_BERKAS_TOTAL + len(meta.get("bahan") or [])   # berkas unggahan tidak dihitung
+        ditulis, masalah = yield from tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran,
+                                                  batas)
 
         # 2. Hasilnya langsung ke Pemeriksa
         yield from pemuat.selesai_tahap(mc)
@@ -67,7 +69,7 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak):
         akhir["nilai"] = nilai
         rekam.append({"skor": (2 if nilai["ok"] else 0) + (1 if bukti["ok"] else 0)
                               + (1 if bukti["harapan"] else 0),
-                      "putaran": putaran, "berkas": dict(baca_proyek(hasil_dir)),
+                      "putaran": putaran, "berkas": dict(baca_proyek(hasil_dir, conf.MAKS_BACA)),
                       "akhir": dict(akhir)})
         yield dict(nilai, t="nilai")
 
@@ -91,8 +93,11 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak):
     return "belum"
 
 
-def _jalankan(tugas, cfg, ctx, lanjut=None):
-    """Generator event untuk satu proses Agent (satu perintah pengguna)."""
+def _jalankan(tugas, cfg, ctx, lanjut=None, bahan=None):
+    """Generator event untuk satu proses Agent (satu perintah pengguna).
+
+    `bahan`: folder berisi berkas unggahan pengguna; isinya disalin ke folder kerja sebelum
+    Perencana mulai (di atas hasil proses lama bila `lanjut` juga diberikan)."""
     tugas = (tugas or "").strip()[:conf.MAKS_TUGAS]
     conf.KERJA.mkdir(parents=True, exist_ok=True)
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S-") + secrets.token_hex(2)
@@ -103,14 +108,21 @@ def _jalankan(tugas, cfg, ctx, lanjut=None):
             "status": "berjalan", "dibuat": datetime.now().isoformat(timespec="seconds"),
             "model": {"perencana": cfg["model_p"], "pelaksana": cfg["model_e"],
                       "pemeriksa": cfg["model_c"]},
-            "putaran": 0, "maks": cfg["maks"], "lanjut": None, "laporan": "", "spec": None}
+            "putaran": 0, "maks": cfg["maks"], "lanjut": None, "laporan": "", "spec": None,
+            "bahan": []}
     spec_lama = None
     if lanjut and conf.ID_RUN.match(str(lanjut)) and (conf.KERJA / lanjut).is_dir():
         salin_proyek(conf.KERJA / lanjut / "hasil", hasil_dir)
         spec_lama = baca_json(conf.KERJA / lanjut / "tugas.json")
         meta["lanjut"] = lanjut
+    lewat = []
+    if bahan and Path(bahan).is_dir():
+        meta["bahan"], lewat = masukkan_bahan(Path(bahan), hasil_dir)
     yield {"t": "mulai", "id": run_id, "dir": str(folder), "maks": cfg["maks"],
            "model": meta["model"], "lanjut": meta["lanjut"]}
+    if meta["bahan"] or lewat:
+        yield {"t": "bahan", "nama": meta["bahan"][:60],
+               "dilewati": ["%s: %s" % (n, a) for n, a in lewat[:20]]}
 
     pemuat = Pemuat(ctx, cfg["bongkar"])
     jejak = Jejak(folder)
@@ -155,12 +167,12 @@ def _jalankan(tugas, cfg, ctx, lanjut=None):
            "teks": conf.STATUS_TEKS.get(status, status), "dir": str(folder)}
 
 
-def jalankan(tugas, cfg, ctx, lanjut=None):
+def jalankan(tugas, cfg, ctx, lanjut=None, bahan=None):
     """Generator event satu proses Agent; juga mencatat log.jsonl di folder kerja
     (tanpa potongan teks per token) agar proses bisa ditinjau setelah halaman ditutup."""
     t0, log = time.time(), None
     try:
-        for ev in _jalankan(tugas, cfg, ctx, lanjut):
+        for ev in _jalankan(tugas, cfg, ctx, lanjut, bahan):
             if ev["t"] == "mulai":
                 try:
                     log = open(Path(ev["dir"]) / "log.jsonl", "a", encoding="utf-8")
