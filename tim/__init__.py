@@ -89,6 +89,7 @@ from .tim_berkas import (
     baca_json,
     baca_proyek,
     pulihkan,
+    masukkan_bahan,
     salin_proyek,
     tulis_berkas,
     urai_berkas,
