@@ -56,7 +56,7 @@ def tahap_rencana(tugas, spec_lama, hasil_dir, folder, mp, ctx, pemuat, jejak):
     """Kembalian: (spec, pertanyaan). Bila Perencana butuh info: (None, pertanyaan)."""
     yield event_tahap("rencana", mp)
     yield from pemuat.pakai(mp)
-    ada = [n for n, _ in baca_proyek(hasil_dir)] if spec_lama else []
+    ada = [n for n, _ in baca_proyek(hasil_dir, conf.MAKS_BACA)]    # kosong bila proses baru tanpa bahan
     user = prompt_rencana(tugas, spec_lama, ada)
     pesan = pesan_chat(SYSTEM_PERENCANA, user)
     teks, _ = yield from tanya(mp, pesan, ctx, conf.TOKEN_RENCANA, 0.2, True)
@@ -80,9 +80,13 @@ def tahap_rencana(tugas, spec_lama, hasil_dir, folder, mp, ctx, pemuat, jejak):
     return spec, ""
 
 
-def tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran):
-    """Pelaksana menulis berkas. Kembalian: (nama_berkas_ditulis, daftar_masalah_format)."""
-    user = prompt_tulis(spec, koreksi, baca_proyek(hasil_dir))
+def tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran, batas_berkas=None):
+    """Pelaksana menulis berkas. Kembalian: (nama_berkas_ditulis, daftar_masalah_format).
+
+    `batas_berkas`: jumlah berkas maksimum di proyek (bawaan conf.MAKS_BERKAS_TOTAL; proses dengan
+    berkas unggahan memberi batas lebih besar supaya berkas unggahan tidak menghabiskan jatah)."""
+    batas_berkas = batas_berkas or conf.MAKS_BERKAS_TOTAL
+    user = prompt_tulis(spec, koreksi, baca_proyek(hasil_dir, conf.MAKS_BACA))
     pesan = pesan_chat(SYSTEM_PELAKSANA, user)
     teks, terpotong = yield from tanya(me, pesan, ctx, conf.TOKEN_TAHAP, 0.2, False)
     jejak.simpan("tulis-%d" % putaran, user, teks)
@@ -105,8 +109,8 @@ def tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran):
             masalah.append("%s: isi berkas kosong." % nama)
             continue
         baru = not (Path(hasil_dir) / nama).exists()
-        if baru and len(baca_proyek(hasil_dir)) >= conf.MAKS_BERKAS_TOTAL:
-            masalah.append("%s: melebihi batas %d berkas per proyek." % (nama, conf.MAKS_BERKAS_TOTAL))
+        if baru and len(baca_proyek(hasil_dir, batas_berkas)) >= batas_berkas:
+            masalah.append("%s: melebihi batas %d berkas per proyek." % (nama, batas_berkas))
             continue
         try:
             tulis_berkas(hasil_dir, nama, isi)
@@ -162,7 +166,7 @@ def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran):
     tanpa menyebut satu masalah pun setelah ditanya ulang: bila program lolos dijalankan,
     diterima; bila program gagal, penolakan tetap berlaku dan masalahnya diambil dari hasil
     menjalankan (koreksi kosong tidak bisa dikirim ke Pelaksana)."""
-    berkas = baca_proyek(hasil_dir)
+    berkas = baca_proyek(hasil_dir, conf.MAKS_BACA)
     if not berkas:
         return {"ok": False, "dilihat": "", "masalah": ["Tidak ada berkas hasil untuk diperiksa."],
                 "ringkas": "Pelaksana belum menghasilkan berkas.",
