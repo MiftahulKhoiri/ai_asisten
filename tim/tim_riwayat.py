@@ -88,6 +88,11 @@ def baca_run(run_id):
     if not isinstance(m, dict):
         raise FileNotFoundError(run_id)
     m["status"] = _status_nyata(m)
-    m["berkas"] = [{"nama": n, "isi": isi[:60000]} for n, isi in baca_proyek(d / "hasil")]
+    # Proyek hasil unggahan bisa berisi banyak berkas: yang ada di lembar tugas ditampilkan lebih dulu.
+    dicantum = {b.get("nama") for b in ((m.get("spec") or {}).get("berkas") or []) if isinstance(b, dict)}
+    semua = baca_proyek(d / "hasil", conf.MAKS_BACA)
+    semua.sort(key=lambda b: b[0] not in dicantum)       # sort stabil: urutan nama tetap di dalam kelompok
+    m["berkas"] = [{"nama": n, "isi": isi[:60000]} for n, isi in semua[:30]]
+    m["berkas_total"] = len(semua)
     m["dir"] = str(d)
     return m
