@@ -10,6 +10,7 @@ Pembagian modul (urutan impor = urutan ketergantungan):
   server_ctx      konteks satu proses generasi (mode AUTO, batal, izin lewat web)
   server_agent    buffer event proses Agent di latar belakang
   server_status   isi /api/status dan /api/agent/status
+  server_unggah   unggahan berkas (teks/kode, zip) untuk chat dan Agent
   server_http     penangan HTTP (rute /api, file statis)
   server_main     pintu masuk: argumen, siklus hidup, penutupan rapi
 
@@ -19,10 +20,10 @@ paket ini diteruskan ke modul pemiliknya (lihat server_shim.py). Kode baru sebai
 modul pemilik langsung.
 """
 from . import (server_config, server_state, server_log, server_akses, server_model, server_chat,
-               server_ctx, server_agent, server_status, server_http, server_main, server_shim)
+               server_ctx, server_agent, server_status, server_unggah, server_http, server_main, server_shim)
 
 _MODUL = (server_config, server_state, server_log, server_akses, server_model, server_chat,
-          server_ctx, server_agent, server_status, server_http, server_main)
+          server_ctx, server_agent, server_status, server_unggah, server_http, server_main)
 _PEMILIK = {}
 for _m in _MODUL:
     for _nama in _m.__all__:
