@@ -7,10 +7,42 @@ from . import tim_config as conf
 from .tim_berkas import baca_proyek
 
 
+def blok_fakta_bug(status, diag, meta):
+    """Bagian pasti dari laporan diagnosa (jalur cari_bug / perbaiki tanpa temuan), ditulis KODE
+    dari hasil Pemeriksa yang sebenarnya, bukan oleh model."""
+    nilai = diag["nilai"]
+    bug = nilai.get("masalah") or []
+    baris = ["%s **Status**: %s" % ("⚠" if bug else "✔", conf.STATUS_TEKS.get(status, status))]
+    if bug:
+        baris.append("**Temuan Pemeriksa** (%d):\n%s" % (
+            len(bug), "\n".join("%d. %s" % (i, m) for i, m in enumerate(bug, 1))))
+        if nilai.get("dilihat"):
+            baris.append("**Bukti**: `%s`" % nilai["dilihat"])
+        if nilai.get("perbaikan"):
+            baris.append("**Saran perbaikan**: " + nilai["perbaikan"])
+    else:
+        baris.append("**Temuan**: tidak ada bug nyata yang bisa ditunjuk%s. Ini bukan jaminan bebas bug."
+                     % ((" - " + nilai["ringkas"]) if nilai.get("ringkas") else ""))
+    gagal = [b for b in diag.get("baris") or [] if b.startswith("GAGAL")]
+    baris.append("**Dijalankan Pemeriksa**: %s · uji jalan %s" % (
+        ("GAGAL - " + gagal[0][:200]) if gagal else "sintaks berkas yang diperiksa baik",
+        diag.get("jalan", "dilewati")))
+    if diag.get("dilihat", 0) < diag.get("total", 0):
+        baris.append("**Cakupan**: isi %d dari %d berkas dibaca Pemeriksa (konteks model terbatas; sisanya "
+                     "hanya disebut namanya). Sebut nama berkas di tugas untuk memfokuskan pemeriksaan."
+                     % (diag["dilihat"], diag["total"]))
+    if diag.get("dipakai_ulang"):
+        baris.append("**Catatan**: memakai diagnosa dari proses sebelumnya (isi proyek tidak berubah).")
+    if bug and status == "analisis":
+        baris.append("**Langkah berikut**: untuk memperbaiki temuan ini pilih jalur **Perbaiki** lalu kirim; "
+                     "proyek ini otomatis dilanjutkan dan diagnosa ini dipakai ulang tanpa memeriksa lagi.")
+    return "\n".join(baris)
+
+
 def blok_fakta(status, spec, hasil_dir, meta, akhir):
     """Bagian pasti dari laporan, ditulis KODE dari data nyata (bukan model), supaya laporan
     tidak mengarang status, keluaran, atau hasil pemeriksaan."""
-    ikon = {"lolos": "✔", "belum": "⚠", "batal": "⏹", "error": "✖"}.get(status, "•")
+    ikon = {"lolos": "✔", "belum": "⚠", "batal": "⏹", "error": "✖", "analisis": "🔎"}.get(status, "•")
     baris = ["%s **Status**: %s (putaran %d dari maks %d)"
              % (ikon, conf.STATUS_TEKS.get(status, status), meta["putaran"], meta["maks"])]
     berkas = baca_proyek(hasil_dir)
