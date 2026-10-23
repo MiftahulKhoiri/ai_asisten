@@ -1,6 +1,7 @@
 """Berkas hasil: nama aman, tulis/baca proyek, dan penguraian keluaran Pelaksana.
 """
 import ast
+import hashlib
 import json
 import os
 import re
@@ -74,6 +75,15 @@ def salin_proyek(sumber, tujuan, maks=None):
         except ValueError:
             continue
     return n
+
+
+def hash_proyek(hasil_dir):
+    """Sidik jari isi proyek (nama + isi, akhir baris dinormalkan): dipakai untuk mengenali bahwa
+    proyek tidak berubah sejak diagnosa, sehingga diagnosa lama boleh dipakai ulang."""
+    h = hashlib.sha1()
+    for nama, isi in baca_proyek(hasil_dir, conf.MAKS_BACA):
+        h.update(nama.encode("utf-8") + b"\0" + isi.replace("\r\n", "\n").rstrip().encode("utf-8") + b"\0")
+    return h.hexdigest()
 
 
 def masukkan_bahan(sumber, tujuan):
