@@ -93,6 +93,24 @@ def cek_jalan(hasil_dir, spec, boleh):
     return "lolos", ["OK uji jalan `%s` (exit code 0):" % tampil, ringkas], penuh
 
 
+def tebak_perintah(berkas):
+    """Tebakan perintah untuk menjalankan proyek yang sudah ada (tanpa argumen): [] bila ragu.
+
+    Python: berkas dengan `if __name__ == "__main__"` (main.py didahulukan bila ada beberapa);
+    JavaScript: main.js / index.js. Hanya TEBAKAN: hasilnya dicatat sebagai catatan, bukan bukti bug."""
+    isi = dict(berkas)
+    py = [n for n in isi if n.endswith(".py") and "/" not in n and "__main__" in isi[n]
+          and re.search(r"__name__\s*==\s*[\"']__main__[\"']", isi[n])]
+    if len(py) == 1:
+        return ["python3", py[0]]
+    if "main.py" in py:
+        return ["python3", "main.py"]
+    for n in ("main.js", "index.js"):
+        if n in isi:
+            return ["node", n]
+    return []
+
+
 def _norm(t):
     return " ".join(str(t or "").split()).lower()
 
