@@ -221,11 +221,13 @@
   }
 
   /* ---------- pengaturan ---------- */
+  const JALUR_ADA = ['otomatis', 'buat', 'perbaiki', 'cari_bug'];
   function muatCfg() {
     try { Object.assign(cfg, JSON.parse(localStorage.getItem('ag_cfg') || '{}')); } catch (e) { /* abaikan */ }
     cfg.mode = cfg.mode === 3 ? 3 : 2;
     cfg.maks = Math.max(1, Math.min(10, parseInt(cfg.maks, 10) || 3));
     cfg.bongkar = cfg.bongkar !== false; cfg.izinUji = cfg.izinUji === true;   // izin harus sengaja dinyalakan
+    if (!JALUR_ADA.includes(cfg.jalur)) cfg.jalur = 'otomatis';
   }
   function simpanCfg() {
     try { localStorage.setItem('ag_cfg', JSON.stringify(cfg)); } catch (e) { /* abaikan */ }
@@ -330,7 +332,7 @@
   };
 
   /* ---------- riwayat ---------- */
-  const LABEL_STATUS = {berjalan: '⏳ berjalan', terhenti: '⚠ terhenti', lolos: '✔ lolos', belum: '⚠ belum sempurna', butuh_info: '❓ butuh info', batal: 'dibatalkan', error: '✖ error'};
+  const LABEL_STATUS = {berjalan: '⏳ berjalan', terhenti: '⚠ terhenti', lolos: '✔ lolos', analisis: '🔎 analisis', belum: '⚠ belum sempurna', butuh_info: '❓ butuh info', batal: 'dibatalkan', error: '✖ error'};
   const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
   function waktuRingkas(iso) {   // 2026-10-19T00:35:05 -> "19 Okt · 00:35"
     const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(iso || '');
@@ -415,22 +417,37 @@
       ? 'Uji jalan: DIIZINKAN. Program hasil dijalankan Pemeriksa tanpa bertanya lagi.'
       : 'Uji jalan: mati (Pemeriksa hanya cek sintaks). Nyalakan di Pengaturan bila perlu.'));
     k.appendChild(el('div', 'redup kecil', 'Proses berjalan di server: halaman boleh ditutup lalu dibuka lagi untuk memantau.'));
-    k.appendChild(el('div', 'redup kecil', 'Tulis apa yang ingin dibuat.'));
+    k.appendChild(el('div', 'redup kecil', 'Alur menyesuaikan tugas: Buat (Perencana → Pelaksana → Pemeriksa → Penjelas), Perbaiki (diagnosa dulu), atau Cari bug (hanya melapor). Pilih jenis tugas di bawah, atau biarkan Otomatis.'));
+    k.appendChild(el('div', 'redup kecil', 'Tulis apa yang ingin dibuat, diperbaiki, atau dicari bug-nya.'));
     $('pesan').appendChild(k);
   }
   function aturLanjut(id, judul) {
     lanjutId = id || null; lanjutJudul = judul || ''; awalTanya = null;
     $('lanjutBar').hidden = !lanjutId;
     $('lanjutTeks').textContent = lanjutId ? 'Melanjutkan proyek: ' + lanjutJudul : '';
-    $('input').placeholder = lanjutId ? 'Minta perbaikan atau tambahan...' : 'Apa yang ingin dibuat?';
+    $('input').placeholder = lanjutId ? 'Minta perbaikan atau tambahan...' : 'Apa yang ingin dibuat, diperbaiki, atau diperiksa?';
+    if (!lanjutId) $('saranBar').hidden = true;
   }
   $('btnBaru').onclick = () => { if (sibuk) { toast('Tunggu proses selesai atau tekan Stop.'); return; } aturLanjut(null, ''); };
 
-  const URUT = ['rencana', 'tulis', 'periksa', 'jelaskan'];
-  const PERAN = {rencana: 'Perencana', tulis: 'Pelaksana', periksa: 'Pemeriksa', jelaskan: 'Penjelas'};
-  const IKON = {rencana: '🧭', tulis: '✏', periksa: '🔎', jelaskan: '💬'};
+  const URUT_BAWAAN = ['rencana', 'tulis', 'periksa', 'jelaskan'];
+  let URUT = URUT_BAWAAN.slice();
+  const PERAN = {rencana: 'Perencana', tulis: 'Pelaksana', periksa: 'Pemeriksa', jelaskan: 'Penjelas', diagnosa: 'Diagnosa'};
+  const IKON = {rencana: '🧭', tulis: '✏', periksa: '🔎', jelaskan: '💬', diagnosa: '🩺'};
   let selesaiSet = new Set(), aktifKunci = null;
   let alurTutup = false;
+  /* Urutan tahap berbeda menurut jalur (buat / perbaiki / cari bug): server mengirimnya lewat event 'jalur'. */
+  function susunAlur(urut) {
+    const rel = $('relAlur');
+    URUT = urut.slice();
+    rel.textContent = '';
+    URUT.forEach((k, i) => {
+      const li = el('li', 'lk'); li.id = 'st_' + k;
+      li.append(el('span', 'bl', String(i + 1)), el('span', 'nm', PERAN[k] || k));
+      rel.appendChild(li);
+    });
+    rel.style.gridTemplateColumns = 'repeat(' + URUT.length + ',1fr)';
+  }
   function gambarAlur(kunci, putaran) {
     let terjauh = -1;
     URUT.forEach((k, i) => { if (selesaiSet.has(k)) terjauh = i; });
@@ -439,12 +456,13 @@
       const lewat = alurTutup && !akt && !sel && i < terjauh;      // tahap yang tidak dilalui
       c.className = 'lk' + (akt ? ' aktif' : sel ? ' selesai' : lewat ? ' lewat' : '');
       c.querySelector('.bl').textContent = sel ? '✓' : lewat ? '–' : String(i + 1);
-      c.querySelector('.nm').textContent = PERAN[k] +
+      c.querySelector('.nm').textContent = (PERAN[k] || k) +
         ((akt && putaran && (k === 'tulis' || k === 'periksa')) ? ' · ' + putaran : '');
     });
   }
   function resetAlur() {
-    selesaiSet = new Set(); aktifKunci = null; alurTutup = false; gambarAlur(null, 0);
+    selesaiSet = new Set(); aktifKunci = null; alurTutup = false;
+    susunAlur(URUT_BAWAAN); gambarAlur(null, 0);
   }
   function setAlur(kunci, putaran) {
     if (aktifKunci) selesaiSet.add(aktifKunci);
@@ -514,6 +532,21 @@
     d.append(s, pre); if (!ev.ok) d.open = true;
     $('pesan').appendChild(d); gulir();
   }
+  function kartuDiagnosa(ev) {
+    const adaBug = !ev.ok;
+    const k = el('div', 'kartu nilai diag ' + (ev.ok ? 'ok' : 'gagal'));
+    const b = el('div', 'baris');
+    b.append(lencana(ev.ok ? 'ok' : 'ditolak', ev.ok ? 'Diagnosa: tidak ada bug nyata' : 'Diagnosa: ' + (ev.masalah || []).length + ' temuan'));
+    k.appendChild(b);
+    if (ev.ringkas) k.appendChild(el('div', '', ev.ringkas));
+    if ((ev.masalah || []).length) { k.appendChild(el('div', 'sub', 'Temuan')); k.appendChild(daftarUl(ev.masalah)); }
+    if (adaBug && ev.perbaikan) k.appendChild(el('div', 'sub', 'Saran: ' + ev.perbaikan));
+    const info = [];
+    if (ev.total) info.push('Isi ' + ev.diperiksa + ' dari ' + ev.total + ' berkas dibaca Pemeriksa');
+    if (ev.dipakai_ulang) info.push('memakai diagnosa proses sebelumnya (proyek tidak berubah)');
+    if (info.length) k.appendChild(el('div', 'redup kecil', info.join(' · ')));
+    $('pesan').appendChild(k); gulir();
+  }
   function kartuNilai(ev) {
     const k = el('div', 'kartu nilai ' + (ev.ok ? 'ok' : 'gagal'));
     const b = el('div', 'baris'); b.append(lencana(ev.ok ? 'ok' : 'ditolak', ev.ok ? 'Pemeriksa: jadi' : 'Pemeriksa: perlu perbaikan'));
@@ -523,7 +556,7 @@
     if (ev.perbaikan && !ev.ok) k.appendChild(el('div', 'sub', 'Perbaikan: ' + ev.perbaikan));
     $('pesan').appendChild(k); gulir();
   }
-  const IKON_STATUS = {lolos: '✔', belum: '⚠', butuh_info: '❓', batal: '⏹', error: '✖'};
+  const IKON_STATUS = {lolos: '✔', analisis: '🔎', belum: '⚠', butuh_info: '❓', batal: '⏹', error: '✖'};
   function tambahHasil(ev) {
     const d = el('div', 'hasil ' + (ev.status || '')), tx = el('div', 'hs-tx');
     const t = String(ev.teks || ev.status || '');
@@ -624,6 +657,8 @@
     $('btnKirim').textContent = v ? '■' : '↑';
     $('btnKirim').setAttribute('aria-label', v ? 'Stop' : 'Kirim');
     $('btnKirim').className = v ? 'btn merah' : 'btn';
+    JALUR_ADA.forEach(j => { $('jl_' + j).disabled = v; });
+    if (v) $('saranBar').hidden = true;
   }
   function ukuranInput() {
     const i = $('input'); i.style.height = 'auto'; i.style.height = Math.min(i.scrollHeight, 160) + 'px';
@@ -644,7 +679,7 @@
     let sesi;
     try {
       const body = {teks, lanjut: lanjutId, mode: cfg.mode, model_p: cfg.p, model_e: cfg.e,
-        model_c: cfg.mode === 3 ? cfg.c : cfg.p, maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.izinUji,
+        model_c: cfg.mode === 3 ? cfg.c : cfg.p, maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.izinUji, jalur: cfg.jalur,
         unggahan: unggah ? unggah.paket() : null};
       sesi = (await apij('/api/agent/jalankan', {method: 'POST', body})).sesi;
       if (unggah) unggah.lepas();       // berkas sudah disalin ke folder kerja di server
@@ -715,7 +750,7 @@
                        : 'ℹ Menampilkan ulang proses terakhir dari server.');
     await pantau(p.sesi, {kartu: null, bubble: null, raw: '', teks: p.tugas || ''});
   }
-  const KATA_AKTIF = {rencana: 'menyusun lembar tugas', tulis: 'menulis kode', periksa: 'menilai hasil',
+  const KATA_AKTIF = {diagnosa: 'memeriksa kode yang ada', rencana: 'menyusun lembar tugas', tulis: 'menulis kode', periksa: 'menilai hasil',
     jelaskan: 'menjelaskan hasil'};
   function mulaiMenulis(st) {   // token pertama tiba: model sudah termuat dan mulai menjawab
     if (st.menulis || !st.tahap) return;
@@ -730,7 +765,7 @@
     if (keluaran.length > 6000) keluaran = keluaran.slice(-4000);
     if (panelBuka) gambarKeluaran();
   }
-  const LABEL_AKHIR = {lolos: 'Selesai · dinyatakan jadi', belum: 'Selesai · belum sempurna',
+  const LABEL_AKHIR = {lolos: 'Selesai · dinyatakan jadi', analisis: 'Selesai · analisis', belum: 'Selesai · belum sempurna',
     butuh_info: 'Menunggu infomu', batal: 'Dibatalkan', error: 'Berhenti karena error', terhenti: 'Terhenti'};
   function tangani(ev, st) {
     switch (ev.t) {
@@ -741,6 +776,19 @@
         catatLog('📎', n + ' berkas unggahan masuk folder kerja', 'ok');
         break;
       }
+      case 'jalur': {      // jalur kerja dipilih: urutan tahap bisa berbeda
+        susunAlur((ev.urut || []).map(t => t.kunci)); gambarAlur(null, 0);
+        tambahInfo('🧭 Jalur: ' + ev.label + (ev.alasan ? ' (' + ev.alasan + ')' : ''));
+        catatLog('🧭', 'Jalur ' + ev.label + (ev.alasan ? ' - ' + ev.alasan : ''), 'tahap');
+        break;
+      }
+      case 'diagnosa':
+        tutupKartu(st, ev.ok ? 'ok' : 'ditolak', ev.ok ? 'bersih' : 'ada temuan'); kartuDiagnosa(ev);
+        if (ev.dipakai_ulang) { selesaiSet.add('diagnosa'); gambarAlur(aktifKunci, 0); }
+        st.diagTemuan = (ev.masalah || []).length;
+        catatLog(ev.ok ? '✔' : '🩺', 'Diagnosa: ' + (ev.ok ? 'tidak ada bug nyata' : (ev.masalah || []).length + ' temuan') + (ev.dipakai_ulang ? ' (dipakai ulang)' : ''), ev.ok ? 'ok' : 'izin');
+        for (const m of (ev.masalah || []).slice(0, 3)) catatLog('', m.slice(0, 160), 'sub');
+        break;
       case 'mulai':
         if (ev.model) { susunModel(ev.model); if (panelBuka) gambarModel(); }
         $('infoAlur').textContent = 'Folder kerja: ' + ev.dir;
@@ -829,13 +877,31 @@
         tambahHasil(ev);
         catatLog(IKON_STATUS[ev.status] || '•', 'Selesai: ' + ev.teks, ev.status === 'lolos' ? 'ok' : (ev.status === 'error' ? 'gagal' : 'izin'));
         akhiriLog(LABEL_AKHIR[ev.status] || 'Selesai', ev.status === 'error');
-        if (ev.status === 'lolos' || ev.status === 'belum') { aturLanjut(ev.id, st.judul || (st.teks || '').slice(0, 40)); }
+        if (ev.status === 'lolos' || ev.status === 'belum' || ev.status === 'analisis') { aturLanjut(ev.id, st.judul || (st.teks || '').slice(0, 40)); }
+        if (ev.status === 'analisis' && st.diagTemuan > 0) tawarkanPerbaikan(st.diagTemuan);
         st.bubble = null; st.kartuLaporan = null; break;
       default: break;   // ping
     }
   }
 
   /* ---------- event ---------- */
+  /* ---------- pemilih jalur kerja ---------- */
+  function gambarJalur() {
+    JALUR_ADA.forEach(j => $('jl_' + j).setAttribute('aria-checked', j === cfg.jalur ? 'true' : 'false'));
+  }
+  JALUR_ADA.forEach(j => {
+    $('jl_' + j).onclick = () => { if (sibuk) return; cfg.jalur = j; simpanCfg(); gambarJalur(); };
+  });
+  function tawarkanPerbaikan(n) {      // sesudah analisis dengan temuan: lanjutkan ke perbaikan dengan sekali ketuk
+    $('saranTeks').textContent = n + ' temuan. Perbaiki sekarang?';
+    $('saranBar').hidden = false;
+  }
+  $('btnSaran').onclick = () => {
+    cfg.jalur = 'perbaiki'; simpanCfg(); gambarJalur(); $('saranBar').hidden = true;
+    $('input').value = 'Perbaiki temuan dari analisis sebelumnya'; ukuranInput(); $('input').focus();
+  };
+  gambarJalur();
+
   /* ---------- lampiran berkas (bahan kerja tim) ---------- */
   const unggah = window.Unggah ? window.Unggah.pasang({form: $('bawah'), token: () => TOKEN, kunci: 'aa_paket_agent', info: tambahInfo}) : null;
 
