@@ -13,18 +13,23 @@ from .tim_cek import teks_koreksi
 from .tim_config import Batal
 from .tim_model import Pemuat
 from .tim_riwayat import AKTIF_RUN, tulis_meta
+from .tim_jalur import info_jalur, pilih_jalur
 from .tim_tahap import (
     Jejak,
+    diagnosa_lama,
     event_tahap,
     pemeriksa_menjalankan,
+    simpan_diagnosa,
+    tahap_diagnosa,
     tahap_jelaskan,
+    tahap_jelaskan_bug,
     tahap_periksa,
     tahap_rencana,
     tahap_tulis,
 )
 
 
-def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak):
+def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak, koreksi_awal=""):
     """Putaran Pelaksana -> Pemeriksa -> koreksi. Kembalian: 'lolos' atau 'belum'.
     `akhir` (dict) diisi hasil pemeriksaan terakhir untuk penjelasan.
 
@@ -35,9 +40,11 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak):
                  balik ke Pelaksana. Tidak ada jalan pintas dari kode yang melewati Pemeriksa.
 
     Bila akhirnya belum sempurna, hasil putaran terbaik dipulihkan supaya koreksi yang keliru
-    tidak merusak hasil yang lebih baik."""
+    tidak merusak hasil yang lebih baik.
+
+    `koreksi_awal`: koreksi untuk putaran pertama (jalur perbaiki: temuan tahap Diagnosa)."""
     mp, me, mc, maks = cfg["model_p"], cfg["model_e"], cfg["model_c"], cfg["maks"]
-    koreksi = ""
+    koreksi = koreksi_awal
     rekam = []    # per putaran: skor, isi berkas, hasil pemeriksaan
     for putaran in range(1, maks + 1):
         meta["putaran"] = putaran
@@ -93,6 +100,21 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak):
     return "belum"
 
 
+def _diagnosa(tugas, cfg, hasil_dir, folder, lanjut, jalur, ctx, pemuat, jejak):
+    """Tahap Diagnosa, atau pakai ulang diagnosa proses `lanjut` bila isi proyek tidak berubah dan
+    sudah ada temuan (jalur perbaiki sesudah cari_bug: tidak perlu memeriksa lagi). Kembalian: diag."""
+    if jalur == "perbaiki" and lanjut and conf.ID_RUN.match(str(lanjut)):
+        lama = diagnosa_lama(conf.KERJA / lanjut, hasil_dir)
+        if lama:
+            lama["dipakai_ulang"] = True
+            simpan_diagnosa(folder, lama)
+            yield dict(lama["nilai"], t="diagnosa", diperiksa=lama["dilihat"], total=lama["total"],
+                       dipakai_ulang=True)
+            return lama
+    diag = yield from tahap_diagnosa(tugas, cfg, hasil_dir, folder, cfg["model_c"], ctx, pemuat, jejak)
+    return diag
+
+
 def _jalankan(tugas, cfg, ctx, lanjut=None, bahan=None):
     """Generator event untuk satu proses Agent (satu perintah pengguna).
 
@@ -109,10 +131,10 @@ def _jalankan(tugas, cfg, ctx, lanjut=None, bahan=None):
             "model": {"perencana": cfg["model_p"], "pelaksana": cfg["model_e"],
                       "pemeriksa": cfg["model_c"]},
             "putaran": 0, "maks": cfg["maks"], "lanjut": None, "laporan": "", "spec": None,
-            "bahan": []}
+            "bahan": [], "jalur": None}
     spec_lama = None
     if lanjut and conf.ID_RUN.match(str(lanjut)) and (conf.KERJA / lanjut).is_dir():
-        salin_proyek(conf.KERJA / lanjut / "hasil", hasil_dir)
+        salin_proyek(conf.KERJA / lanjut / "hasil", hasil_dir, conf.MAKS_BACA)
         spec_lama = baca_json(conf.KERJA / lanjut / "tugas.json")
         meta["lanjut"] = lanjut
     lewat = []
@@ -131,22 +153,53 @@ def _jalankan(tugas, cfg, ctx, lanjut=None, bahan=None):
     tulis_meta(folder, meta)       # langsung tercatat di riwayat dengan status "berjalan"
     status, spec = "error", None
     try:
-        spec, pertanyaan = yield from tahap_rencana(tugas, spec_lama, hasil_dir, folder,
-                                               cfg["model_p"], ctx, pemuat, jejak)
-        if spec is None:
-            status = "butuh_info"
-            meta["laporan"] = pertanyaan
+        ada_berkas = bool(baca_proyek(hasil_dir, 1))
+        jalur, alasan = pilih_jalur(tugas, cfg.get("jalur", "otomatis"), ada_berkas)
+        meta["jalur"] = jalur
+        tulis_meta(folder, meta)
+        if jalur != "buat" and not ada_berkas:
+            # Perbaiki / cari bug butuh kode yang sudah ada: tanpa itu tidak ada yang bisa diperiksa.
+            pertanyaan = ("Tidak ada berkas untuk %s. Unggah berkas dengan tombol 📎, atau lanjutkan "
+                          "proyek sebelumnya, lalu kirim lagi." % info_jalur(jalur)["label"].lower())
+            status, meta["laporan"] = "butuh_info", pertanyaan
             yield {"t": "tanya", "d": pertanyaan}
-            yield from pemuat.lepas_semua()
         else:
-            meta["spec"], meta["judul"] = spec, spec["judul"]
-            tulis_meta(folder, meta)
-            yield from pemuat.selesai_tahap(cfg["model_e"])
-            status = yield from kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat,
-                                          akhir, jejak)
-            meta["laporan"] = yield from tahap_jelaskan(status, spec, hasil_dir, meta, akhir,
-                                                   cfg["model_p"], ctx, pemuat, jejak)
-            yield from pemuat.lepas_semua()
+            yield info_jalur(jalur, alasan)
+            diag = None
+            if jalur in ("perbaiki", "cari_bug"):
+                diag = yield from _diagnosa(tugas, cfg, hasil_dir, folder, lanjut, jalur, ctx, pemuat, jejak)
+                meta["diagnosa"] = {"ok": diag["nilai"]["ok"], "temuan": len(diag["nilai"]["masalah"])}
+            if diag is not None and (jalur == "cari_bug" or diag["nilai"]["ok"]):
+                # Tidak ada yang perlu ditulis: jalan berubah, langsung ke laporan diagnosa.
+                if jalur == "perbaiki":
+                    yield {"t": "ringkas", "d": "Pemeriksa tidak menemukan bug nyata, jadi tidak ada "
+                                                  "berkas yang diubah."}
+                status = "analisis"
+                yield from pemuat.selesai_tahap(cfg["model_p"])
+                meta["laporan"] = yield from tahap_jelaskan_bug(status, tugas, diag, hasil_dir, meta,
+                                                                cfg["model_p"], ctx, pemuat, jejak)
+                yield from pemuat.lepas_semua()
+            else:
+                if diag is not None:
+                    yield from pemuat.selesai_tahap(cfg["model_p"])
+                spec, pertanyaan = yield from tahap_rencana(
+                    tugas, spec_lama, hasil_dir, folder, cfg["model_p"], ctx, pemuat, jejak,
+                    diagnosa=diag["nilai"] if diag else None)
+                if spec is None:
+                    status = "butuh_info"
+                    meta["laporan"] = pertanyaan
+                    yield {"t": "tanya", "d": pertanyaan}
+                    yield from pemuat.lepas_semua()
+                else:
+                    meta["spec"], meta["judul"] = spec, spec["judul"]
+                    tulis_meta(folder, meta)
+                    yield from pemuat.selesai_tahap(cfg["model_e"])
+                    koreksi_awal = teks_koreksi(diag["baris"], diag["nilai"]) if diag else ""
+                    status = yield from kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat,
+                                                  akhir, jejak, koreksi_awal)
+                    meta["laporan"] = yield from tahap_jelaskan(status, spec, hasil_dir, meta, akhir,
+                                                           cfg["model_p"], ctx, pemuat, jejak)
+                    yield from pemuat.lepas_semua()
     except Batal:
         status = "batal"
         yield {"t": "batal"}
