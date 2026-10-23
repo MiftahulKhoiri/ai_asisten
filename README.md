@@ -387,6 +387,42 @@ dibongkar saat selesai (bila "Bongkar model tiap tahap" aktif).
 | **Pelaksana** (Model 2) | membaca lembar tugas dan **hanya menulis** program ke folder `hasil/` (tidak menjalankan apa pun) |
 | **Pemeriksa** | menerima hasil Pelaksana langsung, **menjalankan** programnya, lalu **menentukan benar/salah**: dinyatakan jadi (selesai) atau memberi koreksi yang dikirim ke Pelaksana |
 
+### Alur menyesuaikan jenis tugas
+
+Urutan tahap tidak selalu sama. Ada tiga **jalur**; pilih di bar **Otomatis / Buat / Perbaiki / Cari bug**
+di atas kotak ketik (bawaan Otomatis), dan stepper alur di layar ikut berubah:
+
+| Jalur | Urutan tahap | Dipakai untuk |
+|---|---|---|
+| **Buat** | Perencana → [Pelaksana → Pemeriksa]× → Penjelas | program baru, atau menambah/mengubah fitur |
+| **Perbaiki** | **Diagnosa** → Perencana → [Pelaksana → Pemeriksa]× → Penjelas | memperbaiki bug di kode yang sudah ada (unggahan atau proyek lanjutan) |
+| **Cari bug** | **Diagnosa** → Penjelas | hanya mencari bug dan melapor; **tidak ada berkas yang diubah** |
+
+**Diagnosa** adalah Pemeriksa memeriksa kode yang SUDAH ADA sebelum ada yang diubah: sintaks semua
+berkas (berkas kosong seperti `__init__.py` dianggap sah), uji jalan pada titik masuk yang *ditebak*
+(hanya bila "Izinkan Pemeriksa menjalankan program" menyala; hasilnya sebatas catatan, karena program
+bisa butuh argumen atau berjalan terus), lalu penilaian model terhadap kodenya. Bug harus bisa
+ditunjuk barisnya. Sintaks salah yang dicatat sistem tidak boleh dinyatakan "tidak ada bug".
+
+Alur bisa **berubah di tengah jalan** menurut hasil Diagnosa:
+- **Tidak ada bug nyata** (jalur Perbaiki): berhenti dengan status **analisis**, Perencana dan Pelaksana
+  tidak dijalankan, tidak ada berkas yang diubah. Tahap yang dilewati tampil bertanda "–".
+- **Ada bug**: Perencana menyusun lembar tugas *perbaikan* dari temuan itu (hanya berkas yang perlu
+  diubah, tanpa fitur baru), dan temuan menjadi **koreksi pertama** untuk Pelaksana; sesudahnya putaran
+  Pelaksana → Pemeriksa berjalan seperti biasa.
+- **Cari bug → Perbaiki**: sesudah analisis dengan temuan muncul tombol **🔧 Perbaiki temuan**. Prosesnya
+  melanjutkan proyek yang sama dan **memakai ulang diagnosa** (tanpa memeriksa lagi) selama isi proyek
+  tidak berubah.
+- **Tanpa berkas**: jalur Perbaiki/Cari bug (dipilih sendiri) meminta kamu mengunggah berkas atau
+  melanjutkan proyek lebih dulu, tanpa memuat model.
+
+Pada **Otomatis**, jalur dipilih dari isi tugas dengan aturan kata kunci (tanpa memuat model; alasannya
+ditampilkan): ada berkas + "perbaiki/betulkan/fix" → Perbaiki; "cari bug / review / apa yang salah /
+kenapa error" → Cari bug; "tambahkan/buat/ubah" → Buat; menyebut gejala (error, crash, gagal) → Perbaiki;
+tanpa berkas → Buat. Kamu selalu bisa memilih sendiri jalurnya. Pemeriksa membaca isi sebagian berkas
+bila proyek besar (yang disebut di tugas, yang bermasalah, dan titik masuk didahulukan); cakupannya
+ditulis di laporan.
+
 Pilihan di halaman Agent:
 
 - **2 model**: Model 1 = Perencana + Pemeriksa + Penjelas, Model 2 = Pelaksana.
@@ -479,8 +515,9 @@ berkas yang relevan:
 |---|---|
 | teks prompt Perencana/Pelaksana/Pemeriksa/Penjelas, susunan isi prompt | `tim/tim_prompt.py` |
 | batas token, batas waktu uji, folder kerja, batas berkas, validasi pengaturan dari web | `tim/tim_config.py` |
-| alur putaran (Pelaksana menulis -> Pemeriksa menjalankan + menentukan), pemulihan hasil terbaik | `tim/tim_alur.py` |
-| tiap tahap model (Perencana, Pelaksana menulis, Pemeriksa menjalankan + menentukan, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
+| alur putaran (Pelaksana menulis -> Pemeriksa menjalankan + menentukan), pemulihan hasil terbaik, pemakaian ulang diagnosa | `tim/tim_alur.py` |
+| pilihan jalur (buat / perbaiki / cari bug) dan aturan kata kuncinya | `tim/tim_jalur.py` |
+| tiap tahap model (Diagnosa, Perencana, Pelaksana menulis, Pemeriksa menjalankan + menentukan, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
 | alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian | `tim/tim_cek.py` |
 | cara membaca keluaran Pelaksana (`=== FILE: ===`), nama berkas aman | `tim/tim_berkas.py` |
 | lembar tugas: perintah uji yang diizinkan, harapan keluaran | `tim/tim_spec.py` |
@@ -678,7 +715,7 @@ python3 -m unittest discover -s tests -v
 
 Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
-agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`),
+agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`), alur adaptif Agent (`tests/test_jalur.py`),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
