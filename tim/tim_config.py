@@ -61,15 +61,20 @@ ID_RUN = re.compile(r"^\d{8}-\d{6}-[0-9a-f]{4}$")
 
 
 PERAN = {"rencana": "Perencana", "tulis": "Pelaksana", "periksa": "Pemeriksa",
-         "jelaskan": "Penjelas"}
+         "jelaskan": "Penjelas", "diagnosa": "Pemeriksa"}
 
 
 STATUS_TEKS = {"berjalan": "sedang berjalan",
                "terhenti": "terhenti (aplikasi dimatikan saat proses berjalan)",
                "lolos": "dinyatakan jadi oleh Pemeriksa",
+               "analisis": "analisis selesai (tidak ada berkas yang diubah)",
                "belum": "belum sempurna (batas putaran tercapai)",
                "butuh_info": "menunggu info tambahan dari pengguna",
                "batal": "dibatalkan", "error": "berhenti karena error"}
+
+
+# Jalur kerja (urutan tahap). Dipilih pengguna atau otomatis dari isi tugas (lihat tim_jalur.py).
+JALUR_PILIHAN = ("otomatis", "buat", "perbaiki", "cari_bug")
 
 
 class Batal(Exception):
@@ -94,8 +99,10 @@ def siapkan_cfg(b, tersedia):
     except (TypeError, ValueError):
         maks = LANGKAH_BAWAAN
     maks = max(LANGKAH_MIN, min(LANGKAH_MAKS, maks))
+    jalur = b.get("jalur") if b.get("jalur") in JALUR_PILIHAN else "otomatis"
     return {"mode": mode, "model_p": mp, "model_e": me, "model_c": mc, "maks": maks,
-            "bongkar": bool(b.get("bongkar", True)), "uji": b.get("uji") is True}, ""
+            "bongkar": bool(b.get("bongkar", True)), "uji": b.get("uji") is True,
+            "jalur": jalur}, ""
 
 
 def id_valid(run_id):
