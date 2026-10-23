@@ -43,8 +43,9 @@ Susunan paket (tiap berkas satu tanggung jawab; lihat docstring masing-masing):
   tim_spec     lembar tugas dari Perencana
   tim_cek      alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian
   tim_laporan  bagian fakta laporan akhir
-  tim_tahap    tahap kerja model: Pelaksana menulis, Pemeriksa menjalankan + menentukan
+  tim_tahap    tahap kerja model: Diagnosa, Pelaksana menulis, Pemeriksa menjalankan + menentukan
   tim_riwayat  riwayat proses: daftar, baca, hapus
+  tim_jalur    jalur kerja (buat / perbaiki / cari_bug) dan pemilihannya dari isi tugas
   tim_alur     orkestrator dan pintu masuk jalankan()
 
 Pemakaian dari luar cukup `import tim` lalu `tim.jalankan(...)`, `tim.daftar_run()`, dst.
@@ -110,12 +111,22 @@ from .tim_cek import (
 )
 from .tim_laporan import (
     blok_fakta,
+    blok_fakta_bug,
+)
+from .tim_jalur import (
+    JALUR,
+    info_jalur,
+    pilih_jalur,
 )
 from .tim_tahap import (
     Jejak,
+    diagnosa_lama,
+    diagnosa_menjalankan,
     event_tahap,
     pemeriksa_menjalankan,
+    tahap_diagnosa,
     tahap_jelaskan,
+    tahap_jelaskan_bug,
     tahap_periksa,
     tahap_rencana,
     tahap_tulis,
