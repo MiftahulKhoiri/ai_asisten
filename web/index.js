@@ -304,9 +304,13 @@
   function tutupDrawer() { $('drawer').classList.remove('buka'); $('tirai').hidden = true; }
 
   /* ---------- render pesan ---------- */
-  function tambahUser(teks) {
+  function tambahUser(teks, lampiran) {
     const p = document.createElement('div'); p.className = 'p user';
     const g = document.createElement('div'); g.className = 'gel'; g.textContent = teks;
+    if (lampiran && lampiran.length) {
+      const l = document.createElement('div'); l.className = 'lamp';
+      l.textContent = '📎 ' + lampiran.join(', '); g.appendChild(l);
+    }
     p.appendChild(g); $('pesan').appendChild(p); gulir(true);
   }
   function tambahAsisten(teks) {
@@ -372,7 +376,7 @@
     const hasil = {};
     for (const m of list) if (m.role === 'tool') hasil[m.tool_call_id] = m.content;
     for (const m of list) {
-      if (m.role === 'user') tambahUser(m.content);
+      if (m.role === 'user') tambahUser(m.tampil != null ? m.tampil : m.content, (m.lampiran || []).map(x => x.nama));
       else if (m.role === 'assistant') {
         if (m.content && m.content.trim()) tambahAsisten(m.content);
         for (const c of (m.tool_calls || [])) {
@@ -395,13 +399,16 @@
   }
   async function kirim() {
     const teks = $('input').value.trim();
-    if (!teks || sibuk || !chatId) return;
+    const lamp = unggah ? unggah.nama() : [];
+    if ((!teks && !lamp.length) || sibuk || !chatId) return;
+    if (unggah && unggah.sibuk()) { toast('Tunggu unggahan selesai.'); return; }
     $('input').value = ''; ukuranInput();
-    tambahUser(teks); setSibuk(true); mulaiBerpikir();
+    tambahUser(teks || 'Tolong baca berkas terlampir.', lamp); setSibuk(true); mulaiBerpikir();
     const st = {bubble: null, raw: '', pikir: null, pikirRaw: ''};
     try {
-      const r = await api('/api/kirim', {method: 'POST', body: {id: chatId, teks}});
+      const r = await api('/api/kirim', {method: 'POST', body: {id: chatId, teks, unggahan: unggah ? unggah.paket() : null}});
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + r.status)); }
+      if (unggah) unggah.lepas();       // lampiran sudah masuk ke obrolan di server
       const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '';
       while (true) {
         const {value, done} = await rd.read(); if (done) break;
@@ -452,6 +459,11 @@
       case 'ringkas': tambahInfo('🗜 ' + ev.d); st.bubble = null; pastikanBerpikir(); break;
       case 'kritik': tambahInfo('🧠 ' + ev.d); st.bubble = null; st.pikir = null; st.pikirRaw = ''; pastikanBerpikir(); break;
       case 'info': tambahInfo(teksInfo(ev), false); st.bubble = null; break;
+      case 'lampiran': {   // sebagian lampiran tidak muat di konteks model
+        const kurang = (ev.berkas || []).filter(b => b.dipotong || !b.disertakan);
+        if (kurang.length) tambahInfo('📎 Tidak semua isi lampiran muat di konteks model: ' + kurang.map(b => b.nama + (b.disertakan ? ' (dipotong)' : ' (tidak disertakan)')).join(', ') + '. Kirim bagian yang penting saja bila perlu.');
+        break;
+      }
       case 'error': hentiBerpikir(); tambahInfo('⚠ ' + ev.d, true); break;
       case 'batal': hentiBerpikir(); tambahInfo('Dibatalkan.'); break;
       case 'batas': hentiBerpikir(); tambahInfo('Batas langkah tercapai. Kirim pesan lanjutan jika perlu.'); break;
@@ -493,6 +505,9 @@
     TOKEN = v; localStorage.setItem('aa_token', v); $('tokenPesan').textContent = ''; cekStatus();
   };
   $('tokenInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnToken').click(); });
+
+  /* ---------- lampiran berkas ---------- */
+  const unggah = window.Unggah ? window.Unggah.pasang({form: $('bawah'), token: () => TOKEN, kunci: 'aa_paket_chat', info: tambahInfo}) : null;
 
   /* ---------- mulai ---------- */
   const qs = new URLSearchParams(location.search);
