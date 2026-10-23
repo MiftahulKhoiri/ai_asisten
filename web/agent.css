@@ -12,6 +12,7 @@
 .r-rencana{--rc:var(--r-rencana)}
 .r-tulis{--rc:var(--r-tulis)}
 .r-periksa{--rc:var(--r-periksa)}
+.r-diagnosa{--rc:var(--r-periksa)}
 .r-jelaskan{--rc:var(--r-jelaskan)}
 
 /* ---------- dasar ---------- */
@@ -106,7 +107,7 @@ body.agent{font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
 #alur .lk.lewat::before{background:var(--garis)}
 #alur .lk.lewat .bl{border-style:dashed;background:transparent}
 #alur .lk.lewat .nm{opacity:.7}
-#st_rencana{--rc:var(--r-rencana)}#st_tulis{--rc:var(--r-tulis)}#st_periksa{--rc:var(--r-periksa)}#st_jelaskan{--rc:var(--r-jelaskan)}
+#st_rencana{--rc:var(--r-rencana)}#st_tulis{--rc:var(--r-tulis)}#st_periksa,#st_diagnosa{--rc:var(--r-periksa)}#st_jelaskan{--rc:var(--r-jelaskan)}
 #infoAlur{display:block;margin-top:8px;text-align:center;font-size:12px;color:var(--redup)}
 #infoAlur:empty{display:none}
 @keyframes denyutBulat{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--rc) 45%,transparent)}50%{box-shadow:0 0 0 5px color-mix(in srgb,var(--rc) 0%,transparent)}}
@@ -276,3 +277,15 @@ details.berkas .rg small{margin-left:6px;color:var(--redup);font-family:system-u
 .laporan.lolos{border-color:color-mix(in srgb,var(--ok) 55%,var(--garis))}
 .laporan.belum,.laporan.batal{border-color:color-mix(in srgb,var(--izin) 55%,var(--garis))}
 .laporan.error{border-color:color-mix(in srgb,var(--bahaya) 55%,var(--garis))}
+
+/* ---------- pilihan jalur kerja + saran lanjutan ---------- */
+#jalurBar{display:flex;gap:6px;padding:6px 12px;background:var(--bg);border-top:1px solid var(--garis);overflow-x:auto}
+#jalurBar .jl{flex:none;padding:5px 12px;border:1px solid var(--garis);border-radius:999px;background:var(--panel);color:var(--redup);font-size:13px;cursor:pointer}
+#jalurBar .jl[aria-checked="true"]{border-color:var(--aksen);color:var(--teks);background:var(--panel2);font-weight:600}
+#jalurBar:has(.jl:disabled){opacity:.6}
+#saranBar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--bg);border-top:1px solid var(--garis);font-size:13px;color:var(--redup)}
+#saranBar[hidden],#jalurBar[hidden]{display:none}
+#saranBar span{flex:1;min-width:0}
+#saranBar .btn{padding:5px 12px;font-size:13px;border-radius:999px}
+#alur .lk.diagnosa .bl{border-radius:6px}
+.kartu.nilai.diag .baris{font-weight:600}
