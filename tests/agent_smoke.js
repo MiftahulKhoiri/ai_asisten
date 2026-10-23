@@ -46,7 +46,10 @@ function teksPohon(e) {
 }
 
 const document = {
-  getElementById(id) { return byId[id] || (byId[id] = mk('div', id)); },
+  getElementById(id) {   // elemen yang dibuat lewat createElement dan sudah dipasang dicari lebih dulu
+    const dibuat = semua.filter(e => e.id === id && e.parentElement).pop();
+    return dibuat || byId[id] || (byId[id] = mk('div', id));
+  },
   createElement(tag) { return mk(tag); },
   createTextNode(t) { const n = mk('#text'); n._text = t; return n; },
   querySelectorAll() { return []; },
@@ -123,6 +126,9 @@ vm.createContext(konteks);
   } catch (e) {
     galat.push(String(e && e.stack || e));
   }
+  // keadaan tombol saran dicatat sebelum langkah hapus riwayat di bawah (yang menyembunyikannya)
+  const saranTampil = !!byId['saranBar'] && byId['saranBar'].hidden === false;
+  const saranTeks = byId['saranTeks'] && byId['saranTeks']._text;
   const lencana = byId['lencanaLog'];
   // buka panel log setelah proses selesai (baris log digambar saat panel dibuka)
   try { lencana.onclick(); } catch (e) { galat.push(String(e && e.stack || e)); }
@@ -148,6 +154,11 @@ vm.createContext(konteks);
     kartu: semua.filter(e => /\btahap\b/.test(e.className)).length,
     poll_dari: poll.dari, putus: poll.gagal, sibuk_akhir: byId['btnKirim'].className,
     info: semua.filter(e => /\binfo\b/.test(e.className)).map(teksPohon),
+    alur: (byId['relAlur'] ? byId['relAlur'].children : []).map(c => ({id: c.id, kelas: c.className, nama: c.children[1] && c.children[1]._text, bl: c.children[0] && c.children[0]._text})),
+    alur_kolom: byId['relAlur'] && byId['relAlur'].style.gridTemplateColumns,
+    saran_tampil: saranTampil, saran_teks: saranTeks,
+    kartu_diag: semua.filter(e => /\bdiag\b/.test(e.className)).length,
+    jalur_cek: ['otomatis', 'buat', 'perbaiki', 'cari_bug'].map(j => byId['jl_' + j] && byId['jl_' + j].attrs['aria-checked']),
   };
   console.log(JSON.stringify(hasil));
   process.exit(galat.length || err.length ? 1 : 0);
