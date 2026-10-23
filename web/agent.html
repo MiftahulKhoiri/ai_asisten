@@ -96,13 +96,23 @@
 
   <section class="layar" id="layar_kerja" hidden>
     <div id="alur" aria-label="Tahap kerja">
-      <ol class="rel">
+      <ol class="rel" id="relAlur">
         <li class="lk" id="st_rencana"><span class="bl">1</span><span class="nm">Perencana</span></li>
         <li class="lk" id="st_tulis"><span class="bl">2</span><span class="nm">Pelaksana</span></li>
         <li class="lk" id="st_periksa"><span class="bl">3</span><span class="nm">Pemeriksa</span></li>
         <li class="lk" id="st_jelaskan"><span class="bl">4</span><span class="nm">Penjelas</span></li>
       </ol>
       <small id="infoAlur"></small>
+    </div>
+    <div id="jalurBar" role="radiogroup" aria-label="Jenis tugas">
+      <button type="button" class="jl" id="jl_otomatis" data-jalur="otomatis" role="radio" title="Dipilih otomatis dari isi tugas">Otomatis</button>
+      <button type="button" class="jl" id="jl_buat" data-jalur="buat" role="radio" title="Buat program baru atau tambah/ubah fitur">Buat</button>
+      <button type="button" class="jl" id="jl_perbaiki" data-jalur="perbaiki" role="radio" title="Diagnosa dulu, lalu perbaiki kode yang sudah ada">Perbaiki</button>
+      <button type="button" class="jl" id="jl_cari_bug" data-jalur="cari_bug" role="radio" title="Hanya mencari bug dan melapor, tanpa mengubah berkas">Cari bug</button>
+    </div>
+    <div id="saranBar" hidden>
+      <span id="saranTeks"></span>
+      <button class="btn" id="btnSaran" type="button">🔧 Perbaiki temuan</button>
     </div>
     <div id="lanjutBar" hidden>
       <span id="lanjutTeks"></span>
@@ -117,7 +127,7 @@
       </button>
     </div>
     <form id="bawah" autocomplete="off">
-      <textarea id="input" rows="1" placeholder="Apa yang ingin dibuat?"></textarea>
+      <textarea id="input" rows="1" placeholder="Apa yang ingin dibuat, diperbaiki, atau diperiksa?"></textarea>
       <button class="btn" id="btnKirim" type="submit" aria-label="Kirim">&#8593;</button>
     </form>
   </section>
