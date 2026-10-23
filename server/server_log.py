@@ -47,6 +47,12 @@ def catat_event(ev):
         log("OK", f"Model dibongkar dari memori: {ev['model']}")
     elif t == "pulih":
         log("WARN", ev["d"])
+    elif t == "jalur":
+        log("INFO", f"Agent jalur: {ev.get('label')} ({ev.get('alasan')})")
+    elif t == "diagnosa":
+        log("INFO", "Agent diagnosa: " + ("tidak ada bug nyata" if ev.get("ok")
+                                          else f"{len(ev.get('masalah') or [])} temuan")
+            + (" (dipakai ulang)" if ev.get("dipakai_ulang") else ""))
     elif t == "bahan":
         log("INFO", f"Agent: {len(ev.get('nama') or [])} berkas unggahan masuk folder kerja"
             + (f", {len(ev['dilewati'])} dilewati" if ev.get("dilewati") else ""))
