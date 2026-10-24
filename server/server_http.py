@@ -1,6 +1,7 @@
 """server_http.py - penangan HTTP: rute /api, file statis web, dan proses generasi di thread."""
 
 import hmac
+import io
 import json
 import queue
 import re
@@ -8,7 +9,9 @@ import secrets
 import threading
 import time
 import traceback
+import zipfile
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 import agen
 import tim
@@ -18,6 +21,7 @@ from . import server_ctx as kts
 from . import server_log as lg
 from . import server_model as mdl
 from . import server_chat as rwy
+from . import server_handoff as ho
 from . import server_state as state
 from . import server_status as sts
 from . import server_unggah as ung
@@ -33,6 +37,8 @@ STATIS = {
     "/agent.html": ("agent.html", "text/html; charset=utf-8"),
     "/agent.css": ("agent.css", "text/css; charset=utf-8"),
     "/agent.js": ("agent.js", "application/javascript; charset=utf-8"),
+    "/serahkan.css": ("serahkan.css", "text/css; charset=utf-8"),
+    "/serahkan.js": ("serahkan.js", "application/javascript; charset=utf-8"),
     "/unggah.css": ("unggah.css", "text/css; charset=utf-8"),
     "/unggah.js": ("unggah.js", "application/javascript; charset=utf-8"),
 }
@@ -116,6 +122,9 @@ class H(BaseHTTPRequestHandler):
         m = re.fullmatch(r"/api/agent/run/([0-9]{8}-[0-9]{6}-[0-9a-f]{4})", path)
         if metode == "GET" and m:
             return self._json(200, tim.baca_run(m.group(1)))
+        mu = re.fullmatch(r"/api/agent/run/([0-9]{8}-[0-9]{6}-[0-9a-f]{4})/unduh", path)
+        if metode == "GET" and mu:
+            return self.agent_unduh(mu.group(1))
         if metode == "DELETE" and m:
             try:
                 tim.hapus_run(m.group(1))
@@ -131,6 +140,10 @@ class H(BaseHTTPRequestHandler):
             return self.unggah_hapus()
         if metode == "POST":
             b = self._body()
+            if path == "/api/handoff/ringkas":
+                return self.handoff_ringkas(b)
+            if path == "/api/handoff/kirim":
+                return self.handoff_kirim(b)
             if path == "/api/chat/baru":
                 with state.S_LOCK:
                     model = state.S["model"]
@@ -195,9 +208,105 @@ class H(BaseHTTPRequestHandler):
                 return self._json(200, rwy.baca_chat(cid))
             if metode == "DELETE":
                 rwy.path_chat(cid).unlink()
+                rwy.hapus_lampiran(cid)
                 lg.log("INFO", f"Obrolan dihapus: {cid}")
                 return self._json(200, {"ok": True})
         self._json(404, {"error": "Tidak ditemukan"})
+
+    # ------------------------------------------------------------ serah terima chat -> Agent
+    def handoff_ringkas(self, b):
+        """Susun brief dari diskusi obrolan untuk disetujui pengguna (belum menjalankan apa pun)."""
+        cid = b.get("id")
+        try:
+            chat = rwy.baca_chat(cid)
+        except FileNotFoundError:
+            return self._json(404, {"error": "Obrolan tidak ditemukan"})
+        with state.S_LOCK:
+            siap, model = state.S["status"] == "siap", state.S["model"]
+        if not siap:
+            return self._json(409, {"error": "Model belum dimuat. Pilih model dulu."})
+        if not any(m.get("role") == "user" for m in chat.get("pesan", [])):
+            return self._json(400, {"error": "Belum ada diskusi yang bisa diringkas."})
+        if not state.GEN_LOCK.acquire(blocking=False):
+            return self._json(409, {"error": "Model sedang menjawab. Tunggu sebentar."})
+        try:
+            mdl.sentuh()
+            isi, otomatis = ho.ringkas_diskusi(chat, model)
+        finally:
+            state.GEN_LOCK.release()
+        lamp = ho.lampiran_chat(cid)
+        jalur, alasan = tim.pilih_jalur(isi, "otomatis", bool(lamp))
+        self._json(200, {"ringkasan": isi, "otomatis": otomatis, "lampiran": lamp, "jalur": jalur,
+                         "jalur_label": tim.JALUR[jalur]["label"], "alasan": alasan,
+                         "lanjut": ho.hasil_terakhir(chat)})
+
+    def handoff_kirim(self, b):
+        """Serahkan brief yang sudah disetujui ke Agent; hasilnya ditulis balik ke obrolan."""
+        cid = b.get("id")
+        tugas = (b.get("tugas") or "").strip()
+        if not tugas:
+            return self._json(400, {"error": "Brief kosong"})
+        if len(tugas) > tim.MAKS_TUGAS:
+            return self._json(400, {"error": f"Brief terlalu panjang (maks {tim.MAKS_TUGAS} karakter)"})
+        try:
+            tersedia = {m["id"] for m in mdl.daftar_model()}
+        except Exception:  # noqa: BLE001
+            return self._json(502, {"error": "Tidak bisa menghubungi llama-server"})
+        cfg, err = tim.siapkan_cfg(b, tersedia)
+        if err:
+            return self._json(400, {"error": err})
+        lanjut = b.get("lanjut") or None
+        if lanjut and not (tim.id_valid(lanjut) and (Path(tim.KERJA) / lanjut / "hasil").is_dir()):
+            return self._json(400, {"error": "Hasil Agent sebelumnya tidak ditemukan"})
+        try:
+            sesi = ho.serahkan(cid, tugas, cfg, b.get("muat_ulang") is not False, lanjut)
+        except FileNotFoundError:
+            return self._json(404, {"error": "Obrolan tidak ditemukan"})
+        except agt.ProsesGagal as e:
+            return self._json(e.kode, {"error": e.pesan})
+        self._json(200, {"ok": True, "sesi": sesi})
+
+    def agent_unduh(self, run_id):
+        """Unduh hasil sebuah proses Agent: satu berkas (?berkas=nama) atau semuanya sebagai zip."""
+        folder = Path(tim.KERJA) / run_id / "hasil"
+        if not folder.is_dir():
+            return self._json(404, {"error": "Hasil tidak ditemukan"})
+        berkas = tim.baca_proyek(folder, tim.MAKS_BACA)
+        nama = (parse_qs(urlparse(self.path).query).get("berkas") or [""])[0]
+        if nama:
+            try:
+                nama = tim.aman_nama(nama)
+            except ValueError:
+                return self._json(400, {"error": "Nama berkas tidak valid"})
+            isi = dict(berkas).get(nama)
+            if isi is None:
+                return self._json(404, {"error": "Berkas tidak ditemukan"})
+            return self._kirim_unduhan(isi.encode("utf-8"), "text/plain; charset=utf-8", nama.replace("/", "_"))
+        if not berkas:
+            return self._json(404, {"error": "Hasil kosong"})
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for rel, isi in berkas:
+                z.writestr(rel, isi)
+        judul = ""
+        try:
+            judul = tim.baca_run(run_id).get("judul") or ""
+        except (FileNotFoundError, OSError, ValueError):
+            pass
+        slug = re.sub(r"[^A-Za-z0-9_-]+", "-", judul).strip("-")[:40] or run_id
+        self._kirim_unduhan(buf.getvalue(), "application/zip", slug + ".zip")
+
+    def _kirim_unduhan(self, data, tipe, nama):
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", tipe)
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % nama)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
 
     def _id_paket(self):
         return (parse_qs(urlparse(self.path).query).get("paket") or [""])[0]
@@ -314,7 +423,11 @@ class H(BaseHTTPRequestHandler):
                 chat["judul"] = teks[:40]
             rwy.simpan_chat(chat)
             if paket:
-                ung.buang(paket)        # isinya sudah ada di obrolan
+                try:
+                    ho.simpan_lampiran(cid, paket)      # disimpan: bahan kerja bila obrolan diserahkan ke Agent
+                except Exception as e:  # noqa: BLE001 - gagal menyimpan lampiran tidak membatalkan pesan
+                    lg.log("WARN", f"Lampiran tidak disimpan: {type(e).__name__}: {e}")
+                ung.buang(paket)
             mdl.sentuh()
             lg.log("CHAT", f"kamu: {teks[:100]}" + (f" (+{len(ringkas)} berkas)" if ringkas else ""))
 
@@ -381,55 +494,10 @@ class H(BaseHTTPRequestHandler):
         cfg, err = tim.siapkan_cfg(b, tersedia)
         if err:
             return self._json(400, {"error": err})
-        with state.S_LOCK:
-            if state.S["status"] in ("siap", "memuat"):
-                return self._json(409, {"error": "Sesi chat masih memuat model. Akhiri dulu "
-                                                 "di halaman Chat (tombol Selesai)."})
-        if not state.GEN_LOCK.acquire(blocking=False):
-            return self._json(409, {"error": "Masih ada proses berjalan"})
-        diserahkan = False   # True setelah thread kerja berjalan: dialah yang melepas kunci
-        sesi = None
         try:
-            mdl.sentuh()
-            lg.log("CHAT", f"agent: {tugas[:100]}")
-            lg.log("INFO", f"Agent {cfg['mode']} model: perencana={cfg['model_p']}, "
-                        f"pelaksana={cfg['model_e']}, pemeriksa={cfg['model_c']}, "
-                        f"maks {cfg['maks']} putaran, uji jalan "
-                        + ("DIIZINKAN" if cfg["uji"] else "mati"))
-            ctx = kts.Ctx(queue.Queue(), threading.Event())
-            ctx.skill = ("tanpa",)
-            state.AKTIF["ctx"] = ctx
-            with state.AGENT_COND:      # buffer baru hanya setelah kunci didapat: 409 tidak menghapus yang lama
-                sesi = secrets.token_hex(4)
-                state.AGENT.update(sesi=sesi, id=None, tugas=" ".join(tugas.split())[:200], events=[],
-                             awal=0, aktif=True, mulai=time.time(), status=None)
-
-            def kerja():
-                try:
-                    for ev in tim.jalankan(tugas, cfg, ctx, lanjut, bahan):
-                        agt.agent_tambah(sesi, ev)
-                except Exception as e:  # noqa: BLE001
-                    agt.agent_tambah(sesi, {"t": "error", "d": f"{type(e).__name__}: {e}"})
-                finally:
-                    if paket:
-                        ung.buang(paket)       # sudah disalin ke folder kerja
-                    with state.AGENT_COND:   # kunci dilepas sebelum 'aktif' dimatikan: klien bisa langsung mulai lagi
-                        state.AKTIF["ctx"] = None
-                        mdl.sentuh()
-                        state.GEN_LOCK.release()
-                        if state.AGENT["sesi"] == sesi:
-                            state.AGENT["aktif"] = False
-                        state.AGENT_COND.notify_all()
-
-            threading.Thread(target=kerja, daemon=True).start()
-            diserahkan = True
-        finally:
-            if not diserahkan:
-                state.AKTIF["ctx"] = None
-                with state.AGENT_COND:
-                    if sesi and state.AGENT["sesi"] == sesi:
-                        state.AGENT["aktif"] = False
-                state.GEN_LOCK.release()
+            sesi = agt.mulai_proses(tugas, cfg, lanjut, bahan, paket)
+        except agt.ProsesGagal as e:
+            return self._json(e.kode, {"error": e.pesan})
         self._json(200, {"ok": True, "sesi": sesi})
 
     def agent_event(self):
