@@ -3,8 +3,32 @@
 import json
 import os
 import secrets
+import shutil
+import threading
 from datetime import datetime
 from . import server_config as conf
+
+
+_KUNCI_TULIS = threading.Lock()
+
+
+def tambah_pesan(cid, pesan, perbarui=None):
+    """Tambahkan satu pesan ke obrolan; aman dipanggil dari thread lain (mis. thread Agent yang
+    menulis hasilnya). `perbarui(chat)` boleh mengubah bagian lain obrolan sebelum disimpan."""
+    with _KUNCI_TULIS:
+        chat = baca_chat(cid)
+        if perbarui:
+            perbarui(chat)
+        if pesan is not None:
+            chat["pesan"].append(pesan)
+        simpan_chat(chat)
+        return chat
+
+
+def hapus_lampiran(cid):
+    """Hapus folder lampiran (bahan kerja) milik obrolan."""
+    if conf.ID_RE.match(cid or ""):
+        shutil.rmtree(conf.RIWAYAT / (cid + ".lampiran"), ignore_errors=True)
 
 
 def path_chat(cid):
@@ -55,6 +79,7 @@ def hapus_semua_chat(kecuali=None):
             n += 1
         except OSError:
             pass
+        hapus_lampiran(f.stem)
     return n
 
 
@@ -73,4 +98,4 @@ def daftar_chat():
     return hasil
 
 
-__all__ = ['path_chat', 'simpan_chat', 'baca_chat', 'baru_chat', 'cuplikan_chat', 'hapus_semua_chat', 'daftar_chat']
+__all__ = ['tambah_pesan', 'hapus_lampiran', 'path_chat', 'simpan_chat', 'baca_chat', 'baru_chat', 'cuplikan_chat', 'hapus_semua_chat', 'daftar_chat']
