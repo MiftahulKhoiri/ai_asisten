@@ -1,0 +1,24 @@
+/* serahkan.css - serah terima chat -> Agent -> chat: kartu brief, progres, dan hasil */
+#btnSerah{font-size:15px;padding:6px 10px}
+#btnSerah[hidden]{display:none}
+.serah{align-self:stretch;margin:6px 0;padding:12px;border:1px solid var(--garis);border-radius:14px;background:var(--panel);font-size:14px}
+.serah .jud{font-weight:600;margin-bottom:6px}
+.serah textarea{width:100%;min-height:150px;margin:6px 0;padding:10px;background:var(--bg);color:var(--teks);border:1px solid var(--garis);border-radius:10px;font:inherit;font-size:14px;line-height:1.45;resize:vertical}
+.serah .kecil{font-size:12px;margin:4px 0}
+.serah .jalur{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.serah .jalur button{padding:5px 12px;border:1px solid var(--garis);border-radius:999px;background:var(--bg);color:var(--redup);font-size:13px;cursor:pointer}
+.serah .jalur button[aria-checked="true"]{border-color:var(--aksen);color:var(--teks);font-weight:600}
+.serah .aksi{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.serah .aksi .btn{padding:7px 14px}
+.serah label.cek{display:flex;gap:8px;align-items:flex-start;margin:6px 0;font-size:13px}
+.serah .galat{color:var(--bahaya);font-size:13px;margin-top:6px}
+.serah .tahap{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.serah .tahap span{padding:3px 10px;border:1px solid var(--garis);border-radius:999px;font-size:12px;color:var(--redup)}
+.serah .tahap span.sel{color:var(--ok);border-color:var(--ok)}
+.serah .tahap span.akt{color:var(--teks);border-color:var(--aksen);font-weight:600}
+.serah .tahap span.lewat{text-decoration:line-through;opacity:.6}
+.serah.hasil .berkas{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--garis)}
+.serah.hasil .berkas .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.serah.hasil .berkas small{color:var(--redup)}
+.serah.hasil .berkas button{padding:4px 10px;font-size:13px}
+.serah a.btn{text-decoration:none;display:inline-block}
