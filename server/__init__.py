@@ -7,10 +7,11 @@ Pembagian modul (urutan impor = urutan ketergantungan):
   server_akses    token akses dan alamat IP lokal
   server_model    daftar model, muat/bongkar di llama-server, idle, sesi
   server_chat     penyimpanan riwayat obrolan
-  server_ctx      konteks satu proses generasi (mode AUTO, batal, izin lewat web)
-  server_agent    buffer event proses Agent di latar belakang
-  server_status   isi /api/status dan /api/agent/status
   server_unggah   unggahan berkas (teks/kode, zip) untuk chat dan Agent
+  server_ctx      konteks satu proses generasi (mode AUTO, batal, izin lewat web)
+  server_agent    buffer event Agent di latar belakang dan mulai_proses()
+  server_handoff  serah terima chat -> Agent -> chat (brief, lampiran obrolan, hasil)
+  server_status   isi /api/status dan /api/agent/status
   server_http     penangan HTTP (rute /api, file statis)
   server_main     pintu masuk: argumen, siklus hidup, penutupan rapi
 
@@ -20,10 +21,11 @@ paket ini diteruskan ke modul pemiliknya (lihat server_shim.py). Kode baru sebai
 modul pemilik langsung.
 """
 from . import (server_config, server_state, server_log, server_akses, server_model, server_chat,
-               server_ctx, server_agent, server_status, server_unggah, server_http, server_main, server_shim)
+               server_unggah, server_ctx, server_agent, server_handoff, server_status, server_http, server_main,
+               server_shim)
 
 _MODUL = (server_config, server_state, server_log, server_akses, server_model, server_chat,
-          server_ctx, server_agent, server_status, server_unggah, server_http, server_main)
+          server_unggah, server_ctx, server_agent, server_handoff, server_status, server_http, server_main)
 _PEMILIK = {}
 for _m in _MODUL:
     for _nama in _m.__all__:
