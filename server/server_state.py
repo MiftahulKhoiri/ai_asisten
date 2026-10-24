@@ -19,7 +19,7 @@ KONF = {}                     # kid -> [Event, setuju]
 # buffer ini. Halaman (yang baru dibuka lagi, atau dari HP lain) membaca buffer lewat
 # /api/agent/event dan menampilkan ulang semua yang sudah terjadi.
 AGENT = {"sesi": None, "id": None, "tugas": "", "events": [], "awal": 0,
-         "aktif": False, "mulai": 0.0, "status": None}
+         "aktif": False, "mulai": 0.0, "status": None, "chat_id": None}   # chat_id: diserahkan dari obrolan itu
 AGENT_COND = threading.Condition()
 
 
