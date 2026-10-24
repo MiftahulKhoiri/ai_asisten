@@ -938,6 +938,11 @@
     TOKEN = qs.get('token'); localStorage.setItem('aa_token', TOKEN);
     history.replaceState(null, '', location.pathname);
   }
+  const bukaDariTautan = qs.get('run');          // tautan "Lihat proses" dari kartu hasil di chat
+  if (bukaDariTautan) history.replaceState(null, '', location.pathname);
   if (!TOKEN) tampil('token');
-  else { tampil('setup'); muatStatus(true); muatRiwayat(); }
+  else {
+    tampil('setup'); muatStatus(true); muatRiwayat();
+    if (bukaDariTautan && /^\d{8}-\d{6}-[0-9a-f]{4}$/.test(bukaDariTautan)) bukaRun(bukaDariTautan);
+  }
 })();
