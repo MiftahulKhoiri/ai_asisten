@@ -20,14 +20,15 @@ Terminal hanya untuk menyalakan aplikasi dan menampilkan log.
 6. [Skill (bisa digabung)](#skill-bisa-digabung)
 7. [Fitur web](#fitur-web)
 8. [Unggah berkas](#unggah-berkas)
-9. [Agent (tim beberapa model)](#agent-tim-beberapa-model)
-10. [Tools](#tools)
-11. [Pengaturan (variabel lingkungan)](#pengaturan-variabel-lingkungan)
-12. [Keamanan](#keamanan)
-13. [Berkas](#berkas)
-14. [Pengujian](#pengujian)
-15. [Pemecahan masalah](#pemecahan-masalah)
-16. [Batasan](#batasan)
+9. [Serah terima chat ke Agent](#serah-terima-chat-ke-agent)
+10. [Agent (tim beberapa model)](#agent-tim-beberapa-model)
+11. [Tools](#tools)
+12. [Pengaturan (variabel lingkungan)](#pengaturan-variabel-lingkungan)
+13. [Keamanan](#keamanan)
+14. [Berkas](#berkas)
+15. [Pengujian](#pengujian)
+16. [Pemecahan masalah](#pemecahan-masalah)
+17. [Batasan](#batasan)
 
 ## Cara kerja
 
@@ -375,6 +376,39 @@ bertahan walau halaman dimuat ulang dan dibersihkan otomatis setelah 24 jam.
 - Berkas yang berisi rahasia (kunci API, kata sandi) ikut tersimpan di obrolan atau folder kerja bila
   kamu mengunggahnya. Jangan unggah berkas seperti itu.
 
+## Serah terima chat ke Agent
+
+Chat dan Agent punya tugas berbeda. **Chat** adalah tempat berdiskusi dan mencoba model: bertanya,
+menggali ide, membaca berkas. **Agent** adalah dapur produksi: tim model dengan peran masing-masing
+yang mengerjakan sesuatu sampai jadi. Serah terima menyambungkan keduanya, tanpa mengubah
+pembagian itu (Agent tidak dipakai untuk ngobrol):
+
+1. **Diskusi di chat** sampai idenya matang (boleh melampirkan berkas dengan 📎).
+2. Ketuk **🏭** di header. Model chat menyusun **brief** dari diskusi: tujuan, yang diminta, batasan,
+   berkas yang ada, kriteria selesai. Brief tampil sebagai kartu yang bisa kamu **ubah**; pilih jalur
+   (Otomatis / Buat / Perbaiki / Cari bug) dan lihat model Agent yang akan dipakai.
+3. **Setujui & kirim ke Agent.** Tidak ada yang dikirim sebelum kamu menyetujui. Server melepas model
+   chat dari memori, lalu Agent mengerjakan brief itu di latar belakang (lihat
+   [alur adaptif](#alur-menyesuaikan-jenis-tugas)), dengan berkas lampiran obrolan sebagai bahan kerja.
+   Di chat tampil kartu progres (jalur, tahap yang sedang berjalan, putaran) dengan tombol Stop.
+4. **Hasil kembali ke obrolan.** Begitu Agent selesai, server menulis hasilnya ke obrolan yang sama:
+   laporan Penjelas dan **kartu hasil** berisi berkas yang bisa diunduh satu per satu atau sebagai zip,
+   plus tautan "Lihat proses" ke halaman Agent. Karena ditulis oleh server, hasilnya tetap masuk
+   walau halaman ditutup; buka lagi kapan saja.
+5. Model chat **dimuat ulang** otomatis (bisa dimatikan di kartu brief) supaya diskusi berlanjut:
+   minta perubahan, lalu ketuk 🏭 lagi. Brief berikutnya menawarkan **melanjutkan dari hasil Agent
+   sebelumnya**, sehingga perbaikan lama tidak hilang dan berkas lampiran asli tidak menimpanya.
+
+Hal yang perlu diketahui:
+- Model Agent dibaca dari pengaturan di halaman Agent (satu kali diatur di sana). Bila belum diatur,
+  tombol kirim dinonaktifkan dan kartu menunjukkan alasannya.
+- Selama Agent bekerja, kotak ketik chat dinonaktifkan dan model tidak bisa dimuat dari halaman lain.
+- Bila Agent butuh informasi tambahan, hasilnya berupa pertanyaan di obrolan; jawab di chat lalu serahkan lagi.
+- Bila Agent tidak bisa mulai (mis. masih ada proses lain), pesan serah terima ditarik dan model chat
+  dimuat ulang. Brief otomatis gagal? Kartu memakai pesanmu sebagai brief dan kamu tinggal merapikannya.
+- Berkas yang dilampirkan di chat disimpan di `riwayat/<id>.lampiran/` (maks 100 berkas) dan ikut
+  terhapus saat obrolan dihapus.
+
 ## Agent (tim beberapa model)
 
 Tombol **Agent** di pojok atas halaman chat membuka `agent.html`. Di sana beberapa model
@@ -554,7 +588,8 @@ dipakai, bukan disalin saat impor, supaya perubahan itu langsung berlaku.
 | cara memuat/membongkar model, idle, tombol Selesai | `server/server_model.py` |
 | menyimpan dan membaca riwayat obrolan | `server/server_chat.py` |
 | izin lewat web (mode AUTO, konfirmasi) | `server/server_ctx.py` |
-| buffer dan long-poll proses Agent di latar belakang | `server/server_agent.py` |
+| buffer dan long-poll proses Agent di latar belakang; memulai proses (`mulai_proses`) | `server/server_agent.py` |
+| brief dari diskusi, penyerahan ke Agent, hasil kembali ke obrolan, unduhan | `server/server_handoff.py`, rute `/api/handoff/*` dan `/api/agent/run/<id>/unduh` di `server/server_http.py` |
 | argumen baris perintah (`--port`, `--idle`, ...), penutupan rapi | `server/server_main.py` |
 
 Dari luar tetap `import asisten` (`asisten.GEN_LOCK`, `asisten.H`, `asisten.daftar_model`, ...). Antar
@@ -676,6 +711,8 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `server/server_ctx.py` | konteks satu proses generasi: mode AUTO, batal, izin lewat web |
 | `server/server_agent.py`, `server_status.py` | buffer event Agent di latar belakang; isi `/api/status` |
 | `server/server_unggah.py` | unggahan berkas: penampung paket, ekstrak zip aman, lampiran chat |
+| `server/server_handoff.py` | serah terima chat -> Agent -> chat: brief dari diskusi, lampiran obrolan, hasil kembali ke obrolan |
+| `web/serahkan.js`, `web/serahkan.css` | tombol 🏭, kartu brief, progres Agent, dan kartu hasil + unduhan di halaman chat |
 | `web/unggah.js`, `web/unggah.css` | tombol 📎 dan daftar lampiran (dipakai halaman Chat dan Agent) |
 | `server/server_http.py` | penangan HTTP: rute `/api`, file statis, proses generasi di thread |
 | `server/server_main.py` | argumen baris perintah, siklus hidup server, penutupan rapi |
@@ -715,7 +752,7 @@ python3 -m unittest discover -s tests -v
 
 Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
-agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`), alur adaptif Agent (`tests/test_jalur.py`),
+agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`), alur adaptif Agent (`tests/test_jalur.py`), serah terima chat-Agent (`tests/test_serahterima.py`, `tests/serahkan_smoke.js`),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
