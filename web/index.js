@@ -81,6 +81,7 @@
     $('btnSelesai').hidden = (nama !== 'chat');
     $('btnMenu').hidden = (nama !== 'chat');
     $('btnAgent').hidden = (nama === 'token');
+    if (serah) serah.tampilkan(nama === 'chat');
     if (nama !== 'chat') { $('judulChat').textContent = 'AI Asisten'; $('subModel').textContent = ''; }
   }
   function setPoll(ms) {
@@ -163,14 +164,24 @@
     try {
       const s = await apij('/api/status');
       $('swAuto').checked = !!s.auto;
-      if (s.status === 'siap') {
-        $('subModel').textContent = s.model + (s.skill ? ' · ' + labelSkill(s.skill) : '');
-        const adaTool = s.tool_aktif !== 0;
-        $('input').placeholder = adaTool ? 'Ketik perintah...' : 'Ketik pesan...';
-        $('swAuto').closest('label').hidden = !adaTool;
+      const ag = (s.agent && s.agent.aktif) ? s.agent : null;
+      if (s.status === 'siap' || (ag && ag.chat_id)) {
+        if (s.status === 'siap') {
+          setAgentAktif(false);
+          $('subModel').textContent = s.model + (s.skill ? ' · ' + labelSkill(s.skill) : '');
+          const adaTool = s.tool_aktif !== 0;
+          $('input').placeholder = adaTool ? 'Ketik perintah...' : 'Ketik pesan...';
+          $('swAuto').closest('label').hidden = !adaTool;
+        } else {      // model chat dilepas karena obrolan ini diserahkan ke Agent
+          $('subModel').textContent = 'Agent bekerja ...';
+          setAgentAktif(true);
+        }
         if (layar !== 'chat') await masukChat();
-        setPoll(15000);
+        if (ag && ag.chat_id !== chatId) await bukaChat(ag.chat_id);
+        if (serah) serah.pulihkan(ag);
+        setPoll(ag ? 5000 : 15000);
       } else {
+        setAgentAktif(false);
         if (layar === 'chat') toast('Sesi berakhir, model dibongkar.');
         if (layar !== 'model') tampil('model');
         renderModel(s);
@@ -379,6 +390,7 @@
       if (m.role === 'user') tambahUser(m.tampil != null ? m.tampil : m.content, (m.lampiran || []).map(x => x.nama));
       else if (m.role === 'assistant') {
         if (m.content && m.content.trim()) tambahAsisten(m.content);
+        if (m.hasil && serah) { $('pesan').appendChild(serah.kartuHasil(m.hasil)); }     // hasil kerja Agent
         for (const c of (m.tool_calls || [])) {
           let a = {}; try { a = JSON.parse(c.function.arguments || '{}'); } catch (e) { /* abaikan */ }
           kartuTool(c.id, ringkasTool(c.function.name, a), hasil[c.id], c.function.name);
@@ -401,6 +413,7 @@
     const teks = $('input').value.trim();
     const lamp = unggah ? unggah.nama() : [];
     if ((!teks && !lamp.length) || sibuk || !chatId) return;
+    if (agentAktif) { toast('Agent sedang bekerja. Tunggu hasilnya dulu.'); return; }
     if (unggah && unggah.sibuk()) { toast('Tunggu unggahan selesai.'); return; }
     $('input').value = ''; ukuranInput();
     tambahUser(teks || 'Tolong baca berkas terlampir.', lamp); setSibuk(true); mulaiBerpikir();
@@ -508,6 +521,21 @@
 
   /* ---------- lampiran berkas ---------- */
   const unggah = window.Unggah ? window.Unggah.pasang({form: $('bawah'), token: () => TOKEN, kunci: 'aa_paket_chat', info: tambahInfo}) : null;
+
+  /* ---------- serah terima ke Agent (diskusi -> Agent -> hasil kembali ke obrolan) ---------- */
+  let agentAktif = false;       // Agent sedang bekerja di server (dari obrolan ini atau dari halaman Agent)
+  function setAgentAktif(v) {
+    if (v === agentAktif) return;
+    agentAktif = v;
+    $('input').disabled = v; $('btnKirim').disabled = v;
+    if (v) $('input').placeholder = 'Agent sedang bekerja ...';
+  }
+  const serah = window.Serahkan ? window.Serahkan.pasang({
+    token: () => TOKEN, chatId: () => chatId, wadah: $('pesan'), sebelum: $('btnAgent'),
+    gulir, info: tambahInfo, toast, sibuk: () => sibuk,
+    muatUlang: async () => { if (chatId) await bukaChat(chatId); },
+    setelahSelesai: () => cekStatus(),
+  }) : null;
 
   /* ---------- mulai ---------- */
   const qs = new URLSearchParams(location.search);
