@@ -18,6 +18,7 @@ def status_json():
              "skill_bawaan": list(agen.tolls.normal_skill(None)),
              "skills": {m: len(agen.tools_untuk(m)) for m in ids},
              "skill_tools": {m: agen.tolls.nama_tool_aktif(m) for m in ids}}
+    d["agent"] = agt.agent_proses()       # proses Agent (juga yang diserahkan dari obrolan)
     if d["status"] != "siap":
         try:
             d["models"] = mdl.daftar_model()
