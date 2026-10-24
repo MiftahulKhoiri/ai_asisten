@@ -17,6 +17,8 @@ def siapkan(riwayat, batas, tanpa_tool=False):
     for m in pesan:                  # kunci tampilan web; isi lampiran sudah ada di 'content'
         m.pop("tampil", None)
         m.pop("lampiran", None)
+        m.pop("hasil", None)         # kunci tampilan: kartu hasil Agent dan penanda serah terima
+        m.pop("agent", None)
     if tanpa_tool:
         pesan = [m for m in pesan if m.get("role") != "tool"]
         for m in pesan:
