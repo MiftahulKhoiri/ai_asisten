@@ -210,7 +210,7 @@ INFO  Model belum dimuat. Pilih model dari tampilan web.
 1. Pastikan HP satu Wi-Fi dengan Pi.
 2. Buka alamat `http://192.168.x.x:8090/?token=...` di browser HP.
 3. Token tersimpan di browser, jadi berikutnya cukup buka `http://IP-PI:8090`.
-4. Di halaman web: **pilih skill**, lalu **pilih model**. Tunggu sampai model termuat
+4. Di halaman web: **pilih skill**, **pilih model**, lalu tekan **Mulai sesi**. Tunggu sampai model termuat
    (di Pi bisa puluhan detik), lalu mulai chat.
 
 Lupa IP Pi-nya? Jalankan `hostname -I` di Pi.
@@ -297,8 +297,10 @@ tmux new -s ai        # lalu jalankan kedua perintah di jendela terpisah (Ctrl+b
 
 ## Alur sesi
 
-1. Buka halaman web, **pilih skill** (boleh lebih dari satu) lalu **pilih model**.
-   Model baru dimuat setelah dipilih.
+1. Buka halaman web, lalu tiga langkah: **pilih skill** (boleh lebih dari satu), **pilih model**
+   (hanya menandainya), dan tekan **Mulai sesi**. Model baru dimuat setelah Mulai ditekan, jadi
+   salah ketuk tidak langsung memuat model besar. Pilihan model diingat; bila hanya ada satu
+   model, langsung ditandai.
 2. Chat. Jawaban muncul bertahap (streaming), tiap tool tampil sebagai kartu.
 3. Model **otomatis dibongkar dari memori** saat:
    - menekan tombol **Selesai** di web,
@@ -752,7 +754,7 @@ python3 -m unittest discover -s tests -v
 
 Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
-agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`), alur adaptif Agent (`tests/test_jalur.py`), serah terima chat-Agent (`tests/test_serahterima.py`, `tests/serahkan_smoke.js`),
+agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`), layar Mulai sesi (`tests/test_web.py`, `tests/index_smoke.js`), alur adaptif Agent (`tests/test_jalur.py`), serah terima chat-Agent (`tests/test_serahterima.py`, `tests/serahkan_smoke.js`),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
