@@ -30,10 +30,10 @@
 
   <section class="layar" id="layar_model" hidden>
     <div class="tengah">
-      <h2>Pilih model</h2>
-      <p class="redup">Model baru dimuat setelah kamu memilih, dan otomatis dibongkar saat sesi selesai.</p>
+      <h2>Mulai sesi</h2>
+      <p class="redup">Pilih skill dan model, lalu tekan <b>Mulai</b>. Model baru dimuat setelah Mulai ditekan, dan otomatis dibongkar saat sesi selesai.</p>
       <div id="skillBox">
-        <div class="label">Skill (kemampuan) - boleh pilih lebih dari satu, sebelum memuat model</div>
+        <div class="label">1. Pilih skill (kemampuan) - boleh lebih dari satu</div>
         <div class="seg" id="seg">
           <button type="button" data-skill="tanpa"><b>Tanpa skill</b><small>Tanya jawab saja</small></button>
           <button type="button" data-skill="web"><b>Web</b><small id="nWeb">4 tool</small></button>
@@ -43,9 +43,13 @@
         </div>
         <p id="skillKet" class="redup kecil"></p>
       </div>
+      <div class="langkah">2. Pilih model</div>
       <div id="modelPesan"></div>
-      <div id="daftarModel"></div>
+      <div id="daftarModel" role="radiogroup" aria-label="Model"></div>
       <p id="modelInfo" class="redup kecil"></p>
+      <div class="langkah">3. Mulai</div>
+      <button class="btn" id="btnMulai" type="button" disabled>Mulai sesi</button>
+      <p id="mulaiKet" class="redup kecil"></p>
       <button class="btn abu" id="btnMuatUlang" type="button" style="margin-top:12px">&#8635; Muat ulang daftar model</button>
     </div>
   </section>
