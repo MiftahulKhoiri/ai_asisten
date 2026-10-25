@@ -80,5 +80,39 @@ class TestWebAgent(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
 
+class TestLayarMulai(unittest.TestCase):
+    """Layar awal chat: pilih skill -> pilih model -> tekan Mulai (model baru dimuat setelah Mulai)."""
+
+    def test_html_memiliki_tiga_langkah_dan_tombol_mulai(self):
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        for pasti in ("1. Pilih skill", "2. Pilih model", "3. Mulai", 'id="btnMulai"', 'id="mulaiKet"',
+                      'role="radiogroup"'):
+            self.assertIn(pasti, html)
+        self.assertLess(html.index('id="skillBox"'), html.index('id="daftarModel"'))
+        self.assertLess(html.index('id="daftarModel"'), html.index('id="btnMulai"'))
+
+    def test_mengetuk_model_tidak_lagi_memuat_langsung(self):
+        js = (WEB / "index.js").read_text(encoding="utf-8")
+        self.assertIn("b.onclick = () => pilihTanpaMuat(m.id);", js)
+        self.assertNotIn("b.onclick = () => pilihModel(m.id);", js)
+        self.assertIn("$('btnMulai').onclick", js)
+
+    def test_logika_pilihan_dengan_dom_tiruan(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node tidak terpasang")
+        skrip = Path(__file__).resolve().parent / "index_smoke.js"
+        r = subprocess.run([node, str(skrip)], capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.strip().splitlines()[-1], "OK")
+
+    def test_sintaks_index_js(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node tidak terpasang")
+        r = subprocess.run([node, "--check", str(WEB / "index.js")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
