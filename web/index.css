@@ -109,3 +109,11 @@ details.tool .rg{flex:1;min-width:0}
 #drawer .bawah{padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--garis)}
 #drawer .bawah .btn{width:100%}
 .kosong{padding:8px 10px;margin:0}
+
+/* ---------- pilih skill -> pilih model -> Mulai ---------- */
+.langkah{margin:16px 0 6px;font-size:13px;color:var(--redup)}
+.model.on{border-color:var(--aksen);box-shadow:0 0 0 1px var(--aksen) inset}
+.model.on .nama::before{content:"\2713  ";color:var(--aksen)}
+#daftarModel.mati .model,#daftarModel.mati+#modelInfo{opacity:.6}
+#btnMulai{display:block;width:100%;padding:13px;font-size:16px;font-weight:600}
+#btnMulai:disabled{opacity:.5}
