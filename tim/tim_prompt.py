@@ -121,7 +121,7 @@ SYSTEM_PERENCANA = (
     '"langkah": ["Parse argumen", "Validasi operator dan angka", "Hitung dan cetak"], '
     '"kriteria": ["Menerima dua angka dan satu operator", "Mendukung + - * /", '
     '"Menangani pembagian nol dengan pesan error", "Mencetak hasil ke stdout"], '
-    '"jalankan": ["python3", "main.py", "6", "7", "*"], '
+    '"jalankan": ["python3", "main.py", "6","*","7"], '
     '"harapan": ["42"], '
     '"catatan": "Angka dan operator lewat argumen CLI, bukan input interaktif.", '
     '"tanya": ""}'
