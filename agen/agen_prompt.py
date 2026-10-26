@@ -155,7 +155,16 @@ def max_history(tools):
     return max(total * 5 // 24, min(total // 2, sisa))
 
 
-def buat_system(ringkasan="", mode=None):
+def dasar_dari(ctx):
+    """Prompt dasar pilihan pengguna dari konteks proses: teks, atau None (= bawaan) bila tidak ada."""
+    d = getattr(ctx, "prompt_dasar", None)
+    return d if isinstance(d, str) else None
+
+
+def buat_system(ringkasan="", mode=None, dasar=None):
+    """Prompt sistem. `dasar` hanya berlaku untuk skill tanpa akses sistem (tanpa/web/kritis):
+    None = SYSTEM_CHAT bawaan; teks = prompt pilihan pengguna ({waktu} diganti tanggal dan jam);
+    "" = tanpa prompt dasar sama sekali (model murni; tambahan skill web/kritis tetap ikut)."""
     skill = tolls.normal_skill(mode)
     waktu = datetime.now().strftime("%Y-%m-%d %H:%M")
     if "dasar" in skill or "kompleks" in skill:
@@ -166,8 +175,10 @@ def buat_system(ringkasan="", mode=None):
             teks = "\n".join(l for l in teks.split("\n") if not l.startswith("8. "))
             nama = ", ".join(t["function"]["name"] for t in tools_untuk(skill))
             teks += "\nTool yang tersedia saat ini hanya: " + nama + "."
-    else:  # tanpa / web / kritis: tidak ada akses sistem
+    elif dasar is None:  # tanpa / web / kritis: tidak ada akses sistem
         teks = SYSTEM_CHAT.format(waktu=waktu)
+    else:
+        teks = dasar.replace("{waktu}", waktu)
     if "web" in skill:
         teks += PROMPT_WEB
     if "kritis" in skill:
@@ -178,4 +189,4 @@ def buat_system(ringkasan="", mode=None):
     return teks
 
 
-__all__ = ['PROMPT_RINGKAS', 'SYSTEM_PROMPT', 'SYSTEM_CHAT', 'KATA_TOOL', 'PROMPT_WEB', 'PROMPT_KRITIS', 'PROMPT_KRITIK', 'KATA_WEB', 'perlu_tool', 'tools_untuk', 'mode_dari', 'max_history', 'buat_system']
+__all__ = ['PROMPT_RINGKAS', 'SYSTEM_PROMPT', 'SYSTEM_CHAT', 'KATA_TOOL', 'PROMPT_WEB', 'PROMPT_KRITIS', 'PROMPT_KRITIK', 'KATA_WEB', 'perlu_tool', 'tools_untuk', 'mode_dari', 'max_history', 'dasar_dari', 'buat_system']

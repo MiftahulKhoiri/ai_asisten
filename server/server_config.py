@@ -34,5 +34,12 @@ MAKS_ZIP_ENTRI = 3000           # entri zip yang diperiksa
 MAKS_BERKAS_PAKET = 100         # berkas dalam satu paket
 UNGGAH_UMUR_JAM = 24            # paket yang tidak dipakai dibersihkan setelah ini
 
-__all__ = ['UNGGAH', 'ID_PAKET', 'MAKS_UNGGAH_BYTE', 'MAKS_ZIP_TOTAL', 'MAKS_ZIP_ENTRI',
+# Prompt pilihan untuk skill Tanpa (disimpan di prompt.json, satu berkas untuk semua perangkat).
+PROMPT_FILE = BASE / "prompt.json"
+PROMPT_BAWAAN = "bawaan"        # id prompt bawaan (SYSTEM_CHAT); tidak bisa dihapus
+MAKS_PROMPT = 50
+MAKS_NAMA_PROMPT = 40
+MAKS_ISI_PROMPT = 4000
+
+__all__ = ['PROMPT_FILE', 'PROMPT_BAWAAN', 'MAKS_PROMPT', 'MAKS_NAMA_PROMPT', 'MAKS_ISI_PROMPT', 'UNGGAH', 'ID_PAKET', 'MAKS_UNGGAH_BYTE', 'MAKS_ZIP_TOTAL', 'MAKS_ZIP_ENTRI',
            'MAKS_BERKAS_PAKET', 'UNGGAH_UMUR_JAM', 'BASE', 'WEB', 'RIWAYAT', 'TOKEN_FILE', 'MODELS_DIR', 'ID_RE', 'TOKEN', 'IDLE_MENIT', 'WARNA', 'AGENT_MAKS_EVENT', 'AGENT_BATCH', 'AGENT_TUNGGU_MAKS']

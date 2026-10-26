@@ -43,13 +43,27 @@
         </div>
         <p id="skillKet" class="redup kecil"></p>
       </div>
-      <div class="langkah">2. Pilih model</div>
-      <div id="modelPesan"></div>
-      <div id="daftarModel" role="radiogroup" aria-label="Model"></div>
-      <p id="modelInfo" class="redup kecil"></p>
-      <div class="langkah">3. Mulai</div>
-      <button class="btn" id="btnMulai" type="button" disabled>Mulai sesi</button>
-      <p id="mulaiKet" class="redup kecil"></p>
+      <div id="promptBox" hidden>
+        <div class="promptKepala"><span>List prompt</span><button type="button" class="btn abu" id="btnPromptBaru">+ prompt</button></div>
+        <div id="promptForm" hidden>
+          <input id="promptNama" type="text" maxlength="40" placeholder="Nama prompt" aria-label="Nama prompt" autocomplete="off">
+          <textarea id="promptIsi" rows="6" maxlength="4000" placeholder="Isi prompt. {waktu} akan diganti tanggal dan jam." aria-label="Isi prompt"></textarea>
+          <div class="promptAksi"><span id="promptGalat" class="galat" role="alert"></span><button type="button" class="btn" id="btnPromptSimpan">Simpan</button></div>
+        </div>
+        <div id="promptList" role="group" aria-label="List prompt"></div>
+        <p id="promptKet" class="redup kecil"></p>
+        <button type="button" class="btn" id="btnPromptSelesai">Selesai</button>
+      </div>
+      <div id="promptRingkas" class="redup kecil" hidden><span id="promptRingkasTeks"></span><button type="button" class="tautan" id="btnPromptUbah">Ubah</button></div>
+      <div id="langkahModel">
+        <div class="langkah">2. Pilih model</div>
+        <div id="modelPesan"></div>
+        <div id="daftarModel" role="radiogroup" aria-label="Model"></div>
+        <p id="modelInfo" class="redup kecil"></p>
+        <div class="langkah">3. Mulai</div>
+        <button class="btn" id="btnMulai" type="button" disabled>Mulai sesi</button>
+        <p id="mulaiKet" class="redup kecil"></p>
+      </div>
       <button class="btn abu" id="btnMuatUlang" type="button" style="margin-top:12px">&#8635; Muat ulang daftar model</button>
     </div>
   </section>
@@ -77,6 +91,7 @@
 <div id="toast" hidden></div>
 
 <script src="unggah.js"></script>
+<script src="prompt.js"></script>
 <script src="serahkan.js"></script>
 <script src="index.js"></script>
 </body>

@@ -121,8 +121,9 @@ def giliran(riwayat, model, ctx, memori=None):
         r = (memori or {}).get("ringkasan") or {}
         mulai = min(r.get("sampai", 0), len(riwayat))
         ringk = r.get("teks", "")
-        kirim = ([{"role": "system", "content": prompt.buat_system(ringk, skill)}]
-                 + mem.siapkan(riwayat[mulai:], batas, not tools))
+        sistem = prompt.buat_system(ringk, skill, prompt.dasar_dari(ctx))
+        kirim = ([{"role": "system", "content": sistem}] if sistem.strip() else []) \
+            + mem.siapkan(riwayat[mulai:], batas, not tools)
 
         putaran = yield from llm._baca_stream(model, kirim, ctx,
                                               tools if tool_aktif else None, kritis)

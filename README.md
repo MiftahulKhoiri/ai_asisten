@@ -330,6 +330,27 @@ diperiksa ulang.
 Saran untuk pemula: mulai dengan **Tanpa skill** untuk memastikan model menjawab dengan baik,
 lalu coba **Dasar**.
 
+### Prompt untuk skill Tanpa
+
+Bila **Tanpa skill** dipilih (tanpa Dasar/Kompleks), muncul panel **List prompt** untuk menentukan
+prompt sistem apa yang dipakai model. Langkahnya: pilih skill, atur prompt lalu tekan **Selesai**, pilih
+model, tekan **Mulai sesi**.
+
+- **+ prompt** membuka kolom nama dan isi; tombol **Simpan** ada di pojok bawah kolom. Prompt baru
+  langsung tercentang.
+- Daftar berbentuk `□ nama prompt (−)`: centang untuk memakai, `(−)` untuk menghapus (ada konfirmasi).
+  Boleh mencentang **beberapa** prompt; isinya digabung berurutan sesuai daftar.
+- **Bawaan** adalah prompt asisten yang dipakai selama ini; tercentang secara bawaan dan tidak bisa dihapus.
+- **Tidak mencentang satu pun** = model berjalan **tanpa prompt sistem sama sekali** (murni), tanpa
+  ringkasan otomatis yang disisipkan. Cocok untuk melihat perilaku asli model.
+- Isi prompt boleh memuat `{waktu}`, yang diganti tanggal dan jam saat dipakai. Maks 40 karakter untuk
+  nama, 4000 untuk isi, 50 prompt.
+- Prompt disimpan di server (`prompt.json` di folder proyek), jadi sama di semua perangkat. Pilihan
+  centang dan status Selesai diingat per browser; ketuk **Ubah** untuk membuka panelnya lagi.
+- Nama prompt yang dipakai tampil di header (`model · skill · prompt: ...`).
+- Prompt hanya berlaku untuk skill tanpa akses sistem (Tanpa, Web, Berpikir kritis). Skill **Dasar** dan
+  **Kompleks** memakai prompt bertool sendiri, jadi panel tidak tampil dan pilihan diabaikan.
+
 Skill Web: tanyakan misalnya "carikan berita terbaru hari ini" atau "berapa harga emas
 sekarang". `berita` memakai Google News (judul, sumber, umur berita); `cari_web` memakai
 halaman hasil Brave Search dan beralih ke berita bila gagal; `baca_halaman` membuka isi
@@ -713,6 +734,8 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `server/server_ctx.py` | konteks satu proses generasi: mode AUTO, batal, izin lewat web |
 | `server/server_agent.py`, `server_status.py` | buffer event Agent di latar belakang; isi `/api/status` |
 | `server/server_unggah.py` | unggahan berkas: penampung paket, ekstrak zip aman, lampiran chat |
+| `server/server_prompt.py` | prompt pilihan untuk skill Tanpa: simpan (`prompt.json`), tambah, hapus, rakit |
+| `web/prompt.js` | panel List prompt di layar Mulai sesi (centang, + prompt, hapus, Selesai) |
 | `server/server_handoff.py` | serah terima chat -> Agent -> chat: brief dari diskusi, lampiran obrolan, hasil kembali ke obrolan |
 | `web/serahkan.js`, `web/serahkan.css` | tombol 🏭, kartu brief, progres Agent, dan kartu hasil + unduhan di halaman chat |
 | `web/unggah.js`, `web/unggah.css` | tombol 📎 dan daftar lampiran (dipakai halaman Chat dan Agent) |
@@ -754,7 +777,7 @@ python3 -m unittest discover -s tests -v
 
 Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
-agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`), layar Mulai sesi (`tests/test_web.py`, `tests/index_smoke.js`), alur adaptif Agent (`tests/test_jalur.py`), serah terima chat-Agent (`tests/test_serahterima.py`, `tests/serahkan_smoke.js`),
+agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`), layar Mulai sesi (`tests/test_web.py`, `tests/index_smoke.js`), prompt untuk skill Tanpa (`tests/test_prompt.py`, `tests/prompt_smoke.js`), alur adaptif Agent (`tests/test_jalur.py`), serah terima chat-Agent (`tests/test_serahterima.py`, `tests/serahkan_smoke.js`),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),

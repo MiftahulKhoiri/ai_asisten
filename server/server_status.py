@@ -4,6 +4,7 @@ import agen
 import tim
 from . import server_agent as agt
 from . import server_model as mdl
+from . import server_prompt as prm
 from . import server_state as state
 
 
@@ -18,6 +19,8 @@ def status_json():
              "skill_bawaan": list(agen.tolls.normal_skill(None)),
              "skills": {m: len(agen.tools_untuk(m)) for m in ids},
              "skill_tools": {m: agen.tolls.nama_tool_aktif(m) for m in ids}}
+    d["prompt"] = prm.rakit(state.S["prompt"])[1] if prm.berlaku(sk) else None     # nama prompt yang dipakai sesi ini
+    d["prompt_id"] = state.S["prompt"]
     d["agent"] = agt.agent_proses()       # proses Agent (juga yang diserahkan dari obrolan)
     if d["status"] != "siap":
         try:

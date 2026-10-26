@@ -25,7 +25,8 @@ def _kritik(model, pesan_riwayat, batas, tools, skill, ringkasan, draf, ctx):
         yield {"t": "token", "d": draf}
         return draf
     yield {"t": "kritik", "d": "Memeriksa dan memperbaiki jawaban ..."}
-    pesan = ([{"role": "system", "content": prompt.buat_system(ringkasan, skill)}]
+    sistem = prompt.buat_system(ringkasan, skill, prompt.dasar_dari(ctx))
+    pesan = (([{"role": "system", "content": sistem}] if sistem.strip() else [])
              + mem.siapkan(pesan_riwayat, max(3000, batas - 3500), not tools)
              + [{"role": "assistant", "content": draf},
                 {"role": "user", "content": prompt.PROMPT_KRITIK}])

@@ -118,6 +118,9 @@
   let skill = null, skillTools = {};
   let modelPilih = null, daftarModelAda = [], statusModel = 'kosong';     // langkah 2: model ditandai, dimuat saat Mulai
   try { modelPilih = localStorage.getItem('aa_model_pilih') || null; } catch (e) { modelPilih = null; }
+  /* prompt pilihan hanya untuk skill Tanpa murni (tanpa dasar/kompleks, yang punya prompt bertool sendiri) */
+  const promptAktif = () => !!skill && skill.includes('tanpa') && !skill.includes('dasar') && !skill.includes('kompleks');
+  const prm = window.PromptPilih ? window.PromptPilih.pasang({token: () => TOKEN, onUbah: () => gambarPilihan()}) : null;
   function rapikanSkill(v) {
     if (typeof v === 'string') v = v.split(/[+,\s]+/);
     if (!Array.isArray(v)) return null;
@@ -153,6 +156,7 @@
       b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     $('skillKet').textContent = ketSkill();
+    if (prm) prm.atur(promptAktif());      // panel prompt hanya tampil untuk skill Tanpa
     gambarPilihan();                      // ringkasan "Siap: model · skill" ikut berubah
   }
   function togelSkill(id) {
@@ -171,7 +175,8 @@
       if (s.status === 'siap' || (ag && ag.chat_id)) {
         if (s.status === 'siap') {
           setAgentAktif(false);
-          $('subModel').textContent = s.model + (s.skill ? ' · ' + labelSkill(s.skill) : '');
+          $('subModel').textContent = s.model + (s.skill ? ' · ' + labelSkill(s.skill) : '')
+            + (Array.isArray(s.prompt) ? ' · prompt: ' + (s.prompt.length ? s.prompt.join(', ') : 'murni') : '');
           const adaTool = s.tool_aktif !== 0;
           $('input').placeholder = adaTool ? 'Ketik perintah...' : 'Ketik pesan...';
           $('swAuto').closest('label').hidden = !adaTool;
@@ -247,12 +252,12 @@
     }
     $('btnMulai').disabled = !ada || memuat;
     $('btnMulai').textContent = memuat ? 'Memuat ...' : 'Mulai sesi';
-    $('mulaiKet').textContent = memuat ? '' : ada ? 'Siap: ' + modelPilih + ' · ' + labelSkill(skill || []) : 'Pilih satu model di atas dulu.';
+    $('mulaiKet').textContent = memuat ? '' : ada ? 'Siap: ' + modelPilih + ' · ' + labelSkill(skill || []) + (prm && promptAktif() ? ' · prompt: ' + prm.ringkasTeks() : '') : 'Pilih satu model di atas dulu.';
   }
   $('btnMulai').onclick = () => { if (modelPilih && daftarModelAda.includes(modelPilih) && statusModel !== 'memuat') pilihModel(modelPilih); };
 
   async function pilihModel(id) {
-    try { await apij('/api/model/pilih', {method: 'POST', body: {model: id, skill}}); }
+    try { await apij('/api/model/pilih', {method: 'POST', body: {model: id, skill, prompt: (prm && promptAktif()) ? prm.ids() : undefined}}); }
     catch (e) { if (e.message !== '401') { $('modelPesan').className = 'err'; $('modelPesan').textContent = e.message; } return; }
     $('modelPesan').className = ''; $('modelPesan').textContent = 'Memuat ' + id + ' ...';
     $('daftarModel').className = 'mati'; $('seg').className = 'seg mati';

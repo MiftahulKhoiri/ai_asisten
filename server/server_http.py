@@ -20,6 +20,7 @@ from . import server_config as conf
 from . import server_ctx as kts
 from . import server_log as lg
 from . import server_model as mdl
+from . import server_prompt as prm
 from . import server_chat as rwy
 from . import server_handoff as ho
 from . import server_state as state
@@ -37,6 +38,7 @@ STATIS = {
     "/agent.html": ("agent.html", "text/html; charset=utf-8"),
     "/agent.css": ("agent.css", "text/css; charset=utf-8"),
     "/agent.js": ("agent.js", "application/javascript; charset=utf-8"),
+    "/prompt.js": ("prompt.js", "application/javascript; charset=utf-8"),
     "/serahkan.css": ("serahkan.css", "text/css; charset=utf-8"),
     "/serahkan.js": ("serahkan.js", "application/javascript; charset=utf-8"),
     "/unggah.css": ("unggah.css", "text/css; charset=utf-8"),
@@ -132,6 +134,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(409, {"error": str(e)})
             lg.log("INFO", f"Proses Agent dihapus: {m.group(1)}")
             return self._json(200, {"ok": True})
+        if path == "/api/prompt" and metode == "GET":
+            return self._json(200, {"prompt": prm.daftar_prompt(), "bawaan": conf.PROMPT_BAWAAN})
         if path == "/api/unggah" and metode == "POST":
             return self.unggah()
         if path == "/api/unggah" and metode == "GET":
@@ -140,6 +144,18 @@ class H(BaseHTTPRequestHandler):
             return self.unggah_hapus()
         if metode == "POST":
             b = self._body()
+            if path == "/api/prompt":
+                try:
+                    return self._json(200, {"ok": True, "baru": prm.tambah_prompt(b.get("nama"), b.get("isi")),
+                                            "prompt": prm.daftar_prompt()})
+                except ValueError as e:
+                    return self._json(400, {"error": str(e)})
+            if path == "/api/prompt/hapus":
+                try:
+                    ada = prm.hapus_prompt(str(b.get("id") or ""))
+                except ValueError as e:
+                    return self._json(400, {"error": str(e)})
+                return self._json(200 if ada else 404, {"ok": ada, "prompt": prm.daftar_prompt()})
             if path == "/api/handoff/ringkas":
                 return self.handoff_ringkas(b)
             if path == "/api/handoff/kirim":
@@ -369,6 +385,10 @@ class H(BaseHTTPRequestHandler):
         nama = b.get("model")
         skill = b.get("skill")
         skill = agen.tolls.normal_skill(skill)   # boleh beberapa skill sekaligus
+        try:
+            pilihan_prompt = prm.rapikan_pilihan(b.get("prompt"))
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
         with state.S_LOCK:
             if state.S["status"] == "memuat":
                 return self._json(409, {"error": "Model sedang dimuat"})
@@ -377,7 +397,10 @@ class H(BaseHTTPRequestHandler):
             state.S["status"] = "memuat"
             state.S["pesan"] = f"Menyiapkan {nama} ..."
             state.S["skill"] = skill
-        lg.log("INFO", f"Skill dipilih: {'+'.join(skill)} ({len(agen.tools_untuk(skill))} tool)")
+            state.S["prompt"] = pilihan_prompt
+        lg.log("INFO", f"Skill dipilih: {'+'.join(skill)} ({len(agen.tools_untuk(skill))} tool)"
+                       + (f", prompt: {', '.join(prm.rakit(pilihan_prompt)[1]) or 'tanpa prompt (murni)'}"
+                          if prm.berlaku(skill) else ""))
         mdl.sentuh()
         threading.Thread(target=mdl.muat_model, args=(nama,), daemon=True).start()
         self._json(200, {"ok": True})
@@ -387,6 +410,7 @@ class H(BaseHTTPRequestHandler):
         paket = b.get("unggahan") or None
         with state.S_LOCK:
             siap, model, skill = state.S["status"] == "siap", state.S["model"], state.S["skill"]
+            pilihan_prompt = state.S["prompt"]
         if not siap:
             return self._json(409, {"error": "Model belum dimuat. Pilih model dulu."})
         if not teks and not paket:
@@ -436,6 +460,8 @@ class H(BaseHTTPRequestHandler):
                 q.put({"t": "lampiran", "berkas": ringkas})
             ctx = kts.Ctx(q, threading.Event())
             ctx.skill = skill
+            # prompt pilihan hanya berlaku untuk skill tanpa akses sistem (lihat server_prompt.berlaku)
+            ctx.prompt_dasar = prm.rakit(pilihan_prompt)[0] if prm.berlaku(skill) else None
             state.AKTIF["ctx"] = ctx
             self._mulai_kerja(chat, model, ctx, q)
             diserahkan = True
@@ -449,7 +475,9 @@ class H(BaseHTTPRequestHandler):
         """Jalankan giliran agen di thread sendiri; thread itu yang melepas GEN_LOCK."""
         def kerja():
             try:
-                for ev in agen.giliran(chat["pesan"], model, ctx, chat):
+                # tanpa prompt sama sekali (murni) = tanpa ringkasan otomatis juga: tidak ada yang disisipkan
+                memori = None if agen.dasar_dari(ctx) == "" else chat
+                for ev in agen.giliran(chat["pesan"], model, ctx, memori):
                     q.put(ev)
             except Exception as e:  # noqa: BLE001
                 q.put({"t": "error", "d": f"{type(e).__name__}: {e}"})

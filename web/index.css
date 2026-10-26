@@ -117,3 +117,21 @@ details.tool .rg{flex:1;min-width:0}
 #daftarModel.mati .model,#daftarModel.mati+#modelInfo{opacity:.6}
 #btnMulai{display:block;width:100%;padding:13px;font-size:16px;font-weight:600}
 #btnMulai:disabled{opacity:.5}
+
+/* ---------- pilihan prompt untuk skill Tanpa ---------- */
+#promptBox{margin-top:12px;padding:12px;border:1px solid var(--garis);border-radius:14px;background:var(--panel)}
+#promptBox[hidden],#promptRingkas[hidden],#langkahModel[hidden]{display:none}
+.promptKepala{display:flex;align-items:center;justify-content:space-between;margin:2px 0 8px;font-weight:600}
+.promptKepala .btn{padding:5px 12px;font-size:13px}
+#promptForm{margin-bottom:10px}
+#promptForm input,#promptForm textarea{width:100%;margin:4px 0;padding:9px 10px;background:var(--bg);color:var(--teks);border:1px solid var(--garis);border-radius:10px;font:inherit;font-size:14px}
+#promptForm textarea{min-height:130px;resize:vertical;line-height:1.45}
+.promptAksi{display:flex;align-items:center;justify-content:flex-end;gap:10px}
+.promptAksi .galat{flex:1;color:var(--bahaya);font-size:13px}
+.promptBaris{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--garis)}
+.promptBaris .nm{flex:1;min-width:0;display:flex;align-items:center;gap:10px;cursor:pointer;overflow-wrap:anywhere}
+.promptBaris input[type=checkbox]{width:20px;height:20px;flex:none}
+.promptBaris .hapus{flex:none;border:0;background:none;color:var(--bahaya);font-size:15px;padding:6px 8px;cursor:pointer}
+#promptBox>#btnPromptSelesai{display:block;margin:10px 0 0 auto;padding:9px 22px}
+#promptRingkas{display:flex;align-items:center;gap:8px;margin:10px 0 0}
+#promptRingkas .tautan{border:0;background:none;color:var(--aksen);font-size:13px;cursor:pointer;padding:2px 4px}

@@ -9,7 +9,8 @@ import time
 
 S = {"model": None, "target": None, "status": "kosong", "pesan": "",
      "kita_muat": False, "auto": False, "aktivitas": time.time(),
-     "skill": None}   # tuple skill (tanpa/web/dasar/kompleks/kritis), dipilih di web
+     "skill": None,   # tuple skill (tanpa/web/dasar/kompleks/kritis), dipilih di web
+     "prompt": None}  # id prompt pilihan untuk skill Tanpa (None = bawaan); lihat server_prompt.py
 S_LOCK = threading.RLock()
 GEN_LOCK = threading.Lock()   # hanya satu proses generasi pada satu waktu
 AKTIF = {"ctx": None}

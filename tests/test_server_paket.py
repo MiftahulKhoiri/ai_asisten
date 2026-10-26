@@ -24,7 +24,7 @@ agent_proses agent_tambah _gabung_potongan agent_baca STATIS H catat_event kelua
 """.split()
 
 URUTAN = ["server_config", "server_state", "server_log", "server_akses", "server_model", "server_chat",
-          "server_unggah", "server_ctx", "server_agent", "server_handoff", "server_status", "server_http", "server_main"]
+          "server_prompt", "server_unggah", "server_ctx", "server_agent", "server_handoff", "server_status", "server_http", "server_main"]
 
 
 class TestSusunanPaket(unittest.TestCase):
