@@ -58,7 +58,7 @@ def main():
         if m["llama"] == "loaded":
             lg.log("WARN", f"{m['id']} sudah termuat (bukan oleh aplikasi ini), dibiarkan")
     lg.log("OK", f"Server jalan di http://{ip}:{a.port}")
-    lg.log("OK", f"Buka dari HP: http://{ip}:{a.port}/?token={conf.TOKEN}")
+    lg.log("OK", f"Alamar browser:\n http://{ip}:{a.port}/?token={conf.TOKEN}")
     lg.log("INFO", "Model belum dimuat. Pilih model dari tampilan web.")
     lg.log("INFO", "Model dibongkar otomatis: tombol Selesai, "
                 + (f"idle {conf.IDLE_MENIT} menit, " if conf.IDLE_MENIT > 0 else "")
