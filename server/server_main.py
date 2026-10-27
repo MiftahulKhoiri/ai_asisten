@@ -53,12 +53,12 @@ def main():
         sys.exit(1)
 
     ip = akses.ip_lan() if a.host == "0.0.0.0" else a.host
-    lg.log("INFO", f"llama-server: {agen.LLAMA_URL} ({len(models)} model tersedia)")
+    lg.log("INFO", f"llama-server: {agen.LLAMA_URL} ({len(models)} jumlah model tersedia)")
     for m in models:
         if m["llama"] == "loaded":
             lg.log("WARN", f"{m['id']} sudah termuat (bukan oleh aplikasi ini), dibiarkan")
-    lg.log("OK", f"Server jalan di http://{ip}:{a.port}")
-    lg.log("OK", f"Alamat browser:\n http://{ip}:{a.port}/?token={conf.TOKEN}")
+    lg.log("OK", f"Server jalan di:\n http://{ip}:{a.port}")
+    lg.log("OK", f"Alamat browser dapat di akses di:\n http://{ip}:{a.port}/?token={conf.TOKEN}")
     lg.log("INFO", "Model belum dimuat. Pilih model dari tampilan web.")
     lg.log("INFO", "Model dibongkar otomatis: tombol Selesai, "
                 + (f"idle {conf.IDLE_MENIT} menit, " if conf.IDLE_MENIT > 0 else "")
