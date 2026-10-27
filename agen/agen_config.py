@@ -46,7 +46,7 @@ CTX_MAKS = _env_int("ASISTEN_CTX", 8192, 512)
 
 
 # Batas token satu jawaban/putaran. Terlalu kecil memotong jawaban dan isi file panjang.
-MAX_TOKENS = _env_int("ASISTEN_MAX_TOKENS", 700, 64)
+MAX_TOKENS = _env_int("ASISTEN_MAX_TOKENS", 1400, 128)
 
 
 CATATAN_TERPOTONG = ('\n\n[Jawaban terpotong: batas token tercapai. Ketik "lanjut" untuk '
