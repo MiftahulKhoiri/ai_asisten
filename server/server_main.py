@@ -53,7 +53,7 @@ def main():
         sys.exit(1)
 
     ip = akses.ip_lan() if a.host == "0.0.0.0" else a.host
-    lg.log("INFO", f"llama-server: {agen.LLAMA_URL} ({len(models)} jumlah model tersedia)")
+    lg.log("INFO", f"llama-server berjalan di:\n {agen.LLAMA_URL} (jumlah model tersedia:{len(models)} )")
     for m in models:
         if m["llama"] == "loaded":
             lg.log("WARN", f"{m['id']} sudah termuat (bukan oleh aplikasi ini), dibiarkan")
