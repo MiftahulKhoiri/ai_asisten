@@ -338,16 +338,50 @@ model, tekan **Mulai sesi**.
 
 - **+ prompt** membuka kolom nama dan isi; tombol **Simpan** ada di pojok bawah kolom. Prompt baru
   langsung tercentang.
-- Daftar berbentuk `□ nama prompt (−)`: centang untuk memakai, `(−)` untuk menghapus (ada konfirmasi).
+- Daftar berbentuk `□ nama prompt (✎) (−)`: centang untuk memakai, `(✎)` untuk **mengubah** nama dan isinya,
+  `(−)` untuk menghapus (ada konfirmasi). Mengubah tidak melepas centang dan berlaku mulai pesan berikutnya,
+  termasuk di sesi yang sedang berjalan. Tombol **Batal** menutup form tanpa menyimpan.
   Boleh mencentang **beberapa** prompt; isinya digabung berurutan sesuai daftar.
-- **Bawaan** adalah prompt asisten yang dipakai selama ini; tercentang secara bawaan dan tidak bisa dihapus.
+- **Bawaan** adalah prompt asisten yang dipakai selama ini; tercentang secara bawaan, tidak bisa dihapus dan
+  tidak bisa diubah. Tombol `(✎)`-nya membuat **salinan** (nama baru, isi terisi dari bawaan) yang bisa kamu ubah lalu simpan.
 - **Tidak mencentang satu pun** = model berjalan **tanpa prompt sistem sama sekali** (murni), tanpa
   ringkasan otomatis yang disisipkan. Cocok untuk melihat perilaku asli model.
 - Isi prompt boleh memuat `{waktu}`, yang diganti tanggal dan jam saat dipakai. Maks 40 karakter untuk
   nama, 4000 untuk isi, 50 prompt.
-- Prompt disimpan di server (`prompt.json` di folder proyek), jadi sama di semua perangkat. Pilihan
-  centang dan status Selesai diingat per browser; ketuk **Ubah** untuk membuka panelnya lagi.
+- Pilihan centang dan status Selesai diingat per browser; ketuk **Ubah** untuk membuka panelnya lagi.
 - Nama prompt yang dipakai tampil di header (`model · skill · prompt: ...`).
+- **Catatan** (opsional, maks 200 karakter): tulis prompt ini cocok untuk apa atau diuji di model apa. Tampil di
+  bawah nama prompt dan ikut terbawa saat dibagikan.
+
+#### Penyimpanan dan berbagi prompt
+
+**Satu prompt = satu berkas JSON** di folder `prompt/` (di folder proyek; pindahkan dengan
+`ASISTEN_PROMPT_DIR`), sama di semua perangkat yang memakai server itu:
+
+```json
+{
+ "format": "ai-asisten-prompt",
+ "versi": 1,
+ "nama": "Penerjemah",
+ "isi": "Kamu penerjemah. Terjemahkan pesan pengguna ke bahasa Inggris. {waktu}",
+ "catatan": "cocok untuk model kecil"
+}
+```
+
+- Nama berkas (tanpa `.json`) menjadi id prompt dan tidak berubah walau namanya diganti. Huruf kecil,
+  angka, `-` dan `_`, maks 40 karakter.
+- **Bagikan prompt yang berhasil:** ketuk **(⬇)** di barisnya untuk mengunduh berkas `.json`, lalu kirim ke
+  siapa pun (WhatsApp, e-mail, dsb.). Penerima menekan **⬆ Impor** dan memilih berkasnya (boleh beberapa
+  sekaligus; boleh juga berisi daftar `{"prompt": [...]}`). Isi yang sama persis dengan yang sudah ada
+  dilewati; nama yang sudah dipakai diberi akhiran `(2)`. Hasil impor tidak otomatis dicentang.
+- Tanpa web pun bisa: **salin berkas `.json` ke folder `prompt/`**, dan prompt langsung muncul di
+  daftar (tanpa restart). Kunci `format`, `versi`, dan `catatan` boleh dihilangkan; `nama` dan `isi` wajib.
+- Berkas yang tidak valid (bukan JSON, tanpa nama/isi, terlalu besar, nama berkas salah, symlink) dilewati
+  dan dilaporkan di bawah daftar; tidak ada yang rusak atau hilang karenanya.
+- Batas: 40 karakter nama, 4000 isi, 200 catatan, 50 prompt, berkas maks 64 KB, impor maks 256 KB.
+- Versi awal fitur ini menyimpan semuanya di satu `prompt.json`. Berkas itu otomatis dipecah ke folder
+  `prompt/` saat pertama kali dibaca dan disimpan sebagai `prompt.json.migrasi` (cadangan). Id lama
+  berubah jadi nama berkas, jadi centang prompt buatan sendiri perlu dipasang lagi satu kali.
 - Prompt hanya berlaku untuk skill tanpa akses sistem (Tanpa, Web, Berpikir kritis). Skill **Dasar** dan
   **Kompleks** memakai prompt bertool sendiri, jadi panel tidak tampil dan pilihan diabaikan.
 
@@ -676,6 +710,7 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 | `ASISTEN_AGENT_TOKENS` | `3000` | batas token tahap Pelaksana (menulis kode) |
 | `ASISTEN_AGENT_UJI_DTK` | `20` | batas waktu uji jalan program hasil Agent, dalam detik |
 | `ASISTEN_UNGGAH_MB` | `10` | ukuran maksimum satu unggahan (zip), dalam MB |
+| `ASISTEN_PROMPT_DIR` | `prompt/` di folder proyek | folder berkas prompt untuk skill Tanpa (satu prompt satu berkas `.json`) |
 
 Khusus `start.sh` (dan sebagian `deploy/pasang-layanan.sh`):
 
@@ -734,7 +769,7 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `server/server_ctx.py` | konteks satu proses generasi: mode AUTO, batal, izin lewat web |
 | `server/server_agent.py`, `server_status.py` | buffer event Agent di latar belakang; isi `/api/status` |
 | `server/server_unggah.py` | unggahan berkas: penampung paket, ekstrak zip aman, lampiran chat |
-| `server/server_prompt.py` | prompt pilihan untuk skill Tanpa: simpan (`prompt.json`), tambah, hapus, rakit |
+| `server/server_prompt.py` | prompt pilihan untuk skill Tanpa: satu prompt satu berkas di `prompt/`, tambah/ubah/hapus, ekspor/impor, migrasi, rakit |
 | `web/prompt.js` | panel List prompt di layar Mulai sesi (centang, + prompt, hapus, Selesai) |
 | `server/server_handoff.py` | serah terima chat -> Agent -> chat: brief dari diskusi, lampiran obrolan, hasil kembali ke obrolan |
 | `web/serahkan.js`, `web/serahkan.css` | tombol 🏭, kartu brief, progres Agent, dan kartu hasil + unduhan di halaman chat |

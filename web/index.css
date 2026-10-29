@@ -135,3 +135,12 @@ details.tool .rg{flex:1;min-width:0}
 #promptBox>#btnPromptSelesai{display:block;margin:10px 0 0 auto;padding:9px 22px}
 #promptRingkas{display:flex;align-items:center;gap:8px;margin:10px 0 0}
 #promptRingkas .tautan{border:0;background:none;color:var(--aksen);font-size:13px;cursor:pointer;padding:2px 4px}
+.promptFormJudul{font-weight:600;font-size:13px;color:var(--redup);margin-bottom:2px}
+.promptBaris .ubah{flex:none;border:0;background:none;color:var(--aksen);font-size:15px;padding:6px 8px;cursor:pointer}
+.promptAksi .btn{padding:7px 16px}
+
+.promptTombol{display:flex;gap:6px}
+#promptForm #promptCatatan{font-size:13px}
+.promptBaris .cat{display:block;font-size:12px;color:var(--redup);font-weight:400;margin-top:2px}
+.promptBaris .nm>span{min-width:0}
+.promptBaris .ekspor{flex:none;border:0;background:none;color:var(--aksen);font-size:15px;padding:6px 8px;cursor:pointer}

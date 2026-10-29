@@ -135,7 +135,10 @@ class H(BaseHTTPRequestHandler):
             lg.log("INFO", f"Proses Agent dihapus: {m.group(1)}")
             return self._json(200, {"ok": True})
         if path == "/api/prompt" and metode == "GET":
-            return self._json(200, {"prompt": prm.daftar_prompt(), "bawaan": conf.PROMPT_BAWAAN})
+            return self._json(200, {"prompt": prm.daftar_prompt(), "bawaan": conf.PROMPT_BAWAAN,
+                                    "abaikan": prm.berkas_diabaikan()})
+        if path == "/api/prompt/ekspor" and metode == "GET":
+            return self.prompt_ekspor()
         if path == "/api/unggah" and metode == "POST":
             return self.unggah()
         if path == "/api/unggah" and metode == "GET":
@@ -146,10 +149,24 @@ class H(BaseHTTPRequestHandler):
             b = self._body()
             if path == "/api/prompt":
                 try:
-                    return self._json(200, {"ok": True, "baru": prm.tambah_prompt(b.get("nama"), b.get("isi")),
+                    return self._json(200, {"ok": True, "baru": prm.tambah_prompt(b.get("nama"), b.get("isi"), b.get("catatan")),
                                             "prompt": prm.daftar_prompt()})
                 except ValueError as e:
                     return self._json(400, {"error": str(e)})
+            if path == "/api/prompt/ubah":
+                try:
+                    baru = prm.ubah_prompt(str(b.get("id") or ""), b.get("nama"), b.get("isi"), b.get("catatan"))
+                except ValueError as e:
+                    return self._json(400, {"error": str(e)})
+                if baru is None:
+                    return self._json(404, {"error": "Prompt tidak ditemukan"})
+                return self._json(200, {"ok": True, "baru": baru, "prompt": prm.daftar_prompt()})
+            if path == "/api/prompt/impor":
+                try:
+                    hasil = prm.impor(b.get("teks") if isinstance(b.get("teks"), str) else "")
+                except ValueError as e:
+                    return self._json(400, {"error": str(e)})
+                return self._json(200, dict(hasil, ok=True, prompt=prm.daftar_prompt()))
             if path == "/api/prompt/hapus":
                 try:
                     ada = prm.hapus_prompt(str(b.get("id") or ""))
@@ -281,6 +298,15 @@ class H(BaseHTTPRequestHandler):
         except agt.ProsesGagal as e:
             return self._json(e.kode, {"error": e.pesan})
         self._json(200, {"ok": True, "sesi": sesi})
+
+    def prompt_ekspor(self):
+        """Unduh satu prompt sebagai berkas JSON yang siap dibagikan (?id=...)."""
+        pid = (parse_qs(urlparse(self.path).query).get("id") or [""])[0]
+        d = prm.ekspor(pid)
+        if d is None:
+            return self._json(404, {"error": "Prompt tidak ditemukan"})
+        self._kirim_unduhan((json.dumps(d, ensure_ascii=False, indent=1) + "\n").encode("utf-8"),
+                            "application/json; charset=utf-8", pid + ".json")
 
     def agent_unduh(self, run_id):
         """Unduh hasil sebuah proses Agent: satu berkas (?berkas=nama) atau semuanya sebagai zip."""

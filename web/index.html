@@ -14,7 +14,7 @@
   <header>
     <button class="ikon" id="btnMenu" aria-label="Riwayat">☰</button>
     <div class="judul"><b id="judulChat">AI Asisten</b><small id="subModel"></small></div>
-    <a class="ikon" id="btnAgent" href="agent.html" aria-label="Buka halaman Agent">Ai Agent</a>
+    <a class="ikon" id="btnAgent" href="agent.html" aria-label="Buka halaman Agent">Agent</a>
     <button class="ikon" id="btnSelesai" hidden>Selesai</button>
   </header>
 
@@ -44,11 +44,13 @@
         <p id="skillKet" class="redup kecil"></p>
       </div>
       <div id="promptBox" hidden>
-        <div class="promptKepala"><span>List prompt</span><button type="button" class="btn abu" id="btnPromptBaru">+ prompt</button></div>
+        <div class="promptKepala"><span>List prompt</span><span class="promptTombol"><button type="button" class="btn abu" id="btnPromptImpor" title="Impor prompt dari berkas .json (misalnya dari teman)">⬆ Impor</button><button type="button" class="btn abu" id="btnPromptBaru">+ prompt</button></span><input type="file" id="promptBerkas" accept=".json,application/json" multiple hidden></div>
         <div id="promptForm" hidden>
+          <div id="promptFormJudul" class="promptFormJudul">Prompt baru</div>
           <input id="promptNama" type="text" maxlength="40" placeholder="Nama prompt" aria-label="Nama prompt" autocomplete="off">
           <textarea id="promptIsi" rows="6" maxlength="4000" placeholder="Isi prompt. {waktu} akan diganti tanggal dan jam." aria-label="Isi prompt"></textarea>
-          <div class="promptAksi"><span id="promptGalat" class="galat" role="alert"></span><button type="button" class="btn" id="btnPromptSimpan">Simpan</button></div>
+          <input id="promptCatatan" type="text" maxlength="200" placeholder="Catatan (opsional): cocok untuk apa / model apa" aria-label="Catatan prompt" autocomplete="off">
+          <div class="promptAksi"><span id="promptGalat" class="galat" role="alert"></span><button type="button" class="btn abu" id="btnPromptBatal">Batal</button><button type="button" class="btn" id="btnPromptSimpan">Simpan</button></div>
         </div>
         <div id="promptList" role="group" aria-label="List prompt"></div>
         <p id="promptKet" class="redup kecil"></p>

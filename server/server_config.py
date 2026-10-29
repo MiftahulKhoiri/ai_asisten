@@ -34,12 +34,17 @@ MAKS_ZIP_ENTRI = 3000           # entri zip yang diperiksa
 MAKS_BERKAS_PAKET = 100         # berkas dalam satu paket
 UNGGAH_UMUR_JAM = 24            # paket yang tidak dipakai dibersihkan setelah ini
 
-# Prompt pilihan untuk skill Tanpa (disimpan di prompt.json, satu berkas untuk semua perangkat).
+# Prompt pilihan untuk skill Tanpa: SATU PROMPT = SATU BERKAS JSON di folder prompt/ (mudah dibagikan).
+# PROMPT_FILE hanya berkas lama (versi awal menyimpan semuanya di satu prompt.json); dimigrasikan otomatis.
+PROMPT_DIR = Path(os.environ.get("ASISTEN_PROMPT_DIR") or (BASE / "prompt")).expanduser()
 PROMPT_FILE = BASE / "prompt.json"
 PROMPT_BAWAAN = "bawaan"        # id prompt bawaan (SYSTEM_CHAT); tidak bisa dihapus
 MAKS_PROMPT = 50
 MAKS_NAMA_PROMPT = 40
 MAKS_ISI_PROMPT = 4000
+MAKS_CATATAN_PROMPT = 200
+MAKS_BERKAS_PROMPT = 64_000      # byte satu berkas prompt yang mau dibaca
+MAKS_IMPOR_PROMPT = 256_000      # byte teks impor
 
-__all__ = ['PROMPT_FILE', 'PROMPT_BAWAAN', 'MAKS_PROMPT', 'MAKS_NAMA_PROMPT', 'MAKS_ISI_PROMPT', 'UNGGAH', 'ID_PAKET', 'MAKS_UNGGAH_BYTE', 'MAKS_ZIP_TOTAL', 'MAKS_ZIP_ENTRI',
+__all__ = ['PROMPT_DIR', 'MAKS_CATATAN_PROMPT', 'MAKS_BERKAS_PROMPT', 'MAKS_IMPOR_PROMPT', 'PROMPT_FILE', 'PROMPT_BAWAAN', 'MAKS_PROMPT', 'MAKS_NAMA_PROMPT', 'MAKS_ISI_PROMPT', 'UNGGAH', 'ID_PAKET', 'MAKS_UNGGAH_BYTE', 'MAKS_ZIP_TOTAL', 'MAKS_ZIP_ENTRI',
            'MAKS_BERKAS_PAKET', 'UNGGAH_UMUR_JAM', 'BASE', 'WEB', 'RIWAYAT', 'TOKEN_FILE', 'MODELS_DIR', 'ID_RE', 'TOKEN', 'IDLE_MENIT', 'WARNA', 'AGENT_MAKS_EVENT', 'AGENT_BATCH', 'AGENT_TUNGGU_MAKS']
