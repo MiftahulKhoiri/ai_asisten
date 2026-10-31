@@ -1,6 +1,9 @@
 /* prompt.js - pilihan prompt untuk skill Tanpa (layar "Mulai sesi" di halaman chat).
  *
- * Daftar prompt disimpan di server (prompt.json), jadi sama di semua perangkat. Setiap prompt punya
+ * Prompt bekerja dengan dua cara menurut skill: pada skill tanpa akses sistem (Tanpa/Web/Berpikir kritis)
+ * prompt yang dicentang MENGGANTIKAN prompt bawaan; pada skill Dasar/Kompleks prompt yang dicentang
+ * DITAMBAHKAN di bawah prompt sistem skill (aturan tool dan keamanannya tetap ada).
+ * Daftar prompt disimpan di server (satu berkas per prompt), jadi sama di semua perangkat. Setiap prompt punya
  * kotak centang: boleh memilih beberapa (digabung berurutan), tidak memilih satu pun = model berjalan
  * tanpa prompt sistem (murni). Tombol "+ prompt" membuka kolom nama, isi, dan catatan; "(✎)" mengubah
  * prompt (untuk Bawaan: membuat salinan yang bisa diubah); "(⬇)" mengunduh prompt sebagai berkas .json
@@ -24,7 +27,7 @@
 
   function pasang(opt) {
     const lemari = window.localStorage;
-    const st = {aktif: false, daftar: [], dipilih: [], terbuka: true, dimuat: false, memuat: false, galatMuat: '', abaikan: [], info: '',
+    const st = {aktif: false, daftar: [], dipilih: [], terbuka: true, dimuat: false, memuat: false, galatMuat: '', abaikan: [], info: '', mode: 'ganti', wajib: false, sudahAtur: false,
       form: {jenis: 'baru', id: null}};      // form: baru | ubah (prompt buatan sendiri) | salin (dari Bawaan)
     try {
       const j = JSON.parse(lemari.getItem(K_PILIH) || 'null');
@@ -69,27 +72,38 @@
 
     /* ---------- tampilan ---------- */
     function totalKarakter() {
-      return st.daftar.filter(p => st.dipilih.includes(p.id)).reduce((n, p) => n + (p.isi || '').length, 0);
+      return terpakai().reduce((n, p) => n + (p.isi || '').length, 0);
     }
-    function namaDipilih() { return st.daftar.filter(p => st.dipilih.includes(p.id)).map(p => p.nama); }
-    function ringkasTeks() { const n = namaDipilih(); return n.length ? n.join(', ') : 'tanpa prompt (murni)'; }
+    const tambah = () => st.mode === 'tambah';
+    /* yang benar-benar dipakai: pada mode tambah, Bawaan tidak ikut (prompt sistem skill selalu dipakai) */
+    function terpakai() { return st.daftar.filter(p => st.dipilih.includes(p.id) && !(tambah() && p.bawaan)); }
+    function namaDipilih() { return terpakai().map(p => p.nama); }
+    function ringkasTeks() { const n = namaDipilih(); return n.length ? n.join(', ') : (tambah() ? 'tidak ada' : 'tanpa prompt (murni)'); }
+    function ringkasPendek() {              // untuk baris "Siap: model · skill ..." di tombol Mulai
+      const n = namaDipilih();
+      return tambah() ? (n.length ? ' · prompt tambahan: ' + n.join(', ') : '') : ' · prompt: ' + ringkasTeks();
+    }
     function gambar() {
       const tampilPanel = st.aktif && st.terbuka, tampilRingkas = st.aktif && !st.terbuka;
       $('promptBox').hidden = !tampilPanel;
       $('promptRingkas').hidden = !tampilRingkas;
       const lm = $('langkahModel'); if (lm) lm.hidden = tampilPanel;       // pilih model & Mulai menunggu "Selesai"
-      if (tampilRingkas) $('promptRingkasTeks').textContent = 'Prompt: ' + ringkasTeks();
+      if (tampilRingkas) $('promptRingkasTeks').textContent = (tambah() ? 'Prompt tambahan: ' : 'Prompt: ') + ringkasTeks();
       if (!tampilPanel) return;
+      $('promptModeTeks').textContent = tambah()
+        ? 'Skill Dasar/Kompleks punya prompt sistem sendiri (aturan tool dan keamanan). Prompt yang kamu centang ditambahkan di bawahnya, tidak menggantikan.'
+        : 'Prompt yang kamu centang menggantikan prompt bawaan skill ini. Tidak mencentang satu pun = model berjalan murni.';
       const daftar = $('promptList'); daftar.textContent = '';
       for (const p of st.daftar) {
         const baris = el('div', 'promptBaris');
         const lab = el('label', 'nm'); const cek = el('input'); cek.type = 'checkbox';
-        cek.checked = st.dipilih.includes(p.id); cek.setAttribute('aria-label', p.nama);
+        const tetap = tambah() && p.bawaan;                  // mode tambah: prompt sistem skill selalu aktif
+        cek.checked = tetap || st.dipilih.includes(p.id); cek.disabled = tetap; cek.setAttribute('aria-label', p.nama);
         cek.onchange = () => {
           st.dipilih = cek.checked ? st.dipilih.concat([p.id]) : st.dipilih.filter(i => i !== p.id);
           simpan(); gambarKet(); ubah();
         };
-        const teksNama = el('span', '', p.nama + (p.bawaan ? ' · bawaan' : ''));
+        const teksNama = el('span', '', tetap ? 'Bawaan (prompt sistem skill) · selalu aktif' : p.nama + (p.bawaan ? ' · bawaan' : ''));
         if (p.catatan) teksNama.appendChild(el('small', 'cat', p.catatan));
         lab.append(cek, teksNama);
         lab.title = (p.catatan ? p.catatan + '\n\n' : '') + (p.isi || '').slice(0, 300);
@@ -113,10 +127,10 @@
       gambarKet();
     }
     function gambarKet() {
-      const n = st.dipilih.length, k = totalKarakter();
+      const n = terpakai().length, k = totalKarakter();
       let t = st.galatMuat || (n
-        ? 'Dipilih: ' + n + ' prompt · ±' + k + ' karakter' + (k > 3000 ? ' (panjang: memakan konteks model)' : '')
-        : 'Tidak ada prompt dipilih: model berjalan tanpa prompt sistem (murni).');
+        ? 'Dipilih: ' + n + (tambah() ? ' prompt tambahan' : ' prompt') + ' · ±' + k + ' karakter' + (k > 3000 ? ' (panjang: memakan konteks model)' : '')
+        : (tambah() ? 'Tidak ada prompt tambahan: skill memakai prompt sistemnya sendiri.' : 'Tidak ada prompt dipilih: model berjalan tanpa prompt sistem (murni).'));
       if (st.abaikan.length) t += ' · ' + st.abaikan.length + ' berkas di folder prompt dilewati (tidak valid: ' + st.abaikan.slice(0, 2).map(x => x.berkas).join(', ') + (st.abaikan.length > 2 ? ' ...' : '') + ')';
       $('promptKet').textContent = (st.info ? st.info + '\n' : '') + t;
     }
@@ -196,14 +210,20 @@
     $('btnPromptUbah').onclick = () => { st.terbuka = true; selesaiFlag(false); gambar(); ubah(); };
 
     return {
-      /* panel berlaku bila skill Tanpa aktif; daftar dimuat dari server saat pertama kali dibutuhkan */
-      atur(v) {
-        const awal = st.aktif; st.aktif = !!v;
-        if (st.aktif && !st.dimuat && !st.memuat) muat();
-        if (awal !== st.aktif || st.dimuat) gambar();
+      /* dipanggil tiap skill berubah: {mode: 'ganti'|'tambah', tanpa: skill Tanpa aktif}.
+         Panel otomatis terbuka (menahan langkah pilih model) hanya pada alur "Tanpa skill" yang belum diselesaikan;
+         pada skill lain panel berupa ringkasan satu baris dengan tombol Ubah. */
+      atur(o) {
+        o = o || {};
+        const mode = o.mode === 'tambah' ? 'tambah' : 'ganti', wajib = !!o.tanpa && mode === 'ganti';
+        const berubah = !st.sudahAtur || mode !== st.mode || wajib !== st.wajib;
+        st.mode = mode; st.wajib = wajib; st.aktif = true; st.sudahAtur = true;
+        if (berubah) st.terbuka = wajib && lemari.getItem(K_SELESAI) !== '1';
+        if (!st.dimuat && !st.memuat) muat();
+        gambar();
       },
       ids: () => st.dipilih.slice(),
-      nama: namaDipilih, ringkasTeks,
+      nama: namaDipilih, ringkasTeks, ringkasPendek, mode: () => st.mode,
       terbuka: () => st.aktif && st.terbuka,
       aktif: () => st.aktif,
     };

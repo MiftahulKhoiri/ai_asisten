@@ -424,9 +424,12 @@ class H(BaseHTTPRequestHandler):
             state.S["pesan"] = f"Menyiapkan {nama} ..."
             state.S["skill"] = skill
             state.S["prompt"] = pilihan_prompt
-        lg.log("INFO", f"Skill dipilih: {'+'.join(skill)} ({len(agen.tools_untuk(skill))} tool)"
-                       + (f", prompt: {', '.join(prm.rakit(pilihan_prompt)[1]) or 'tanpa prompt (murni)'}"
-                          if prm.berlaku(skill) else ""))
+        if prm.mode(skill) == "tambah":
+            nama_prompt = ", ".join(prm.rakit_tambahan(pilihan_prompt)[1])
+            ket_prompt = f", prompt tambahan: {nama_prompt}" if nama_prompt else ""
+        else:
+            ket_prompt = f", prompt: {', '.join(prm.rakit(pilihan_prompt)[1]) or 'tanpa prompt (murni)'}"
+        lg.log("INFO", f"Skill dipilih: {'+'.join(skill)} ({len(agen.tools_untuk(skill))} tool){ket_prompt}")
         mdl.sentuh()
         threading.Thread(target=mdl.muat_model, args=(nama,), daemon=True).start()
         self._json(200, {"ok": True})
@@ -486,8 +489,12 @@ class H(BaseHTTPRequestHandler):
                 q.put({"t": "lampiran", "berkas": ringkas})
             ctx = kts.Ctx(q, threading.Event())
             ctx.skill = skill
-            # prompt pilihan hanya berlaku untuk skill tanpa akses sistem (lihat server_prompt.berlaku)
-            ctx.prompt_dasar = prm.rakit(pilihan_prompt)[0] if prm.berlaku(skill) else None
+            # prompt pilihan: menggantikan prompt bawaan (skill tanpa akses sistem) atau ditambahkan di bawah
+            # prompt sistem (skill dasar/kompleks); lihat server_prompt.mode
+            if prm.mode(skill) == "tambah":
+                ctx.prompt_tambahan = prm.rakit_tambahan(pilihan_prompt)[0]
+            else:
+                ctx.prompt_dasar = prm.rakit(pilihan_prompt)[0]
             state.AKTIF["ctx"] = ctx
             self._mulai_kerja(chat, model, ctx, q)
             diserahkan = True

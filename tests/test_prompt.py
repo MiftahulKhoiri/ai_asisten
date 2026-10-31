@@ -185,11 +185,20 @@ class TestPenyimpanan(DasarPrompt):
         self.assertFalse(prm.hapus_prompt("tautan"))
         self.assertTrue(luar.exists())
 
-    def test_berlaku_hanya_untuk_skill_tanpa_tanpa_akses_sistem(self):
-        self.assertTrue(prm.berlaku(("tanpa",)))
-        self.assertTrue(prm.berlaku(("tanpa", "web", "kritis")))
-        for skill in (("tanpa", "dasar"), ("tanpa", "kompleks"), ("web",), ("kritis",), ("kompleks",), (), None):
-            self.assertFalse(prm.berlaku(skill), skill)
+    def test_mode_prompt_menurut_skill(self):
+        for skill in (("tanpa",), ("web",), ("kritis",), ("tanpa", "web", "kritis"), (), None):
+            self.assertEqual(prm.mode(skill), "ganti", skill)                    # menggantikan prompt bawaan
+        for skill in (("dasar",), ("kompleks",), ("tanpa", "dasar"), ("tanpa", "kompleks"), ("web", "kompleks")):
+            self.assertEqual(prm.mode(skill), "tambah", skill)                   # ditambahkan di bawah prompt sistem
+
+    def test_rakit_tambahan_hanya_prompt_buatan_pengguna(self):
+        a = prm.tambah_prompt("Gaya", "Jawab santai. {waktu}")["id"]
+        b = prm.tambah_prompt("Format", "Gunakan poin-poin.")["id"]
+        self.assertEqual(prm.rakit_tambahan([b, a, "bawaan", "tidak-ada"]),
+                         ("Gunakan poin-poin.\n\nJawab santai. {waktu}", ["Format", "Gaya"]))   # urut daftar; bawaan diabaikan
+        self.assertEqual(prm.rakit_tambahan(["bawaan"]), ("", []))
+        for kosong in (None, [], ["tidak-ada"]):
+            self.assertEqual(prm.rakit_tambahan(kosong), ("", []), kosong)
 
 
 class TestMigrasi(DasarPrompt):
@@ -372,6 +381,47 @@ class TestPromptSistem(unittest.TestCase):
         self.assertEqual(agen.dasar_dari(mock.Mock(prompt_dasar="")), "")
         self.assertIsNone(agen.dasar_dari(mock.Mock()))                           # atribut tiruan bukan teks
         self.assertIsNone(agen.dasar_dari(mock.Mock(prompt_dasar=5)))
+
+
+class TestPromptTambahan(unittest.TestCase):
+    def test_ditambahkan_di_bawah_prompt_sistem_skill(self):
+        for skill in (("dasar",), ("kompleks",), ("tanpa", "kompleks"), ("web", "dasar")):
+            polos = agen.buat_system("", skill)
+            teks = agen.buat_system("", skill, None, "Jawab santai. Jam {waktu}.")
+            self.assertTrue(teks.startswith(polos), skill)                          # aturan skill tidak berubah sedikit pun
+            ekor = teks[len(polos):]
+            self.assertTrue(ekor.startswith("\n\nINSTRUKSI TAMBAHAN DARI PENGGUNA (melengkapi, tidak menggantikan"), skill)
+            self.assertIn("Jawab santai. Jam ", ekor)
+            self.assertNotIn("{waktu}", ekor)
+
+    def test_tanpa_tambahan_hasilnya_sama_persis_dengan_dulu(self):
+        for skill in (("dasar",), ("kompleks",), ("tanpa",), ("web", "kritis")):
+            self.assertEqual(agen.buat_system("ringkasan x", skill), agen.buat_system("ringkasan x", skill, None, ""))
+            self.assertEqual(agen.buat_system("", skill), agen.buat_system("", skill, None, "   "))
+
+    def test_diabaikan_untuk_skill_tanpa_akses_sistem(self):
+        for skill in (("tanpa",), ("web",), ("kritis",)):
+            self.assertEqual(agen.buat_system("", skill, None, "TAMBAHAN"), agen.buat_system("", skill))
+
+    def test_urutan_dengan_ringkasan_riwayat(self):
+        teks = agen.buat_system("RINGKASAN RIWAYAT", ("kompleks",), None, "TAMBAHAN")
+        self.assertLess(teks.index("TAMBAHAN"), teks.index("RINGKASAN RIWAYAT"))
+
+    def test_tambahan_dari_hanya_menerima_teks(self):
+        self.assertEqual(agen.tambahan_dari(object()), "")
+        self.assertEqual(agen.tambahan_dari(mock.Mock(prompt_tambahan="x")), "x")
+        self.assertEqual(agen.tambahan_dari(mock.Mock()), "")
+        self.assertEqual(agen.tambahan_dari(mock.Mock(prompt_tambahan=5)), "")
+
+    def test_sampai_ke_model_lewat_giliran(self):
+        ctx = Ctx(("kompleks",))
+        ctx.prompt_tambahan = "Jawab santai."
+        palsu = Palsu([chunk("halo")])
+        jalan(("kompleks",), [{"role": "user", "content": "hai"}], palsu, ctx)
+        sistem = palsu.panggilan[0]["pesan"][0]
+        self.assertEqual(sistem["role"], "system")
+        self.assertIn("Jawab santai.", sistem["content"])
+        self.assertIn("INSTRUKSI TAMBAHAN DARI PENGGUNA", sistem["content"])
 
 
 class TestGiliranDenganPrompt(unittest.TestCase):
@@ -568,10 +618,23 @@ class TestSesiDenganPrompt(DasarServerPrompt):
         self.assertIsNone(asisten.S["prompt"])
         self.assertEqual(json.loads(self.req("GET", "/api/status")[1])["prompt"], ["Bawaan (asisten ramah)"])
 
-    def test_status_tidak_memuat_prompt_untuk_skill_dengan_akses_sistem(self):
-        self.pilih(skill=["kompleks"], prompt=["bawaan"])
+    def test_status_skill_dengan_akses_sistem_melaporkan_prompt_tambahan(self):
+        a = self.buat("Gaya", "Jawab santai.")
+        self.pilih(skill=["kompleks"], prompt=["bawaan", a])
         self.sesi_siap()
-        self.assertIsNone(json.loads(self.req("GET", "/api/status")[1])["prompt"])
+        st = json.loads(self.req("GET", "/api/status")[1])
+        self.assertEqual(st["prompt_mode"], "tambah")
+        self.assertEqual(st["prompt"], ["Gaya"])                                      # Bawaan tidak dihitung: selalu dipakai
+        self.pilih(skill=["kompleks"], prompt=["bawaan"])
+        self.assertEqual(json.loads(self.req("GET", "/api/status")[1])["prompt"], [])
+        self.pilih(skill=["dasar", "tanpa"])
+        self.assertEqual(json.loads(self.req("GET", "/api/status")[1])["prompt"], [])
+
+    def test_status_skill_tanpa_akses_sistem_melaporkan_prompt_pengganti(self):
+        self.pilih(skill=["web"], prompt=["bawaan"])
+        self.sesi_siap()
+        st = json.loads(self.req("GET", "/api/status")[1])
+        self.assertEqual((st["prompt_mode"], st["prompt"]), ("ganti", ["Bawaan (asisten ramah)"]))
 
     def test_pilihan_tidak_valid_ditolak(self):
         for salah in ("bawaan", [1], {"a": 1}):
@@ -586,7 +649,7 @@ class TestKirimDenganPrompt(DasarServerPrompt):
         tangkap = {}
 
         def palsu(riwayat, model, ctx, memori=None):
-            tangkap.update(dasar=agen.dasar_dari(ctx), memori=memori)
+            tangkap.update(dasar=agen.dasar_dari(ctx), tambahan=agen.tambahan_dari(ctx), memori=memori)
             yield {"t": "token", "d": "ok"}
         with mock.patch.object(agen, "giliran", palsu):
             kode, isi = self.req("POST", "/api/kirim", {"id": cid, "teks": teks})
@@ -609,10 +672,25 @@ class TestKirimDenganPrompt(DasarServerPrompt):
         self.assertEqual(t["dasar"], "")
         self.assertIsNone(t["memori"])                                              # tidak ada ringkasan yang disisipkan
 
-    def test_skill_dengan_akses_sistem_tidak_memakai_prompt_pilihan(self):
-        t = self.kirim_dan_tangkap(["tanpa", "kompleks"], [])
-        self.assertIsNone(t["dasar"])
+    def test_skill_dengan_akses_sistem_menambah_bukan_mengganti(self):
+        a = json.loads(self.req("POST", "/api/prompt", {"nama": "Gaya", "isi": "Jawab santai."})[1])["baru"]["id"]
+        t = self.kirim_dan_tangkap(["tanpa", "kompleks"], ["bawaan", a])
+        self.assertIsNone(t["dasar"])                                               # prompt bawaan skill tidak diganti
+        self.assertEqual(t["tambahan"], "Jawab santai.")                             # prompt pilihan ditambahkan
         self.assertIsNotNone(t["memori"])
+        t = self.kirim_dan_tangkap(["kompleks"], [])
+        self.assertEqual((t["dasar"], t["tambahan"]), (None, ""))                    # tanpa pilihan: tidak ada tambahan
+        t = self.kirim_dan_tangkap(["dasar"], None)
+        self.assertEqual((t["dasar"], t["tambahan"]), (None, ""))
+
+    def test_skill_web_dan_kritis_tanpa_tanpa_juga_memakai_prompt_pengganti(self):
+        a = json.loads(self.req("POST", "/api/prompt", {"nama": "Ringkas", "isi": "Jawab singkat."})[1])["baru"]["id"]
+        for skill in (["web"], ["kritis"], ["web", "kritis"]):
+            t = self.kirim_dan_tangkap(skill, [a])
+            self.assertEqual((t["dasar"], t["tambahan"]), ("Jawab singkat.", ""), skill)
+        t = self.kirim_dan_tangkap(["web"], [])
+        self.assertEqual(t["dasar"], "")                                              # tanpa centang = murni, juga di skill Web
+        self.assertIsNone(t["memori"])
 
     def test_prompt_yang_diubah_saat_sesi_berjalan_berlaku_di_pesan_berikutnya(self):
         a = json.loads(self.req("POST", "/api/prompt", {"nama": "Gaya", "isi": "Jawab formal."})[1])["baru"]["id"]
@@ -654,7 +732,7 @@ class TestHalamanPrompt(unittest.TestCase):
         html = (self.WEB / "index.html").read_text(encoding="utf-8")
         for pasti in ('id="promptBox"', 'id="btnPromptBaru"', 'id="promptForm"', 'id="promptNama"', 'id="promptIsi"',
                       'id="btnPromptSimpan"', 'id="btnPromptBatal"', 'id="promptFormJudul"', 'id="promptList"', 'id="promptKet"', 'id="btnPromptSelesai"',
-                      'id="promptRingkas"', 'id="btnPromptUbah"', 'id="langkahModel"', "List prompt", "+ prompt"):
+                      'id="promptRingkas"', 'id="promptModeTeks"', 'id="btnPromptUbah"', 'id="langkahModel"', "List prompt", "+ prompt"):
             self.assertIn(pasti, html)
         self.assertLess(html.index('src="prompt.js"'), html.index('src="index.js"'))
         self.assertLess(html.index('id="skillBox"'), html.index('id="promptBox"'))      # skill dulu, lalu prompt
@@ -669,7 +747,7 @@ class TestHalamanPrompt(unittest.TestCase):
 
     def test_index_js_memakai_modul_dan_mengirim_prompt(self):
         js = (self.WEB / "index.js").read_text(encoding="utf-8")
-        for pasti in ("PromptPilih.pasang", "prm.atur(promptAktif())", "prompt: (prm && promptAktif()) ? prm.ids() : undefined"):
+        for pasti in ("PromptPilih.pasang", "prm.atur({mode: promptMode(), tanpa:", "prompt: prm ? prm.ids() : undefined"):
             self.assertIn(pasti, js)
 
     def test_logika_panel_dengan_dom_tiruan(self):

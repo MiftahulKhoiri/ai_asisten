@@ -19,7 +19,9 @@ def status_json():
              "skill_bawaan": list(agen.tolls.normal_skill(None)),
              "skills": {m: len(agen.tools_untuk(m)) for m in ids},
              "skill_tools": {m: agen.tolls.nama_tool_aktif(m) for m in ids}}
-    d["prompt"] = prm.rakit(state.S["prompt"])[1] if prm.berlaku(sk) else None     # nama prompt yang dipakai sesi ini
+    d["prompt_mode"] = prm.mode(sk)
+    # nama prompt yang dipakai sesi ini: yang menggantikan bawaan, atau yang ditambahkan ke prompt sistem skill
+    d["prompt"] = prm.rakit_tambahan(state.S["prompt"])[1] if d["prompt_mode"] == "tambah" else prm.rakit(state.S["prompt"])[1]
     d["prompt_id"] = state.S["prompt"]
     d["agent"] = agt.agent_proses()       # proses Agent (juga yang diserahkan dari obrolan)
     if d["status"] != "siap":

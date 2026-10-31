@@ -310,11 +310,20 @@ def impor(teks):
 
 
 # ---------------------------------------------------------------- pemakaian di sesi
-def berlaku(skill):
-    """Prompt pilihan dipakai hanya bila skill 'tanpa' aktif dan tidak ada skill dengan akses sistem
-    (dasar/kompleks), karena skill itu memakai prompt sistem bertool sendiri."""
-    s = set(skill or ())
-    return "tanpa" in s and not (s & {"dasar", "kompleks"})
+def mode(skill):
+    """Cara prompt pilihan bekerja untuk gabungan skill: "ganti" (skill tanpa akses sistem: prompt
+    pilihan menggantikan prompt bawaan) atau "tambah" (ada skill dasar/kompleks: prompt pilihan
+    ditambahkan di bawah prompt sistem skill, yang memuat aturan tool dan keamanan)."""
+    return "tambah" if set(skill or ()) & {"dasar", "kompleks"} else "ganti"
+
+
+def rakit_tambahan(ids):
+    """(teks, nama) prompt tambahan untuk skill dengan akses sistem: hanya prompt buatan pengguna
+    yang dicentang (Bawaan diabaikan karena prompt sistem skill selalu dipakai), urut daftar."""
+    if not ids:
+        return "", []
+    semua = [p for p in daftar_prompt() if not p.get("bawaan") and p["id"] in set(ids)]
+    return "\n\n".join(p["isi"] for p in semua), [p["nama"] for p in semua]
 
 
 def rapikan_pilihan(ids):
@@ -351,4 +360,4 @@ def rakit(ids):
 
 
 __all__ = ["FORMAT", "bawaan", "daftar_prompt", "berkas_diabaikan", "tambah_prompt", "ubah_prompt",
-           "hapus_prompt", "ekspor", "impor", "berlaku", "rapikan_pilihan", "rakit"]
+           "hapus_prompt", "ekspor", "impor", "mode", "rakit_tambahan", "rapikan_pilihan", "rakit"]

@@ -121,7 +121,7 @@ def giliran(riwayat, model, ctx, memori=None):
         r = (memori or {}).get("ringkasan") or {}
         mulai = min(r.get("sampai", 0), len(riwayat))
         ringk = r.get("teks", "")
-        sistem = prompt.buat_system(ringk, skill, prompt.dasar_dari(ctx))
+        sistem = prompt.buat_system(ringk, skill, prompt.dasar_dari(ctx), prompt.tambahan_dari(ctx))
         kirim = ([{"role": "system", "content": sistem}] if sistem.strip() else []) \
             + mem.siapkan(riwayat[mulai:], batas, not tools)
 

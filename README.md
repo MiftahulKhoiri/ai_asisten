@@ -330,11 +330,25 @@ diperiksa ulang.
 Saran untuk pemula: mulai dengan **Tanpa skill** untuk memastikan model menjawab dengan baik,
 lalu coba **Dasar**.
 
-### Prompt untuk skill Tanpa
+### Prompt pilihan (untuk semua skill)
 
-Bila **Tanpa skill** dipilih (tanpa Dasar/Kompleks), muncul panel **List prompt** untuk menentukan
-prompt sistem apa yang dipakai model. Langkahnya: pilih skill, atur prompt lalu tekan **Selesai**, pilih
-model, tekan **Mulai sesi**.
+Di layar **Mulai sesi** ada panel **List prompt** untuk menentukan prompt apa yang dipakai model. Panel
+tersedia untuk **semua skill**, tetapi cara kerjanya menurut skill:
+
+| Skill yang aktif | Prompt yang dicentang | Tidak mencentang apa pun |
+|---|---|---|
+| tanpa akses sistem: **Tanpa**, **Web**, **Berpikir kritis** (dan gabungannya) | **menggantikan** prompt bawaan | model berjalan **murni**, tanpa prompt sistem |
+| dengan akses sistem: **Dasar**, **Kompleks** (juga bila digabung dengan Tanpa) | **ditambahkan di bawah** prompt sistem skill | skill memakai prompt sistemnya sendiri |
+
+Pada skill Dasar/Kompleks prompt sistem memuat aturan tool dan keamanan, jadi prompt pilihanmu **tidak
+pernah menggantikannya**, hanya melengkapi (diberi judul "Instruksi tambahan dari pengguna"). Barisnya
+"Bawaan" di mode ini tampil sebagai "selalu aktif" dan tidak bisa dilepas.
+
+Kapan panel terbuka: pada alur **Tanpa skill** (Tanpa tanpa Dasar/Kompleks) panel otomatis terbuka sebagai
+langkah sendiri: pilih skill, atur prompt lalu tekan **Selesai**, pilih model, tekan **Mulai sesi**. Pada
+skill lain panel berupa ringkasan satu baris ("Prompt: ..." atau "Prompt tambahan: ...") dengan tombol
+**Ubah**, supaya tidak menghalangi. Skill bisa digabung: bila **Kompleks** (bawaan) masih menyala saat
+kamu menekan **Tanpa**, mode-nya "tambah", bukan "ganti"; matikan Kompleks bila ingin mengganti prompt bawaan.
 
 - **+ prompt** membuka kolom nama dan isi; tombol **Simpan** ada di pojok bawah kolom. Prompt baru
   langsung tercentang.
@@ -349,7 +363,8 @@ model, tekan **Mulai sesi**.
 - Isi prompt boleh memuat `{waktu}`, yang diganti tanggal dan jam saat dipakai. Maks 40 karakter untuk
   nama, 4000 untuk isi, 50 prompt.
 - Pilihan centang dan status Selesai diingat per browser; ketuk **Ubah** untuk membuka panelnya lagi.
-- Nama prompt yang dipakai tampil di header (`model · skill · prompt: ...`).
+- Nama prompt yang dipakai tampil di header (`model · skill · prompt: ...`, atau `+prompt: ...` untuk prompt
+  tambahan; prompt bawaan polos pada skill Web/Kritis tidak ditulis).
 - **Catatan** (opsional, maks 200 karakter): tulis prompt ini cocok untuk apa atau diuji di model apa. Tampil di
   bawah nama prompt dan ikut terbawa saat dibagikan.
 

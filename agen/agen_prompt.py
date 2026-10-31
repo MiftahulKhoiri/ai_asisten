@@ -161,10 +161,19 @@ def dasar_dari(ctx):
     return d if isinstance(d, str) else None
 
 
-def buat_system(ringkasan="", mode=None, dasar=None):
-    """Prompt sistem. `dasar` hanya berlaku untuk skill tanpa akses sistem (tanpa/web/kritis):
-    None = SYSTEM_CHAT bawaan; teks = prompt pilihan pengguna ({waktu} diganti tanggal dan jam);
-    "" = tanpa prompt dasar sama sekali (model murni; tambahan skill web/kritis tetap ikut)."""
+def tambahan_dari(ctx):
+    """Prompt tambahan pilihan pengguna untuk skill dengan akses sistem: teks atau "" bila tidak ada."""
+    d = getattr(ctx, "prompt_tambahan", None)
+    return d if isinstance(d, str) else ""
+
+
+def buat_system(ringkasan="", mode=None, dasar=None, tambahan=""):
+    """Prompt sistem. Prompt pilihan pengguna bekerja dengan dua cara menurut skill:
+      - skill tanpa akses sistem (tanpa/web/kritis): `dasar` MENGGANTIKAN prompt bawaan. None = SYSTEM_CHAT
+        bawaan; teks = prompt pilihan ({waktu} diganti tanggal dan jam); "" = tanpa prompt dasar sama
+        sekali (model murni; tambahan skill web/kritis tetap ikut).
+      - skill dengan akses sistem (dasar/kompleks): `tambahan` DITAMBAHKAN di bawah prompt sistem skill
+        (aturan tool dan keamanannya tidak bisa diganti atau dihapus)."""
     skill = tolls.normal_skill(mode)
     waktu = datetime.now().strftime("%Y-%m-%d %H:%M")
     if "dasar" in skill or "kompleks" in skill:
@@ -183,10 +192,13 @@ def buat_system(ringkasan="", mode=None, dasar=None):
         teks += PROMPT_WEB
     if "kritis" in skill:
         teks += PROMPT_KRITIS
+    if tambahan.strip() and ("dasar" in skill or "kompleks" in skill):
+        teks += ("\n\nINSTRUKSI TAMBAHAN DARI PENGGUNA (melengkapi, tidak menggantikan aturan di atas):\n"
+                 + tambahan.replace("{waktu}", waktu).strip())
     if ringkasan:
         teks += ("\nRingkasan percakapan sebelumnya (pesan lama sudah diringkas, "
                  "gunakan sebagai ingatan):\n" + ringkasan)
     return teks
 
 
-__all__ = ['PROMPT_RINGKAS', 'SYSTEM_PROMPT', 'SYSTEM_CHAT', 'KATA_TOOL', 'PROMPT_WEB', 'PROMPT_KRITIS', 'PROMPT_KRITIK', 'KATA_WEB', 'perlu_tool', 'tools_untuk', 'mode_dari', 'max_history', 'dasar_dari', 'buat_system']
+__all__ = ['PROMPT_RINGKAS', 'SYSTEM_PROMPT', 'SYSTEM_CHAT', 'KATA_TOOL', 'PROMPT_WEB', 'PROMPT_KRITIS', 'PROMPT_KRITIK', 'KATA_WEB', 'perlu_tool', 'tools_untuk', 'mode_dari', 'max_history', 'dasar_dari', 'tambahan_dari', 'buat_system']
