@@ -123,7 +123,9 @@ def mulai_proses(tugas, cfg, lanjut=None, bahan=None, paket=None, chat_id=None, 
                        f"pelaksana={cfg['model_e']}, pemeriksa={cfg['model_c']}, "
                        f"maks {cfg['maks']} putaran, uji jalan "
                        + ("DIIZINKAN" if cfg["uji"] else "mati")
-                       + (f", dari obrolan {chat_id}" if chat_id else ""))
+                       + (f", dari obrolan {chat_id}" if chat_id else "")
+                       + "".join(f", prompt {p} ({v['mode']}): {', '.join(v.get('nama') or []) or '?'}"
+                                 for p, v in (cfg.get("prompt_peran") or {}).items()))
         ctx = kts.Ctx(queue.Queue(), threading.Event())
         ctx.skill = ("tanpa",)
         state.AKTIF["ctx"] = ctx

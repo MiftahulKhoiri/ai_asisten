@@ -15,6 +15,31 @@
 .r-diagnosa{--rc:var(--r-periksa)}
 .r-jelaskan{--rc:var(--r-jelaskan)}
 
+/* ---------- prompt pilihan tiap peran (tombol "+ prompt") ---------- */
+.pp{margin-top:8px}
+.pp-ringkas{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--redup)}
+.pp-teks{flex:1;min-width:0;overflow-wrap:anywhere}
+.pp-ringkas .btn{flex:none}
+.pp-panel{margin-top:8px;padding:10px;border:1px solid var(--garis);border-radius:12px;background:var(--panel)}
+.pp-panel[hidden],.pp-form[hidden]{display:none}
+.pp-mode{display:flex;gap:6px;margin-bottom:6px}
+.pp-modebtn{flex:1;padding:7px 6px;font-size:13px;border:1px solid var(--garis);border-radius:10px;background:var(--panel2);color:var(--teks);cursor:pointer}
+.pp-modebtn.on{border-color:var(--rc);background:color-mix(in srgb,var(--rc) 14%,var(--panel2));font-weight:600}
+.pp-ketmode{margin:0 0 8px}
+.pp-kepala{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0;font-weight:600;font-size:13.5px}
+.pp-aksi{display:flex;gap:6px;flex:none}
+.pp-form{margin-bottom:10px}
+.pp-form input,.pp-form textarea{width:100%;margin:4px 0;padding:9px 10px;background:var(--bg);color:var(--teks);border:1px solid var(--garis);border-radius:10px;font:inherit;font-size:14px}
+.pp-form textarea{min-height:130px;resize:vertical;line-height:1.45}
+.pp-formjudul{font-weight:600;font-size:13px;color:var(--redup);margin-bottom:2px}
+.pp-aksiform{display:flex;align-items:center;justify-content:flex-end;gap:10px}
+.pp-aksiform .galat{flex:1;color:var(--bahaya);font-size:13px}
+.pp-aksiform .btn{padding:7px 16px}
+.pp-baris .nm{cursor:pointer}
+.pp-lihat{margin:0 0 8px;padding:8px 10px;max-height:220px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.4;background:var(--bg);border:1px solid var(--garis);border-radius:10px}
+.pp-ket{white-space:pre-line;margin:8px 0 0}
+.pp-selesai{display:block;margin:10px 0 0 auto;padding:8px 22px}
+
 /* ---------- dasar ---------- */
 body.agent{font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
 .agent .btn{transition:transform .08s ease,opacity .2s ease,background .2s ease;font-weight:500}

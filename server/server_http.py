@@ -20,6 +20,7 @@ from . import server_config as conf
 from . import server_ctx as kts
 from . import server_log as lg
 from . import server_model as mdl
+from . import server_peran as per
 from . import server_prompt as prm
 from . import server_chat as rwy
 from . import server_handoff as ho
@@ -39,6 +40,7 @@ STATIS = {
     "/agent.css": ("agent.css", "text/css; charset=utf-8"),
     "/agent.js": ("agent.js", "application/javascript; charset=utf-8"),
     "/prompt.js": ("prompt.js", "application/javascript; charset=utf-8"),
+    "/prompt_peran.js": ("prompt_peran.js", "application/javascript; charset=utf-8"),
     "/serahkan.css": ("serahkan.css", "text/css; charset=utf-8"),
     "/serahkan.js": ("serahkan.js", "application/javascript; charset=utf-8"),
     "/unggah.css": ("unggah.css", "text/css; charset=utf-8"),
@@ -139,6 +141,10 @@ class H(BaseHTTPRequestHandler):
                                     "abaikan": prm.berkas_diabaikan()})
         if path == "/api/prompt/ekspor" and metode == "GET":
             return self.prompt_ekspor()
+        if path == "/api/agent/prompt" and metode == "GET":
+            return self.peran_daftar()
+        if path == "/api/agent/prompt/ekspor" and metode == "GET":
+            return self.peran_ekspor()
         if path == "/api/unggah" and metode == "POST":
             return self.unggah()
         if path == "/api/unggah" and metode == "GET":
@@ -173,6 +179,9 @@ class H(BaseHTTPRequestHandler):
                 except ValueError as e:
                     return self._json(400, {"error": str(e)})
                 return self._json(200 if ada else 404, {"ok": ada, "prompt": prm.daftar_prompt()})
+            if path in ("/api/agent/prompt", "/api/agent/prompt/ubah", "/api/agent/prompt/impor",
+                        "/api/agent/prompt/hapus"):
+                return self.peran_ubahan(path, b)
             if path == "/api/handoff/ringkas":
                 return self.handoff_ringkas(b)
             if path == "/api/handoff/kirim":
@@ -285,6 +294,9 @@ class H(BaseHTTPRequestHandler):
             tersedia = {m["id"] for m in mdl.daftar_model()}
         except Exception:  # noqa: BLE001
             return self._json(502, {"error": "Tidak bisa menghubungi llama-server"})
+        b, err = self._prompt_peran_cfg(b)
+        if err:
+            return self._json(400, {"error": err})
         cfg, err = tim.siapkan_cfg(b, tersedia)
         if err:
             return self._json(400, {"error": err})
@@ -298,6 +310,59 @@ class H(BaseHTTPRequestHandler):
         except agt.ProsesGagal as e:
             return self._json(e.kode, {"error": e.pesan})
         self._json(200, {"ok": True, "sesi": sesi})
+
+    # ------------------------------------------------------------ prompt per peran Agent
+    def _peran_param(self):
+        q = parse_qs(urlparse(self.path).query)
+        return (q.get("peran") or [""])[0], (q.get("id") or [""])[0]
+
+    def peran_daftar(self):
+        """Daftar prompt satu peran Agent (?peran=perencana|pelaksana|pemeriksa|penjelas)."""
+        peran = self._peran_param()[0]
+        if not per.peran_valid(peran):
+            return self._json(400, {"error": "Peran tidak dikenal"})
+        self._json(200, {"peran": peran, "prompt": per.daftar_prompt_peran(peran), "bawaan": conf.PROMPT_BAWAAN,
+                         "abaikan": per.abaikan_prompt_peran(peran)})
+
+    def peran_ekspor(self):
+        peran, pid = self._peran_param()
+        if not per.peran_valid(peran):
+            return self._json(400, {"error": "Peran tidak dikenal"})
+        d = per.ekspor_prompt_peran(peran, pid)
+        if d is None:
+            return self._json(404, {"error": "Prompt tidak ditemukan"})
+        self._kirim_unduhan((json.dumps(d, ensure_ascii=False, indent=1) + "\n").encode("utf-8"),
+                            "application/json; charset=utf-8", "%s-%s.json" % (peran, pid))
+
+    def peran_ubahan(self, path, b):
+        """Tambah, ubah, impor, atau hapus prompt satu peran Agent. Jawaban memuat daftar terbaru."""
+        peran = b.get("peran")
+        if not per.peran_valid(peran):
+            return self._json(400, {"error": "Peran tidak dikenal"})
+        try:
+            if path == "/api/agent/prompt":
+                hasil = {"baru": per.tambah_prompt_peran(peran, b.get("nama"), b.get("isi"), b.get("catatan"))}
+            elif path.endswith("/ubah"):
+                baru = per.ubah_prompt_peran(peran, str(b.get("id") or ""), b.get("nama"), b.get("isi"), b.get("catatan"))
+                if baru is None:
+                    return self._json(404, {"error": "Prompt tidak ditemukan"})
+                hasil = {"baru": baru}
+            elif path.endswith("/impor"):
+                hasil = per.impor_prompt_peran(peran, b.get("teks") if isinstance(b.get("teks"), str) else "")
+            else:
+                ada = per.hapus_prompt_peran(peran, str(b.get("id") or ""))
+                return self._json(200 if ada else 404,
+                                  {"ok": ada, "prompt": per.daftar_prompt_peran(peran)})
+        except ValueError as e:
+            return self._json(400, {"error": str(e)})
+        self._json(200, dict(hasil, ok=True, peran=peran, prompt=per.daftar_prompt_peran(peran)))
+
+    def _prompt_peran_cfg(self, b):
+        """Salinan `b` dengan prompt_peran dari pilihan web diubah menjadi isi promptnya. (b, galat)."""
+        try:
+            return dict(b, prompt_peran=per.rakit_prompt_peran(b.get("prompt_peran"))), ""
+        except ValueError as e:
+            return b, str(e)
 
     def prompt_ekspor(self):
         """Unduh satu prompt sebagai berkas JSON yang siap dibagikan (?id=...)."""
@@ -552,6 +617,9 @@ class H(BaseHTTPRequestHandler):
             tersedia = {m["id"] for m in mdl.daftar_model()}
         except Exception:  # noqa: BLE001
             return self._json(502, {"error": "Tidak bisa menghubungi llama-server"})
+        b, err = self._prompt_peran_cfg(b)
+        if err:
+            return self._json(400, {"error": err})
         cfg, err = tim.siapkan_cfg(b, tersedia)
         if err:
             return self._json(400, {"error": err})

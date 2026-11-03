@@ -131,7 +131,7 @@ def _jalankan(tugas, cfg, ctx, lanjut=None, bahan=None):
             "model": {"perencana": cfg["model_p"], "pelaksana": cfg["model_e"],
                       "pemeriksa": cfg["model_c"]},
             "putaran": 0, "maks": cfg["maks"], "lanjut": None, "laporan": "", "spec": None,
-            "bahan": [], "jalur": None}
+            "bahan": [], "jalur": None, "prompt": {}}
     spec_lama = None
     if lanjut and conf.ID_RUN.match(str(lanjut)) and (conf.KERJA / lanjut).is_dir():
         salin_proyek(conf.KERJA / lanjut / "hasil", hasil_dir, conf.MAKS_BACA)
@@ -140,8 +140,12 @@ def _jalankan(tugas, cfg, ctx, lanjut=None, bahan=None):
     lewat = []
     if bahan and Path(bahan).is_dir():
         meta["bahan"], lewat = masukkan_bahan(Path(bahan), hasil_dir)
+    # prompt pilihan pengguna per peran: dibaca tahap lewat ctx (tim_prompt.sistem_peran)
+    ctx.prompt_peran = conf.rapikan_prompt_peran(cfg.get("prompt_peran"))
+    meta["prompt"] = {p: {"mode": v["mode"], "nama": v.get("nama") or []}
+                      for p, v in ctx.prompt_peran.items()}
     yield {"t": "mulai", "id": run_id, "dir": str(folder), "maks": cfg["maks"],
-           "model": meta["model"], "lanjut": meta["lanjut"]}
+           "model": meta["model"], "lanjut": meta["lanjut"], "prompt": meta["prompt"]}
     if meta["bahan"] or lewat:
         yield {"t": "bahan", "nama": meta["bahan"][:60],
                "dilewati": ["%s: %s" % (n, a) for n, a in lewat[:20]]}

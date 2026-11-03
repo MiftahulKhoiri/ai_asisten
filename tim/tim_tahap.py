@@ -14,13 +14,8 @@ from .tim_config import Batal
 from .tim_laporan import blok_fakta, blok_fakta_bug
 from .tim_llm import ambil_json, tanya
 from .tim_prompt import (
-    SYSTEM_DIAGNOSA,
-    SYSTEM_PELAKSANA,
-    SYSTEM_PEMERIKSA,
-    SYSTEM_PENJELAS,
-    SYSTEM_PENJELAS_BUG,
-    SYSTEM_PERENCANA,
     pesan_chat,
+    sistem_peran,
     pesan_minta_masalah,
     pesan_ulang_json,
     prompt_diagnosa,
@@ -65,7 +60,7 @@ def tahap_rencana(tugas, spec_lama, hasil_dir, folder, mp, ctx, pemuat, jejak, d
     yield from pemuat.pakai(mp)
     ada = [n for n, _ in baca_proyek(hasil_dir, conf.MAKS_BACA)]    # kosong bila proses baru tanpa bahan
     user = prompt_rencana(tugas, spec_lama, ada, diagnosa=diagnosa)
-    pesan = pesan_chat(SYSTEM_PERENCANA, user)
+    pesan = pesan_chat(sistem_peran(ctx, "perencana"), user)
     teks, _ = yield from tanya(mp, pesan, ctx, conf.TOKEN_RENCANA, 0.2, True)
     jejak.simpan("rencana", user, teks)
     raw = ambil_json(teks)
@@ -94,7 +89,7 @@ def tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran, batas_berkas=
     berkas unggahan memberi batas lebih besar supaya berkas unggahan tidak menghabiskan jatah)."""
     batas_berkas = batas_berkas or conf.MAKS_BERKAS_TOTAL
     user = prompt_tulis(spec, koreksi, baca_proyek(hasil_dir, conf.MAKS_BACA))
-    pesan = pesan_chat(SYSTEM_PELAKSANA, user)
+    pesan = pesan_chat(sistem_peran(ctx, "pelaksana"), user)
     teks, terpotong = yield from tanya(me, pesan, ctx, conf.TOKEN_TAHAP, 0.2, False)
     jejak.simpan("tulis-%d" % putaran, user, teks)
     ditulis, masalah = [], []
@@ -180,7 +175,7 @@ def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran):
                 "perbaikan": "Tulis semua berkas lembar tugas dengan format "
                              "=== FILE: nama === ... === END ==="}
     user = prompt_periksa(spec, bukti["baris"], berkas)
-    pesan = pesan_chat(SYSTEM_PEMERIKSA, user)
+    pesan = pesan_chat(sistem_peran(ctx, "periksa"), user)
     nilai = yield from _minta_nilai(mc, pesan, user, ctx, jejak, "periksa-%d" % putaran, bukti)
     return nilai
 
@@ -259,7 +254,7 @@ def tahap_diagnosa(tugas, cfg, hasil_dir, folder, mc, ctx, pemuat, jejak):
     berkas = baca_proyek(hasil_dir, conf.MAKS_BACA)
     bukti = yield from diagnosa_menjalankan(cfg, hasil_dir, berkas)
     user, dilihat, total = prompt_diagnosa(tugas, "\n".join(bukti["baris"]), berkas)
-    pesan = pesan_chat(SYSTEM_DIAGNOSA, user)
+    pesan = pesan_chat(sistem_peran(ctx, "diagnosa"), user)
     nilai = yield from _minta_nilai(mc, pesan, user, ctx, jejak, "diagnosa", bukti)
     if nilai["ok"] and not bukti["ok"]:
         gagal = [b[:300] for b in bukti["baris"] if b.startswith("GAGAL")][:5]
@@ -297,7 +292,7 @@ def tahap_jelaskan(status, spec, hasil_dir, meta, akhir, mp, ctx, pemuat, jejak)
     try:
         yield from pemuat.pakai(mp)
         user = prompt_jelas(spec, baca_proyek(hasil_dir))
-        pesan = pesan_chat(SYSTEM_PENJELAS, user)
+        pesan = pesan_chat(sistem_peran(ctx, "jelaskan"), user)
         prosa, _ = yield from tanya(mp, pesan, ctx, conf.TOKEN_JELAS, 0.3, False, keluar="token")
         jejak.simpan("jelaskan", user, prosa)
         prosa = prosa.strip()
@@ -320,7 +315,7 @@ def tahap_jelaskan_bug(status, tugas, diag, hasil_dir, meta, mp, ctx, pemuat, je
     try:
         yield from pemuat.pakai(mp)
         user = prompt_jelas_bug(tugas, diag["nilai"], diag["dilihat"], diag["total"])
-        pesan = pesan_chat(SYSTEM_PENJELAS_BUG, user)
+        pesan = pesan_chat(sistem_peran(ctx, "jelaskan_bug"), user)
         prosa, _ = yield from tanya(mp, pesan, ctx, conf.TOKEN_JELAS, 0.3, False, keluar="token")
         jejak.simpan("jelaskan", user, prosa)
         prosa = prosa.strip()

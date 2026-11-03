@@ -56,6 +56,7 @@ from . import tim_config
 from .tim_config import (
     Batal,
     id_valid,
+    rapikan_prompt_peran,
     siapkan_cfg,
 )
 from .tim_prompt import (
@@ -63,9 +64,15 @@ from .tim_prompt import (
     SYSTEM_PEMERIKSA,
     SYSTEM_PENJELAS,
     SYSTEM_PERENCANA,
+    KONTRAK,
+    PERAN_AGENT,
+    PERAN_LABEL,
     anggaran_prompt,
     blok_berkas,
+    perilaku_peran,
     pesan_chat,
+    rakit_sistem,
+    sistem_peran,
     pesan_minta_masalah,
     pesan_ulang_json,
     prompt_jelas,

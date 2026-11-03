@@ -4,7 +4,7 @@
   let TOKEN = localStorage.getItem('aa_token') || '';
   let layar = '', sibuk = false, models = [], statusSrv = null, daftarSig = '';
   let lanjutId = null, lanjutJudul = '', awalTanya = null;
-  const cfg = {mode: 2, p: '', e: '', c: '', maks: 3, bongkar: true, uji: true};
+  const cfg = {mode: 2, p: '', e: '', c: '', maks: 3, bongkar: true, uji: true, prompt: {}};
 
   /* ---------- util ---------- */
   function el(tag, kelas, teks) {
@@ -228,7 +228,35 @@
     cfg.maks = Math.max(1, Math.min(10, parseInt(cfg.maks, 10) || 3));
     cfg.bongkar = cfg.bongkar !== false; cfg.izinUji = cfg.izinUji === true;   // izin harus sengaja dinyalakan
     if (!JALUR_ADA.includes(cfg.jalur)) cfg.jalur = 'otomatis';
+    cfg.prompt = rapikanPrompt(cfg.prompt);
   }
+  /* prompt pilihan per peran: {peran: {ids: [id prompt], mode: 'tambah'|'ganti'}} (isinya disimpan di server) */
+  const PERAN_PROMPT = [['perencana', 'Perencana'], ['pelaksana', 'Pelaksana'], ['pemeriksa', 'Pemeriksa'], ['penjelas', 'Penjelas']];
+  function rapikanPrompt(d) {
+    const h = {};
+    for (const [p] of PERAN_PROMPT) {
+      const x = d && typeof d === 'object' ? d[p] : null;
+      h[p] = {ids: x && Array.isArray(x.ids) ? x.ids.filter(i => typeof i === 'string').slice(0, 50) : [],
+        mode: x && x.mode === 'ganti' ? 'ganti' : 'tambah'};
+    }
+    return h;
+  }
+  /* yang dikirim ke server: hanya peran yang punya prompt terpilih */
+  function promptPeranBody() {
+    const h = {};
+    for (const [p] of PERAN_PROMPT) if (cfg.prompt[p] && cfg.prompt[p].ids.length) h[p] = {ids: cfg.prompt[p].ids.slice(), mode: cfg.prompt[p].mode};
+    return h;
+  }
+  const panelPrompt = {};
+  function pasangPanelPrompt() {
+    if (!window.PromptPeran) return;
+    for (const [p, nama] of PERAN_PROMPT) {
+      if (panelPrompt[p]) continue;
+      panelPrompt[p] = window.PromptPeran.pasang({peran: p, label: nama, wadah: $('pp_' + p), token: () => TOKEN, awal: cfg.prompt[p],
+        onUbah: s => { cfg.prompt[p] = {ids: s.ids, mode: s.mode}; simpanCfg(); }});
+    }
+  }
+  function muatPanelPrompt() { for (const k of Object.keys(panelPrompt)) if (!panelPrompt[k].dimuat()) panelPrompt[k].muat(); }
   function simpanCfg() {
     try { localStorage.setItem('ag_cfg', JSON.stringify(cfg)); } catch (e) { /* abaikan */ }
   }
@@ -254,7 +282,9 @@
       const on = Number(b.dataset.mode) === cfg.mode;
       b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
-    $('fieldC').hidden = cfg.mode !== 3;
+    $('selC').hidden = cfg.mode !== 3;                    // mode 2: Pemeriksa memakai model Perencana (prompt tetap bisa diatur)
+    $('namaC').textContent = cfg.mode === 3 ? 'Model 3 · Pemeriksa' : 'Pemeriksa · memakai Model 1';
+    $('namaJ').textContent = 'Penjelas · memakai Model 1';
     $('namaP').textContent = cfg.mode === 3 ? 'Model 1 · Perencana' : 'Model 1 · Perencana + Pemeriksa';
     $('ketP').textContent = cfg.mode === 3
       ? 'Menerima perintah, menyusun lembar tugas, lalu menjelaskan hasil akhir.'
@@ -297,6 +327,7 @@
       models = statusSrv.models || [];
       bawaanModel();
       renderSetup(!!paksa);
+      muatPanelPrompt();
       const p = statusSrv.proses;
       if (p && p.aktif && layar === 'setup' && !sibuk) lampirkan(p);   // proses masih jalan di server
     } catch (e) {
@@ -413,6 +444,8 @@
       rt.append(el('b', '', nama + ' · ' + mdl), el('small', '', tugas));
       r.append(el('span', 'rk', ik), rt); k.appendChild(r);
     }
+    const adaPrompt = PERAN_PROMPT.filter(([p]) => cfg.prompt[p] && cfg.prompt[p].ids.length).map(([p, nama]) => nama + ' (' + (cfg.prompt[p].mode === 'ganti' ? 'ganti' : 'tambah') + ')');
+    if (adaPrompt.length) k.appendChild(el('div', 'redup kecil', 'Prompt pilihan: ' + adaPrompt.join(', ') + '. Ubah di Pengaturan.'));
     k.appendChild(el('div', 'redup kecil', cfg.izinUji
       ? 'Uji jalan: DIIZINKAN. Program hasil dijalankan Pemeriksa tanpa bertanya lagi.'
       : 'Uji jalan: mati (Pemeriksa hanya cek sintaks). Nyalakan di Pengaturan bila perlu.'));
@@ -680,7 +713,7 @@
     try {
       const body = {teks, lanjut: lanjutId, mode: cfg.mode, model_p: cfg.p, model_e: cfg.e,
         model_c: cfg.mode === 3 ? cfg.c : cfg.p, maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.izinUji, jalur: cfg.jalur,
-        unggahan: unggah ? unggah.paket() : null};
+        unggahan: unggah ? unggah.paket() : null, prompt_peran: promptPeranBody()};
       sesi = (await apij('/api/agent/jalankan', {method: 'POST', body})).sesi;
       if (unggah) unggah.lepas();       // berkas sudah disalin ke folder kerja di server
     } catch (e) {
@@ -792,7 +825,12 @@
       case 'mulai':
         if (ev.model) { susunModel(ev.model); if (panelBuka) gambarModel(); }
         $('infoAlur').textContent = 'Folder kerja: ' + ev.dir;
-        catatLog('📁', 'Folder kerja: ' + ev.dir); break;
+        catatLog('📁', 'Folder kerja: ' + ev.dir);
+        for (const [p, nama] of PERAN_PROMPT) {          // prompt pilihan pengguna yang dipakai proses ini
+          const x = ev.prompt && ev.prompt[p];
+          if (x) catatLog('📝', 'Prompt ' + nama + ' (' + (x.mode === 'ganti' ? 'ganti bawaan' : 'tambah ke bawaan') + '): ' + ((x.nama || []).join(', ') || '?'));
+        }
+        break;
       case 'tahap':
         kartuTahap(ev, st); setAlur(ev.tahap, ev.putaran);
         st.tahap = ev; st.menulis = false; keluaran = ''; keluaranJudul = 'Keluaran ' + ev.peran + ' · ' + ev.model;
@@ -933,6 +971,7 @@
 
   /* ---------- mulai ---------- */
   muatCfg();
+  pasangPanelPrompt();          // sesudah muatCfg: pilihan prompt tersimpan ikut terbaca
   const qs = new URLSearchParams(location.search);
   if (qs.get('token')) {
     TOKEN = qs.get('token'); localStorage.setItem('aa_token', TOKEN);

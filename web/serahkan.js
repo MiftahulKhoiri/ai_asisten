@@ -30,8 +30,13 @@
     try { c = JSON.parse((lemari || window.localStorage).getItem(KUNCI_CFG) || '{}'); } catch (e) { return null; }
     const mode = c.mode === 3 ? 3 : 2;
     if (!c.p || !c.e || (mode === 3 && !c.c)) return null;
+    const pp = {};           // prompt pilihan per peran (isinya disimpan di server; di sini hanya id dan cara pakai)
+    for (const p of ['perencana', 'pelaksana', 'pemeriksa', 'penjelas']) {
+      const x = c.prompt && c.prompt[p];
+      if (x && Array.isArray(x.ids) && x.ids.length) pp[p] = {ids: x.ids.filter(i => typeof i === 'string'), mode: x.mode === 'ganti' ? 'ganti' : 'tambah'};
+    }
     return {mode, model_p: c.p, model_e: c.e, model_c: mode === 3 ? c.c : c.p, maks: c.maks || 3,
-      bongkar: c.bongkar !== false, uji: c.izinUji === true};
+      bongkar: c.bongkar !== false, uji: c.izinUji === true, prompt_peran: pp};
   }
 
   function pasang(opt) {
@@ -110,7 +115,8 @@
       const cfg = bacaCfg();
       k.appendChild(el('div', 'redup kecil', cfg
         ? 'Model Agent: ' + cfg.model_p + ' / ' + cfg.model_e + (cfg.mode === 3 ? ' / ' + cfg.model_c : '') + ' · maks ' + cfg.maks
-          + ' putaran · uji jalan: ' + (cfg.uji ? 'diizinkan' : 'mati') + '. Ubah di halaman Agent.'
+          + ' putaran · uji jalan: ' + (cfg.uji ? 'diizinkan' : 'mati')
+          + (Object.keys(cfg.prompt_peran).length ? ' · prompt: ' + Object.keys(cfg.prompt_peran).join(', ') : '') + '. Ubah di halaman Agent.'
         : '⚠ Model Agent belum diatur. Buka halaman Agent, pilih model, lalu kembali ke sini.'));
       const lm = el('label', 'cek'); const cekMuat = el('input'); cekMuat.type = 'checkbox'; cekMuat.checked = true;
       lm.append(cekMuat, el('span', '', 'Muat ulang model chat setelah Agent selesai (agar diskusi bisa dilanjutkan)'));

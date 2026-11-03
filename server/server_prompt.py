@@ -83,17 +83,30 @@ def _nama_unik(nama, namas):
     return calon
 
 
+# ---------------------------------------------------------------- ruang
+class Ruang:
+    """Satu kumpulan prompt di satu folder: prompt chat (folder prompt/) atau prompt satu peran Agent
+    (prompt/agent/<peran>/, lihat server_peran). Aturan simpan, nama, impor, dan batasnya sama."""
+
+    def __init__(self, folder, nama_bawaan, migrasi=None):
+        self.folder, self.nama_bawaan, self.migrasi = folder, nama_bawaan, migrasi
+
+
+def ruang_chat():
+    return Ruang(conf.PROMPT_DIR, bawaan()["nama"], lambda: _migrasi())
+
+
 # ---------------------------------------------------------------- berkas
-def _path(pid):
-    return conf.PROMPT_DIR / (pid + ".json")
+def _path(pid, folder=None):
+    return (folder or conf.PROMPT_DIR) / (pid + ".json")
 
 
-def _tulis_item(item):
-    conf.PROMPT_DIR.mkdir(parents=True, exist_ok=True)
+def _tulis_item(item, folder=None):
+    (folder or conf.PROMPT_DIR).mkdir(parents=True, exist_ok=True)
     isi = {"format": FORMAT, "versi": 1, "nama": item["nama"], "isi": item["isi"]}
     if item.get("catatan"):
         isi["catatan"] = item["catatan"]
-    tujuan = _path(item["id"])
+    tujuan = _path(item["id"], folder)
     tmp = tujuan.with_name(tujuan.name + ".tmp")
     tmp.write_text(json.dumps(isi, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
     os.replace(str(tmp), str(tujuan))
@@ -124,12 +137,13 @@ def _item_dari_berkas(f):
     return {"id": f.stem, "nama": nama, "isi": isi, "catatan": catatan}, None
 
 
-def _baca_semua():
+def _baca_semua(folder=None):
     """(prompt valid urut nama, [{berkas, alasan}] yang dilewati)."""
     ada, abaikan = [], []
-    if not conf.PROMPT_DIR.is_dir():
+    folder = folder or conf.PROMPT_DIR
+    if not folder.is_dir():
         return ada, abaikan
-    for f in sorted(conf.PROMPT_DIR.glob("*.json")):
+    for f in sorted(folder.glob("*.json")):
         item, alasan = _item_dari_berkas(f)
         if item:
             ada.append(item)
@@ -171,66 +185,69 @@ def _migrasi():
             pass
 
 
-# ---------------------------------------------------------------- API
-def daftar_prompt():
-    """Semua prompt: bawaan lebih dulu, lalu berkas di folder prompt/ urut nama."""
-    _migrasi()
-    return [bawaan()] + [dict(p, bawaan=False) for p in _baca_semua()[0]]
+# ---------------------------------------------------------------- operasi umum (per ruang)
+def _siap(r):
+    if r.migrasi:
+        r.migrasi()
 
 
-def berkas_diabaikan():
-    """[{berkas, alasan}] berkas di folder prompt/ yang dilewati karena tidak valid."""
-    _migrasi()
-    return _baca_semua()[1]
+def ruang_daftar(r, bawaan_item):
+    """Semua prompt di ruang `r`: `bawaan_item` lebih dulu, lalu berkas di folder ruang urut nama."""
+    _siap(r)
+    return [bawaan_item] + [dict(p, bawaan=False) for p in _baca_semua(r.folder)[0]]
 
 
-def tambah_prompt(nama, isi, catatan=""):
+def ruang_abaikan(r):
+    _siap(r)
+    return _baca_semua(r.folder)[1]
+
+
+def ruang_tambah(r, nama, isi, catatan=""):
     """Simpan prompt baru sebagai berkas. ValueError bila tidak valid, nama kembar, atau daftar penuh."""
     nama, isi, catatan = _periksa(nama, isi, catatan)
-    _migrasi()
+    _siap(r)
     with _KUNCI:
-        ada, _ = _baca_semua()
+        ada, _ = _baca_semua(r.folder)
         if len(ada) >= conf.MAKS_PROMPT:
             raise ValueError("Daftar prompt penuh (maks %d). Hapus yang tidak dipakai." % conf.MAKS_PROMPT)
-        if any(p["nama"].lower() == nama.lower() for p in ada) or nama.lower() == bawaan()["nama"].lower():
+        if any(p["nama"].lower() == nama.lower() for p in ada) or nama.lower() == r.nama_bawaan.lower():
             raise ValueError("Sudah ada prompt dengan nama itu")
         item = {"id": _id_baru(nama, {p["id"] for p in ada}), "nama": nama, "isi": isi, "catatan": catatan}
-        _tulis_item(item)
+        _tulis_item(item, r.folder)
     return dict(item, bawaan=False)
 
 
-def ubah_prompt(pid, nama, isi, catatan=None):
+def ruang_ubah(r, pid, nama, isi, catatan=None):
     """Ubah nama, isi, dan catatan prompt buatan pengguna (id/nama berkas tetap, jadi centangnya tidak hilang).
 
     `catatan` None = tidak diubah. Kembalian: prompt yang sudah diubah, atau None bila id tidak ada.
-    ValueError untuk prompt bawaan, nama/isi tidak valid, atau nama yang sudah dipakai prompt lain.
-    Berlaku mulai pesan berikutnya, termasuk di sesi yang sedang berjalan."""
+    ValueError untuk prompt bawaan, nama/isi tidak valid, atau nama yang sudah dipakai prompt lain."""
     if pid == conf.PROMPT_BAWAAN:
         raise ValueError("Prompt bawaan tidak bisa diubah. Buat salinannya lewat tombol ubah, lalu simpan.")
-    _migrasi()
+    _siap(r)
     with _KUNCI:
-        ada, _ = _baca_semua()
+        ada, _ = _baca_semua(r.folder)
         target = next((p for p in ada if p["id"] == pid), None)
         if target is None:
             return None
         nama, isi, catatan = _periksa(nama, isi, target["catatan"] if catatan is None else catatan)
         if (any(p["id"] != pid and p["nama"].lower() == nama.lower() for p in ada)
-                or nama.lower() == bawaan()["nama"].lower()):
+                or nama.lower() == r.nama_bawaan.lower()):
             raise ValueError("Sudah ada prompt dengan nama itu")
         target.update(nama=nama, isi=isi, catatan=catatan)
-        _tulis_item(target)
+        _tulis_item(target, r.folder)
     return dict(target, bawaan=False)
 
 
-def hapus_prompt(pid):
+def ruang_hapus(r, pid):
     """Hapus berkas prompt. True bila ada yang terhapus. ValueError untuk bawaan."""
     if pid == conf.PROMPT_BAWAAN:
         raise ValueError("Prompt bawaan tidak bisa dihapus")
     if not _ID.match(str(pid or "")):
         return False
-    _migrasi()
+    _siap(r)
     with _KUNCI:
-        f = _path(pid)
+        f = _path(pid, r.folder)
         if f.is_symlink() or not f.is_file():
             return False
         try:
@@ -240,11 +257,10 @@ def hapus_prompt(pid):
     return True
 
 
-# ---------------------------------------------------------------- berbagi
-def ekspor(pid):
+def ruang_ekspor(r, pid):
     """Isi berkas untuk dibagikan: {format, versi, nama, isi, catatan}. None bila tidak ada."""
-    _migrasi()
-    p = next((x for x in _baca_semua()[0] if x["id"] == pid), None)
+    _siap(r)
+    p = next((x for x in _baca_semua(r.folder)[0] if x["id"] == pid), None)
     if p is None:
         return None
     d = {"format": FORMAT, "versi": 1, "nama": p["nama"], "isi": p["isi"]}
@@ -253,7 +269,7 @@ def ekspor(pid):
     return d
 
 
-def impor(teks):
+def ruang_impor(r, teks):
     """Impor prompt dari teks JSON: satu prompt ({nama, isi}), daftar, atau {"prompt": [...]}.
 
     Kembalian: {"baru": [prompt], "dilewati": [{"nama", "alasan"}]}. Isi yang sama persis dengan yang
@@ -274,15 +290,15 @@ def impor(teks):
         butir = d
     else:
         raise ValueError("Isi berkas bukan prompt (butuh nama dan isi)")
-    _migrasi()
+    _siap(r)
     baru, lewat = [], []
 
     def tampil(x):
         return str(x.get("nama") if isinstance(x, dict) else x)[:conf.MAKS_NAMA_PROMPT]
     with _KUNCI:
-        ada, _ = _baca_semua()
+        ada, _ = _baca_semua(r.folder)
         ids = {p["id"] for p in ada}
-        namas = {p["nama"].lower() for p in ada} | {bawaan()["nama"].lower()}
+        namas = {p["nama"].lower() for p in ada} | {r.nama_bawaan.lower()}
         for x in butir[:conf.MAKS_PROMPT]:
             try:
                 if not isinstance(x, dict):
@@ -299,7 +315,7 @@ def impor(teks):
                 lewat.append({"nama": nama, "alasan": "daftar prompt penuh"})
                 continue
             item = {"id": _id_baru(nama, ids), "nama": _nama_unik(nama, namas), "isi": isi, "catatan": catatan}
-            _tulis_item(item)
+            _tulis_item(item, r.folder)
             ada.append(item)
             ids.add(item["id"])
             namas.add(item["nama"].lower())
@@ -307,6 +323,41 @@ def impor(teks):
         for x in butir[conf.MAKS_PROMPT:]:
             lewat.append({"nama": tampil(x), "alasan": "melebihi batas"})
     return {"baru": baru, "dilewati": lewat}
+
+
+# ---------------------------------------------------------------- API prompt chat
+def daftar_prompt():
+    """Semua prompt: bawaan lebih dulu, lalu berkas di folder prompt/ urut nama."""
+    return ruang_daftar(ruang_chat(), bawaan())
+
+
+def berkas_diabaikan():
+    """[{berkas, alasan}] berkas di folder prompt/ yang dilewati karena tidak valid."""
+    return ruang_abaikan(ruang_chat())
+
+
+def tambah_prompt(nama, isi, catatan=""):
+    """Simpan prompt baru sebagai berkas. ValueError bila tidak valid, nama kembar, atau daftar penuh."""
+    return ruang_tambah(ruang_chat(), nama, isi, catatan)
+
+
+def ubah_prompt(pid, nama, isi, catatan=None):
+    """Ubah prompt buatan pengguna (lihat ruang_ubah). Berlaku mulai pesan berikutnya, termasuk di sesi
+    yang sedang berjalan."""
+    return ruang_ubah(ruang_chat(), pid, nama, isi, catatan)
+
+
+def hapus_prompt(pid):
+    """Hapus berkas prompt. True bila ada yang terhapus. ValueError untuk bawaan."""
+    return ruang_hapus(ruang_chat(), pid)
+
+
+def ekspor(pid):
+    return ruang_ekspor(ruang_chat(), pid)
+
+
+def impor(teks):
+    return ruang_impor(ruang_chat(), teks)
 
 
 # ---------------------------------------------------------------- pemakaian di sesi
@@ -359,5 +410,7 @@ def rakit(ids):
     return "\n\n".join(p["isi"] for p in urut), nama
 
 
-__all__ = ["FORMAT", "bawaan", "daftar_prompt", "berkas_diabaikan", "tambah_prompt", "ubah_prompt",
-           "hapus_prompt", "ekspor", "impor", "mode", "rakit_tambahan", "rapikan_pilihan", "rakit"]
+__all__ = ["FORMAT", "Ruang", "bawaan", "daftar_prompt", "berkas_diabaikan", "tambah_prompt", "ubah_prompt",
+           "hapus_prompt", "ekspor", "impor", "mode", "rakit_tambahan", "rapikan_pilihan", "rakit",
+           "ruang_chat", "ruang_daftar", "ruang_abaikan", "ruang_tambah", "ruang_ubah", "ruang_hapus",
+           "ruang_ekspor", "ruang_impor"]

@@ -62,8 +62,12 @@ function baru() {
 
 (async () => {
   // --- konfigurasi Agent dibaca dari penyimpanan yang sama dengan halaman Agent
-  assert.same(S.bacaCfg(konteks.window.localStorage), {mode: 2, model_p: 'A', model_e: 'B', model_c: 'A', maks: 3, bongkar: true, uji: false});
+  assert.same(S.bacaCfg(konteks.window.localStorage), {mode: 2, model_p: 'A', model_e: 'B', model_c: 'A', maks: 3, bongkar: true, uji: false, prompt_peran: {}});
   assert.strictEqual(S.bacaCfg({getItem: () => null}), null, 'tanpa pengaturan: null');
+  // prompt pilihan per peran dibawa sebagai id + cara pakai; peran kosong/rusak/tak dikenal dibuang
+  assert.same(S.bacaCfg({getItem: () => JSON.stringify({mode: 2, p: 'A', e: 'B', prompt: {perencana: {ids: ['a', 5], mode: 'ganti'}, pelaksana: {ids: [], mode: 'ganti'},
+    pemeriksa: {ids: ['x'], mode: 'aneh'}, penjelas: 'rusak', hacker: {ids: ['z'], mode: 'ganti'}}})}).prompt_peran,
+    {perencana: {ids: ['a'], mode: 'ganti'}, pemeriksa: {ids: ['x'], mode: 'tambah'}});
   assert.strictEqual(S.bacaCfg({getItem: () => JSON.stringify({mode: 3, p: 'A', e: 'B'})}), null, 'mode 3 butuh model ketiga');
   assert.strictEqual(S.bacaCfg({getItem: () => '{rusak'}), null);
 
@@ -92,6 +96,7 @@ function baru() {
   assert.strictEqual(b.id, chatId); assert.strictEqual(b.tugas, 'Tujuan: kalkulator.\nYang diminta: tambah dan kurang.');
   assert.strictEqual(b.jalur, 'perbaiki'); assert.strictEqual(b.model_p, 'A'); assert.strictEqual(b.model_e, 'B'); assert.strictEqual(b.maks, 3);
   assert.strictEqual(b.uji, false); assert.strictEqual(b.muat_ulang, true); assert.strictEqual(b.lanjut, '20261001-000000-aaaa');
+  assert.same(b.prompt_peran, {}, 'tanpa pilihan prompt: dikirim kosong');
   const polls = panggilan.filter(p => p.url.startsWith('/api/agent/event?'));
   assert.ok(polls.length >= 3, 'dipantau lewat beberapa long-poll'); assert.ok(polls[0].url.includes('sesi=s1&dari=0'));
   assert.ok(muatUlang >= 2, 'obrolan dimuat ulang: setelah diserahkan dan setelah selesai'); assert.strictEqual(selesai, 1);

@@ -77,8 +77,32 @@ STATUS_TEKS = {"berjalan": "sedang berjalan",
 JALUR_PILIHAN = ("otomatis", "buat", "perbaiki", "cari_bug")
 
 
+# Prompt pilihan pengguna per peran (lihat tim_prompt.sistem_peran)
+PERAN_PROMPT = ("perencana", "pelaksana", "pemeriksa", "penjelas")
+MAKS_TEKS_PERAN = 6000       # karakter gabungan prompt pengguna untuk satu peran
+
+
 class Batal(Exception):
     """Pengguna menekan Stop."""
+
+
+def rapikan_prompt_peran(d):
+    """Prompt pilihan per peran dari web: {peran: {"mode": "tambah"|"ganti", "teks": str, "nama": [str]}}.
+
+    Peran tak dikenal, teks kosong, atau bentuk yang salah dibuang (peran itu memakai prompt bawaan);
+    teks dipotong ke MAKS_TEKS_PERAN. Selalu mengembalikan dict (boleh kosong)."""
+    hasil = {}
+    if not isinstance(d, dict):
+        return hasil
+    for peran in PERAN_PROMPT:
+        x = d.get(peran)
+        if not isinstance(x, dict) or not isinstance(x.get("teks"), str) or not x["teks"].strip():
+            continue
+        nama = x.get("nama") if isinstance(x.get("nama"), list) else []
+        hasil[peran] = {"mode": "ganti" if x.get("mode") == "ganti" else "tambah",
+                        "teks": x["teks"].strip()[:MAKS_TEKS_PERAN],
+                        "nama": [str(n)[:40] for n in nama[:10] if isinstance(n, str)]}
+    return hasil
 
 
 def siapkan_cfg(b, tersedia):
@@ -102,7 +126,7 @@ def siapkan_cfg(b, tersedia):
     jalur = b.get("jalur") if b.get("jalur") in JALUR_PILIHAN else "otomatis"
     return {"mode": mode, "model_p": mp, "model_e": me, "model_c": mc, "maks": maks,
             "bongkar": bool(b.get("bongkar", True)), "uji": b.get("uji") is True,
-            "jalur": jalur}, ""
+            "jalur": jalur, "prompt_peran": rapikan_prompt_peran(b.get("prompt_peran"))}, ""
 
 
 def id_valid(run_id):

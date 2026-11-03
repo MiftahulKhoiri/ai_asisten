@@ -51,14 +51,21 @@
         <div class="peran r-rencana">
           <label for="selP"><span class="rk" aria-hidden="true">&#129517;</span><span class="rt"><b id="namaP">Model 1 · Perencana</b><small id="ketP"></small></span></label>
           <select id="selP"></select>
+          <div class="pp" id="pp_perencana"></div>
         </div>
         <div class="peran r-tulis">
           <label for="selE"><span class="rk" aria-hidden="true">&#9999;&#65039;</span><span class="rt"><b>Model 2 · Pelaksana</b><small>Menulis program dari lembar tugas.</small></span></label>
           <select id="selE"></select>
+          <div class="pp" id="pp_pelaksana"></div>
         </div>
-        <div class="peran r-periksa" id="fieldC" hidden>
-          <label for="selC"><span class="rk" aria-hidden="true">&#128270;</span><span class="rt"><b>Model 3 · Pemeriksa</b><small>Menjalankan program, menentukan benar/salah, memberi koreksi.</small></span></label>
+        <div class="peran r-periksa" id="fieldC">
+          <label for="selC"><span class="rk" aria-hidden="true">&#128270;</span><span class="rt"><b id="namaC">Model 3 · Pemeriksa</b><small id="ketC">Menjalankan program, menentukan benar/salah, memberi koreksi.</small></span></label>
           <select id="selC"></select>
+          <div class="pp" id="pp_pemeriksa"></div>
+        </div>
+        <div class="peran r-jelaskan" id="fieldJ">
+          <label><span class="rk" aria-hidden="true">&#128172;</span><span class="rt"><b id="namaJ">Penjelas · memakai Model 1</b><small>Menjelaskan hasil akhir kepada pengguna dengan bahasa sederhana.</small></span></label>
+          <div class="pp" id="pp_penjelas"></div>
         </div>
       </div>
 
@@ -157,6 +164,7 @@
 <div id="toast" hidden></div>
 
 <script src="unggah.js"></script>
+<script src="prompt_peran.js"></script>
 <script src="agent.js"></script>
 </body>
 </html>

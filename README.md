@@ -493,6 +493,52 @@ dibongkar saat selesai (bila "Bongkar model tiap tahap" aktif).
 | **Pelaksana** (Model 2) | membaca lembar tugas dan **hanya menulis** program ke folder `hasil/` (tidak menjalankan apa pun) |
 | **Pemeriksa** | menerima hasil Pelaksana langsung, **menjalankan** programnya, lalu **menentukan benar/salah**: dinyatakan jadi (selesai) atau memberi koreksi yang dikirim ke Pelaksana |
 
+### Prompt tiap peran (tombol "+ prompt")
+
+Di layar pengaturan Agent, tiap peran (**Perencana, Pelaksana, Pemeriksa, Penjelas**) punya baris
+`Prompt: bawaan` dengan tombol **+ prompt**. Panelnya sama seperti [prompt di chat](#prompt-pilihan-untuk-semua-skill):
+daftar dengan kotak centang, **+ prompt** (nama, isi, catatan), **(✎)** ubah, **(⬇)** unduh `.json` untuk
+dibagikan, **⬆ Impor**, **(−)** hapus, dan **Selesai**. Penjelas memakai model Perencana, dan di mode 2 model
+Pemeriksa = Perencana, jadi keduanya tetap punya panel sendiri walau tidak punya pilihan model sendiri.
+
+Dua cara pakai, dipilih **per peran**:
+
+| Cara | Akibatnya |
+|---|---|
+| **Tambah ke bawaan** (awal) | prompt bawaan peran tetap dipakai utuh; prompt yang dicentang ditambahkan di bawahnya |
+| **Ganti bawaan** | prompt yang dicentang menggantikan *perilaku* bawaan peran (siapa dia dan cara kerjanya) |
+
+**Format keluaran selalu ikut.** Program membaca keluaran model dengan format tetap (JSON Perencana,
+Pemeriksa, dan Diagnosa; blok `=== FILE: nama ===` Pelaksana), jadi pada cara *Ganti* bagian format itu tetap
+ditambahkan otomatis di bawah prompt kamu. Tanpa itu, satu prompt yang terlalu bebas bisa membuat seluruh
+proses gagal karena keluarannya tidak terbaca. Tombol **(✎)** pada baris Bawaan membuat salinan yang berisi
+perilaku bawaan peran itu (tanpa bagian format), sehingga bisa diubah sebagai titik awal prompt *Ganti*.
+Tidak ada yang dicentang = perilaku Agent persis seperti sebelum fitur ini ada.
+
+Penyimpanan: satu prompt satu berkas (format `ai-asisten-prompt`, sama dengan prompt chat), tetapi dipisah per
+peran supaya daftar tiap peran hanya berisi prompt yang memang untuknya:
+
+```
+prompt/agent/perencana/*.json     prompt/agent/pelaksana/*.json
+prompt/agent/pemeriksa/*.json     prompt/agent/penjelas/*.json
+```
+
+(folder induknya mengikuti `ASISTEN_PROMPT_DIR`; folder `prompt/` untuk chat tidak terpengaruh). Berkas dari
+teman cukup disalin ke folder peran yang cocok, atau diimpor lewat tombol **⬆ Impor** di panel peran itu. Berkas
+yang sudah ada di folder chat (mis. `prompt/system-pemeriksa.json`) bisa diimpor ke peran mana pun. Perhatikan
+bahwa prompt yang sudah memuat teks format keluaran sebaiknya dipakai dengan cara *Tambah*.
+
+Aturan lain:
+- Gabungan isi prompt yang dicentang untuk satu peran maksimal **6000 karakter** (di atas 3000 sudah
+  memakan konteks model kecil); lebih dari itu ditolak dengan pesan yang jelas sebelum proses dimulai.
+- `{waktu}` di isi prompt diganti tanggal dan jam saat dipakai.
+- Pilihan (id prompt + cara pakai) tersimpan di peramban bersama pengaturan model, dan dipakai juga oleh
+  **serah terima dari chat**. Yang dikirim ke server hanya id: isi prompt selalu dibaca server dari berkasnya.
+- Prompt yang dipakai dicatat di log proses, di kartu "Tim siap", dan di `run.json` (`prompt`: peran, cara, nama;
+  isinya tidak ikut dicatat).
+- Rute: `GET /api/agent/prompt?peran=...`, `GET /api/agent/prompt/ekspor?peran=...&id=...`,
+  `POST /api/agent/prompt` (tambah), `/ubah`, `/impor`, `/hapus` (semuanya dengan `peran` di badan permintaan).
+
 ### Alur menyesuaikan jenis tugas
 
 Urutan tahap tidak selalu sama. Ada tiga **jalur**; pilih di bar **Otomatis / Buat / Perbaiki / Cari bug**
@@ -619,7 +665,7 @@ berkas yang relevan:
 
 | Ingin mengubah | Berkas |
 |---|---|
-| teks prompt Perencana/Pelaksana/Pemeriksa/Penjelas, susunan isi prompt | `tim/tim_prompt.py` |
+| teks prompt Perencana/Pelaksana/Pemeriksa/Penjelas, susunan isi prompt, pembagian perilaku/format keluaran, perakitan prompt pilihan pengguna (`rakit_sistem`, `sistem_peran`) | `tim/tim_prompt.py` |
 | batas token, batas waktu uji, folder kerja, batas berkas, validasi pengaturan dari web | `tim/tim_config.py` |
 | alur putaran (Pelaksana menulis -> Pemeriksa menjalankan + menentukan), pemulihan hasil terbaik, pemakaian ulang diagnosa | `tim/tim_alur.py` |
 | pilihan jalur (buat / perbaiki / cari bug) dan aturan kata kuncinya | `tim/tim_jalur.py` |
@@ -784,8 +830,10 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `server/server_ctx.py` | konteks satu proses generasi: mode AUTO, batal, izin lewat web |
 | `server/server_agent.py`, `server_status.py` | buffer event Agent di latar belakang; isi `/api/status` |
 | `server/server_unggah.py` | unggahan berkas: penampung paket, ekstrak zip aman, lampiran chat |
-| `server/server_prompt.py` | prompt pilihan untuk skill Tanpa: satu prompt satu berkas di `prompt/`, tambah/ubah/hapus, ekspor/impor, migrasi, rakit |
+| `server/server_prompt.py` | prompt pilihan untuk skill Tanpa: satu prompt satu berkas di `prompt/`, tambah/ubah/hapus, ekspor/impor, migrasi, rakit (operasinya umum per `Ruang`, dipakai juga oleh `server_peran`) |
+| `server/server_peran.py` | prompt pilihan per peran Agent: berkas di `prompt/agent/<peran>/`, ubah pilihan dari web (id) menjadi isi prompt untuk `cfg` |
 | `web/prompt.js` | panel List prompt di layar Mulai sesi (centang, + prompt, hapus, Selesai) |
+| `web/prompt_peran.js` | tombol "+ prompt" di tiap peran halaman Agent (daftar centang, tambah/ubah/hapus, impor/ekspor, tambah/ganti bawaan) |
 | `server/server_handoff.py` | serah terima chat -> Agent -> chat: brief dari diskusi, lampiran obrolan, hasil kembali ke obrolan |
 | `web/serahkan.js`, `web/serahkan.css` | tombol 🏭, kartu brief, progres Agent, dan kartu hasil + unduhan di halaman chat |
 | `web/unggah.js`, `web/unggah.css` | tombol 📎 dan daftar lampiran (dipakai halaman Chat dan Agent) |
@@ -827,7 +875,7 @@ python3 -m unittest discover -s tests -v
 
 Mencakup tool, pengaman shell, dan susunan modul `src/` (`tests/test_tolls.py`), server web dan riwayat
 (`tests/test_asisten.py`, memakai folder sementara, tidak menyentuh `riwayat/` asli),
-agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`), layar Mulai sesi (`tests/test_web.py`, `tests/index_smoke.js`), prompt untuk skill Tanpa (`tests/test_prompt.py`, `tests/prompt_smoke.js`), alur adaptif Agent (`tests/test_jalur.py`), serah terima chat-Agent (`tests/test_serahterima.py`, `tests/serahkan_smoke.js`),
+agen dan skill (`tests/test_agen.py`, memakai model palsu), susunan paket `agen/` (`tests/test_agen_paket.py`) dan `server/` (`tests/test_server_paket.py`), unggah berkas (`tests/test_unggah.py`, `tests/unggah_smoke.js`), layar Mulai sesi (`tests/test_web.py`, `tests/index_smoke.js`), prompt untuk skill Tanpa (`tests/test_prompt.py`, `tests/prompt_smoke.js`), alur adaptif Agent (`tests/test_jalur.py`), prompt tiap peran Agent (`tests/test_peran.py`, `tests/prompt_peran_smoke.js`), serah terima chat-Agent (`tests/test_serahterima.py`, `tests/serahkan_smoke.js`),
 keamanan jalur, rahasia, dan pengaman shell (`tests/test_keamanan.py`),
 kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_batas_dan_taint.py`),
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
