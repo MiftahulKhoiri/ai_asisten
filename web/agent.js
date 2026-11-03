@@ -47,6 +47,8 @@
     const t = $('toast'); t.textContent = m; t.hidden = false;
     clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 3500);
   }
+  const kon = window.Koneksi ? window.Koneksi.pasang({token: () => TOKEN, wadah: $('koneksiBaris'), toast,
+    setelahUbah: () => { muatStatus(true); }}) : null;
   function gulir(paksa) {
     const b = $('pesan');
     if (paksa || b.scrollHeight - b.scrollTop - b.clientHeight < 140) b.scrollTop = b.scrollHeight;
@@ -272,7 +274,7 @@
     sel.innerHTML = '';
     for (const m of models) {
       const o = document.createElement('option'); o.value = m.id;
-      o.textContent = m.id + ' · ' + gb(m.mb);
+      o.textContent = m.id + (m.mb ? ' · ' + gb(m.mb) : '');
       sel.appendChild(o);
     }
     if (models.some(m => m.id === nilai)) sel.value = nilai;
@@ -305,7 +307,7 @@
     const pilih = cfg.mode === 3 ? [cfg.p, cfg.e, cfg.c] : [cfg.p, cfg.e];
     const unik = Array.from(new Set(pilih));
     let pesan = '', ok = true;
-    if (models.length < 2) { pesan = 'Butuh minimal 2 model di llama-server.'; ok = false; }
+    if (models.length < 2) { pesan = 'Butuh minimal 2 model di server' + (statusSrv && statusSrv.pesan ? ' (' + statusSrv.pesan + '; nyalakan ./llama_server.sh atau periksa "Atur koneksi")' : '') + '.'; ok = false; }
     else if (unik.length < 2) { pesan = 'Pilih minimal 2 model yang berbeda.'; ok = false; }
     if (statusSrv && statusSrv.chat_aktif) {
       pesan = 'Sesi chat masih memegang model' + (statusSrv.model_chat ? ' (' + statusSrv.model_chat + ')' : '') +
@@ -325,6 +327,7 @@
     try {
       statusSrv = await apij('/api/agent/status');
       models = statusSrv.models || [];
+      if (kon) kon.perbarui(statusSrv.koneksi);
       bawaanModel();
       renderSetup(!!paksa);
       muatPanelPrompt();

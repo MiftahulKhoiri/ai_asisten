@@ -6,6 +6,7 @@ Pembagian modul (urutan impor = urutan ketergantungan):
   server_log      log berwarna di terminal, ringkasan event
   server_akses    token akses dan alamat IP lokal
   server_model    daftar model, muat/bongkar di llama-server, idle, sesi
+  server_koneksi  alamat llama-server/penyedia online + API key (pengaturan.json), uji koneksi
   server_chat     penyimpanan riwayat obrolan
   server_prompt   prompt pilihan untuk skill Tanpa (daftar, simpan, hapus, rakit)
   server_peran    prompt pilihan untuk tiap peran Agent (folder prompt/agent/<peran>/)
@@ -22,11 +23,11 @@ Pintu masuk tetap `python3 asisten.py`. Semua nama lama tersedia lewat `import a
 paket ini diteruskan ke modul pemiliknya (lihat server_shim.py). Kode baru sebaiknya memakai
 modul pemilik langsung.
 """
-from . import (server_config, server_state, server_log, server_akses, server_model, server_chat,
+from . import (server_config, server_state, server_log, server_akses, server_model, server_koneksi, server_chat,
                server_prompt, server_peran, server_unggah, server_ctx, server_agent, server_handoff, server_status,
                server_http, server_main, server_shim)
 
-_MODUL = (server_config, server_state, server_log, server_akses, server_model, server_chat,
+_MODUL = (server_config, server_state, server_log, server_akses, server_model, server_koneksi, server_chat,
           server_prompt, server_peran, server_unggah, server_ctx, server_agent, server_handoff, server_status,
           server_http, server_main)
 _PEMILIK = {}

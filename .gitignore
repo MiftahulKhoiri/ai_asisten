@@ -7,3 +7,5 @@ __pycache__/
 aksi.log.*
 llama-server.log
 *.zip
+pengaturan.json
+pengaturan.json.tmp

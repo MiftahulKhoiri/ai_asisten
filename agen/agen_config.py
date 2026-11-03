@@ -4,6 +4,7 @@ Modul lain MEMBACA nilai di sini lewat `cfg.NAMA` saat dipakai (bukan menyalin s
 sehingga mengubah `agen.GERBANG = ...` atau `agen.CTX_MAKS = ...` langsung berlaku.
 """
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -12,9 +13,30 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from src import tolls  # noqa: E402 - kumpulan tool (src/tolls.py memuat semua tool_*.py)
 
-LLAMA_URL = os.environ.get("LLAMA_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
-if LLAMA_URL.endswith("/v1"):
-    LLAMA_URL = LLAMA_URL[:-3]
+_AKHIRAN_API = re.compile(r"/(v\d+[a-z0-9]*(?:/openai)?)$")
+
+
+def pecah_alamat(alamat):
+    """Pisahkan alamat yang diketik pengguna menjadi (alamat dasar, awalan API).
+
+    http://127.0.0.1:8080/v1              -> ("http://127.0.0.1:8080", "/v1")
+    https://api.groq.com/openai/v1        -> ("https://api.groq.com/openai", "/v1")
+    https://host/v1beta/openai            -> ("https://host", "/v1beta/openai")
+    http://192.168.1.5:8080 (tanpa akhiran) -> ("http://192.168.1.5:8080", "/v1")
+    """
+    a = (alamat or "").strip().rstrip("/")
+    m = _AKHIRAN_API.search(a)
+    if m:
+        return a[:m.start()], "/" + m.group(1)
+    return a, "/v1"
+
+
+LLAMA_URL, LLAMA_V1 = pecah_alamat(os.environ.get("LLAMA_BASE_URL", "http://127.0.0.1:8080"))
+# Kunci API (penyedia online, atau llama-server yang dinyalakan dengan --api-key). Dikirim hanya
+# sebagai header Authorization; tidak pernah dicatat di log atau dikirim ke browser.
+LLAMA_KEY = os.environ.get("LLAMA_API_KEY", "").strip()
+# "llama" = llama-server (lokal/LAN, mengerti chat_template_kwargs), "online" = penyedia OpenAI-compatible.
+LLAMA_JENIS = "llama"
 LOG_AKSI = ROOT / "aksi.log"
 
 
@@ -61,4 +83,4 @@ PESAN_TOOL_TERPOTONG = ("ERROR: panggilan tool terpotong karena batas token jawa
 KRITIK_MIN = 80   # draf lebih pendek dari ini (sapaan, jawaban singkat) tidak diperiksa ulang
 
 
-__all__ = ['ROOT', 'LLAMA_URL', 'LOG_AKSI', 'MAX_OUTPUT', 'MAX_STEPS', 'RINGKAS_AMBANG', 'RINGKAS_SISA_GILIRAN', 'RINGKAS_MAKS_KARAKTER', 'GERBANG', '_env_int', 'CTX_MAKS', 'MAX_TOKENS', 'CATATAN_TERPOTONG', 'PESAN_TOOL_TERPOTONG', 'KRITIK_MIN']
+__all__ = ['ROOT', 'LLAMA_URL', 'LLAMA_V1', 'pecah_alamat', 'LLAMA_KEY', 'LLAMA_JENIS', 'LOG_AKSI', 'MAX_OUTPUT', 'MAX_STEPS', 'RINGKAS_AMBANG', 'RINGKAS_SISA_GILIRAN', 'RINGKAS_MAKS_KARAKTER', 'GERBANG', '_env_int', 'CTX_MAKS', 'MAX_TOKENS', 'CATATAN_TERPOTONG', 'PESAN_TOOL_TERPOTONG', 'KRITIK_MIN']

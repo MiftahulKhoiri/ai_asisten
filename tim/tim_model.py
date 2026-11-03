@@ -16,9 +16,16 @@ DIMUAT = set()               # model yang dimuat oleh Agent (dibongkar saat apli
 
 
 def status_model(nama):
-    """'loaded' / 'loading' / 'unloaded' / 'failed', atau None bila model tidak ada."""
-    for m in agen.llama("/v1/models", timeout=10)["data"]:
-        if m["id"] == nama:
+    """'loaded' / 'loading' / 'unloaded' / 'failed', atau None bila model tidak ada.
+
+    Server tanpa mode router (satu model, atau penyedia online) tidak melaporkan status dan tidak
+    bisa memuat/membongkar: modelnya selalu dianggap siap ('loaded'), dan bukan milik kita."""
+    data = agen.llama("/v1/models", timeout=10)["data"]
+    router = any(isinstance(m, dict) and (m.get("status") or {}).get("value") for m in data)
+    for m in data:
+        if isinstance(m, dict) and m.get("id") == nama:
+            if not router:
+                return "loaded"
             return (m.get("status") or {}).get("value") or "unloaded"
     return None
 

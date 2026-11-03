@@ -13,13 +13,15 @@ from .tim_config import Batal
 def _stream(model, pesan, batal, token, suhu=0.2, json_mode=False):
     """Generator potongan JSON dari llama-server (SSE). Diganti pada pengujian."""
     body = {"model": model, "messages": pesan, "temperature": suhu, "max_tokens": token,
-            "stream": True, "chat_template_kwargs": {"enable_thinking": False}}
+            "stream": True}
+    if agen.LLAMA_JENIS != "online":   # parameter khusus llama-server; penyedia ketat menolaknya
+        body["chat_template_kwargs"] = {"enable_thinking": False}
     if json_mode:
         body["response_format"] = {"type": "json_object"}
     req = urllib.request.Request(
-        agen.LLAMA_URL + "/v1/chat/completions", data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=900) as r:
+        agen.llama_url("/v1/chat/completions"), data=json.dumps(body).encode(),
+        headers=agen.llama_kepala())
+    with agen.llama_buka(req, 900) as r:
         for mentah in r:
             if batal.is_set():
                 break

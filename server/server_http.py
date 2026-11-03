@@ -21,6 +21,7 @@ from . import server_ctx as kts
 from . import server_log as lg
 from . import server_model as mdl
 from . import server_peran as per
+from . import server_koneksi as kon
 from . import server_prompt as prm
 from . import server_chat as rwy
 from . import server_handoff as ho
@@ -41,6 +42,8 @@ STATIS = {
     "/agent.js": ("agent.js", "application/javascript; charset=utf-8"),
     "/prompt.js": ("prompt.js", "application/javascript; charset=utf-8"),
     "/prompt_peran.js": ("prompt_peran.js", "application/javascript; charset=utf-8"),
+    "/koneksi.css": ("koneksi.css", "text/css; charset=utf-8"),
+    "/koneksi.js": ("koneksi.js", "application/javascript; charset=utf-8"),
     "/serahkan.css": ("serahkan.css", "text/css; charset=utf-8"),
     "/serahkan.js": ("serahkan.js", "application/javascript; charset=utf-8"),
     "/unggah.css": ("unggah.css", "text/css; charset=utf-8"),
@@ -136,6 +139,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(409, {"error": str(e)})
             lg.log("INFO", f"Proses Agent dihapus: {m.group(1)}")
             return self._json(200, {"ok": True})
+        if path == "/api/koneksi" and metode == "GET":
+            return self._json(200, kon.koneksi_ringkas())
         if path == "/api/prompt" and metode == "GET":
             return self._json(200, {"prompt": prm.daftar_prompt(), "bawaan": conf.PROMPT_BAWAAN,
                                     "abaikan": prm.berkas_diabaikan()})
@@ -153,6 +158,12 @@ class H(BaseHTTPRequestHandler):
             return self.unggah_hapus()
         if metode == "POST":
             b = self._body()
+            if path == "/api/koneksi/uji":
+                return self._json(*kon.koneksi_uji(b))
+            if path == "/api/koneksi":
+                return self._json(*kon.koneksi_simpan(b))
+            if path == "/api/koneksi/reset":
+                return self._json(*kon.koneksi_reset())
             if path == "/api/prompt":
                 try:
                     return self._json(200, {"ok": True, "baru": prm.tambah_prompt(b.get("nama"), b.get("isi"), b.get("catatan")),

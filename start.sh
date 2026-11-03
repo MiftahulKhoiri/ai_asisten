@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# start.sh - menyalakan llama-server (bila belum hidup) lalu AI Asisten.
+# start.sh - jalan pintas: menyalakan llama-server (lewat llama_server.sh) lalu AI Asisten.
 # Ctrl+C menghentikan asisten, dan llama-server ikut dihentikan bila dinyalakan oleh skrip ini.
 #
-# Pemakaian:   ./start.sh [opsi asisten.py]      contoh: ./start.sh --port 8091 --idle 10
+# Untuk memakai TERMINAL TERPISAH (log llama-server tampil lengkap), jalankan sendiri-sendiri:
+#     terminal 1:  ./llama_server.sh [--port 8080 ...]
+#     terminal 2:  python3 asisten.py        (alamat llama-server diisi di web: Pengaturan koneksi)
 #
-# Pengaturan lewat variabel lingkungan (semuanya opsional):
-#   LLAMA_BIN           lokasi llama-server    (bawaan: ~/llama.cpp/build/bin/llama-server)
-#   ASISTEN_MODELS_DIR  folder file .gguf      (bawaan: ~/models)
-#   LLAMA_PORT          port llama-server      (bawaan: 8080)
-#   ASISTEN_CTX         ukuran konteks         (bawaan: 8192)
-#   LLAMA_ARGS          opsi tambahan llama-server, mis. "-t 4"
-#   LLAMA_TUNGGU        detik menunggu llama-server siap (bawaan: 120)
+# Pemakaian:   ./start.sh [--tanpa-llama] [opsi asisten.py]    contoh: ./start.sh --port 8091 --idle 10
+#   --tanpa-llama       hanya menyalakan asisten (llama-server sudah ada / dipakai dari perangkat lain / online)
+#
+# Pengaturan lewat variabel lingkungan (semuanya opsional; yang berkaitan dengan llama-server
+# dipakai oleh llama_server.sh, lihat ./llama_server.sh --help):
+#   LLAMA_BIN  ASISTEN_MODELS_DIR  LLAMA_PORT  ASISTEN_CTX  LLAMA_ARGS  LLAMA_TUNGGU  LLAMA_API_KEY
 #   LLAMA_LOG           berkas log llama-server (bawaan: llama-server.log di folder proyek)
 #   LLAMA_BASE_URL      bila diisi, memakai llama-server di alamat itu dan TIDAK
 #                       menyalakan yang lokal
@@ -18,27 +19,32 @@
 set -u
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LLAMA_BIN="${LLAMA_BIN:-$HOME/llama.cpp/build/bin/llama-server}"
-MODELS_DIR="${ASISTEN_MODELS_DIR:-$HOME/models}"
 LLAMA_PORT="${LLAMA_PORT:-8080}"
-CTX="${ASISTEN_CTX:-8192}"
 TUNGGU="${LLAMA_TUNGGU:-120}"
 LOG_LLAMA="${LLAMA_LOG:-$DIR/llama-server.log}"
 PID_LLAMA=""
+TANPA_LLAMA=0
 
 info() { printf 'INFO  %s\n' "$*"; }
-warn() { printf 'WARN  %s\n' "$*" >&2; }
 galat() { printf 'ERR   %s\n' "$*" >&2; }
 
-llama_hidup() {   # $1 = alamat dasar, mis. http://127.0.0.1:8080
+if [ "${1:-}" = "--tanpa-llama" ]; then
+    TANPA_LLAMA=1
+    shift
+fi
+
+llama_hidup() {   # $1 = alamat dasar, mis. http://127.0.0.1:8080 ; jawaban 401/403 juga berarti hidup
     python3 - "$1" <<'PY'
 import sys
+import urllib.error
 import urllib.request
 alamat = sys.argv[1].rstrip("/")
 if alamat.endswith("/v1"):
     alamat = alamat[:-3]
 try:
     urllib.request.urlopen(alamat + "/v1/models", timeout=2).read()
+except urllib.error.HTTPError as e:
+    sys.exit(0 if e.code < 500 else 1)
 except Exception:
     sys.exit(1)
 PY
@@ -48,7 +54,6 @@ bersih() {
     if [ -n "$PID_LLAMA" ] && kill -0 "$PID_LLAMA" 2>/dev/null; then
         kill "$PID_LLAMA" 2>/dev/null
         wait "$PID_LLAMA" 2>/dev/null
-        info "llama-server dihentikan"
     fi
 }
 trap bersih EXIT
@@ -58,50 +63,32 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
-if [ -n "${LLAMA_BASE_URL:-}" ]; then
+if [ "$TANPA_LLAMA" -eq 1 ]; then
+    info "tanpa llama-server (alamatnya diatur di web: Pengaturan koneksi)"
+elif [ -n "${LLAMA_BASE_URL:-}" ]; then
     info "memakai llama-server di $LLAMA_BASE_URL (tidak menyalakan yang lokal)"
 else
     export LLAMA_BASE_URL="http://127.0.0.1:$LLAMA_PORT"
     if llama_hidup "$LLAMA_BASE_URL"; then
         info "llama-server sudah hidup di $LLAMA_BASE_URL, dipakai apa adanya"
     else
-        if [ ! -x "$LLAMA_BIN" ]; then
-            if command -v llama-server >/dev/null 2>&1; then
-                LLAMA_BIN="$(command -v llama-server)"
-            else
-                galat "llama-server tidak ditemukan di $LLAMA_BIN"
-                galat "Bangun dulu (lihat README, langkah 2) atau isi LLAMA_BIN=/jalur/ke/llama-server"
-                exit 1
-            fi
-        fi
-        if ! compgen -G "$MODELS_DIR/*.gguf" >/dev/null; then
-            warn "tidak ada file .gguf di $MODELS_DIR (lihat README, langkah 3)"
-        fi
-        # shellcheck disable=SC2206
-        EXTRA=(${LLAMA_ARGS:-})
-        info "menyalakan llama-server di port $LLAMA_PORT (log: $LOG_LLAMA)"
-        "$LLAMA_BIN" --models-dir "$MODELS_DIR" --host 127.0.0.1 --port "$LLAMA_PORT" \
-            -c "$CTX" --jinja "${EXTRA[@]+"${EXTRA[@]}"}" >"$LOG_LLAMA" 2>&1 &
+        info "menyalakan llama-server lewat llama_server.sh (log: $LOG_LLAMA)"
+        # llama_server.sh sendiri menunggu sampai siap, lalu menahan proses ini sampai dihentikan.
+        bash "$DIR/llama_server.sh" --log "$LOG_LLAMA" --port "$LLAMA_PORT" &
         PID_LLAMA=$!
         siap=0
-        for _ in $(seq 1 "$TUNGGU"); do
+        while kill -0 "$PID_LLAMA" 2>/dev/null; do
             if llama_hidup "$LLAMA_BASE_URL"; then
                 siap=1
                 break
             fi
-            if ! kill -0 "$PID_LLAMA" 2>/dev/null; then
-                galat "llama-server berhenti saat dinyalakan. 20 baris terakhir log:"
-                tail -n 20 "$LOG_LLAMA" >&2
-                PID_LLAMA=""
-                exit 1
-            fi
             sleep 1
         done
         if [ "$siap" -ne 1 ]; then
-            galat "llama-server belum siap setelah $TUNGGU detik. Lihat $LOG_LLAMA"
+            wait "$PID_LLAMA" 2>/dev/null
+            PID_LLAMA=""
             exit 1
         fi
-        info "llama-server siap"
     fi
 fi
 

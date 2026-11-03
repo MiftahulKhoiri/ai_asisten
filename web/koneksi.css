@@ -1,0 +1,22 @@
+/* koneksi.css - baris ringkas dan dialog Pengaturan koneksi (alamat server + API key) */
+.kon-baris{margin:8px 0;font-size:13px;color:var(--redup);overflow-wrap:anywhere}
+.kon-baris .kon-atur{margin-left:4px}
+.kon-tirai{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.55);display:flex;align-items:flex-end;justify-content:center}
+.kon-tirai[hidden]{display:none}
+.kon-dlg{width:min(100%,520px);max-height:92vh;overflow-y:auto;background:var(--panel);color:var(--teks);border:1px solid var(--garis);border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+@media (min-width:600px){.kon-tirai{align-items:center}.kon-dlg{border-radius:16px}}
+.kon-dlg h3{margin:0 0 6px;font-size:17px}
+.kon-dlg .kecil{font-size:12px;margin:4px 0}
+.kon-dlg input[type=text],.kon-dlg input[type=password]{margin:4px 0 8px;background:var(--bg);color:var(--teks)}
+.kon-label{display:block;margin:10px 0 2px;font-size:13px;font-weight:600}
+.kon-seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 8px}
+.kon-seg button{background:var(--bg);color:var(--teks)}
+.kon-hasil{min-height:20px;margin:8px 0;font-size:14px;overflow-wrap:anywhere}
+.kon-hasil.ok{color:var(--ok)}
+.kon-hasil.gagal{color:var(--bahaya)}
+.kon-hasil .redup{color:var(--redup)}
+.kon-aksi{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.kon-aksi .btn{padding:8px 14px}
+.kon-aksi [hidden]{display:none}
+.kon-baris .tautan,.kon-dlg .tautan{background:none;border:0;padding:0;color:var(--aksen);font:inherit;text-decoration:underline;cursor:pointer}
+.kon-dlg .tautan[hidden]{display:none}

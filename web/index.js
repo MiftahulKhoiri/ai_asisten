@@ -120,6 +120,8 @@
   try { modelPilih = localStorage.getItem('aa_model_pilih') || null; } catch (e) { modelPilih = null; }
   /* prompt pilihan: 'ganti' prompt bawaan (skill tanpa akses sistem) atau 'tambah' di bawah prompt sistem (Dasar/Kompleks) */
   const promptMode = () => (!!skill && (skill.includes('dasar') || skill.includes('kompleks'))) ? 'tambah' : 'ganti';
+  const kon = window.Koneksi ? window.Koneksi.pasang({token: () => TOKEN, wadah: $('koneksiBaris'), toast,
+    setelahUbah: () => { modelPilih = null; cekStatus(); }}) : null;
   const prm = window.PromptPilih ? window.PromptPilih.pasang({token: () => TOKEN, onUbah: () => gambarPilihan()}) : null;
   function rapikanSkill(v) {
     if (typeof v === 'string') v = v.split(/[+,\s]+/);
@@ -206,6 +208,9 @@
     pesan.className = s.status === 'error' ? 'err' : '';
     pesan.textContent = s.status === 'memuat' ? (s.pesan || 'Memuat model...') :
                         s.status === 'error' ? ('Gagal: ' + s.pesan) : (s.pesan || '');
+    if (kon) kon.perbarui(s.koneksi);
+    if (!(s.models || []).length && /llama-server/.test(s.pesan || '') && s.status !== 'memuat')
+      pesan.textContent += '. Nyalakan ./llama_server.sh di terminal lain, atau periksa alamat/API key lewat "Atur koneksi".';
     box.className = s.status === 'memuat' ? 'mati' : '';
     $('seg').className = s.status === 'memuat' ? 'seg mati' : 'seg';
     if (s.skills && s.skill_tools) {
@@ -218,7 +223,7 @@
     setSkill(skill, false);
     const bd = s.belum_dikenal || [];
     $('modelInfo').textContent = bd.length
-      ? 'Berkas baru belum dikenali llama-server: ' + bd.join(', ') + '. Jalankan ulang llama-server (mis. ./start.sh) agar muncul.'
+      ? 'Berkas baru belum dikenali llama-server: ' + bd.join(', ') + '. Jalankan ulang llama-server (./llama_server.sh) agar muncul.'
       : '';
     $('btnMuatUlang').disabled = s.status === 'memuat';
     box.innerHTML = '';
@@ -228,15 +233,25 @@
     for (const m of (s.models || [])) {
       const b = document.createElement('button'); b.className = 'model'; b.type = 'button'; b.dataset.model = m.id;
       b.setAttribute('role', 'radio');
-      const gb = m.mb ? (m.mb / 1024).toFixed(1) + ' GB' : '?';
+      const gb = m.mb ? (m.mb / 1024).toFixed(1) + ' GB' : '';
       const hint = !m.mb ? '' : m.mb <= 1500 ? 'ringan, cepat' : m.mb <= 3000 ? 'sedang' : 'berat, lebih lambat';
-      b.innerHTML = '<span class="nama">' + esc(m.id) + '</span><span class="meta">' + gb +
-        (hint ? ' · ' + hint : '') + (m.llama === 'loaded' ? ' · sudah termuat' : '') + '</span>';
+      const meta = [gb, hint, m.llama === 'loaded' ? 'sudah termuat' : '',
+        s.router === false && !m.mb ? 'tanpa muat/bongkar' : ''].filter(Boolean).join(' · ');
+      b.innerHTML = '<span class="nama">' + esc(m.id) + '</span>' + (meta ? '<span class="meta">' + esc(meta) + '</span>' : '');
       b.onclick = () => pilihTanpaMuat(m.id);       // hanya memilih; dimuat setelah tombol Mulai
       box.appendChild(b);
     }
+    const cari = $('cariModel');           // daftar panjang (penyedia online): kolom pencarian
+    cari.hidden = (s.models || []).length <= 8;
+    if (cari.hidden) cari.value = '';
+    saringModel();
     gambarPilihan();
   }
+  function saringModel() {
+    const q = $('cariModel').value.trim().toLowerCase();
+    for (const b of $('daftarModel').children) b.hidden = !!q && !(b.dataset.model || '').toLowerCase().includes(q);
+  }
+  $('cariModel').oninput = saringModel;
   /* model dipilih dulu (ditandai), baru dimuat saat tombol Mulai ditekan */
   function promptHeader(s) {             // ringkasan prompt di header sesi; prompt bawaan polos tidak ditulis
     if (!Array.isArray(s.prompt)) return '';

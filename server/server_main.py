@@ -11,6 +11,7 @@ import agen
 import tim
 from . import server_akses as akses
 from . import server_config as conf
+from . import server_koneksi as kon
 from . import server_log as lg
 from . import server_model as mdl
 from . import server_state as state
@@ -41,11 +42,16 @@ def main():
     os.chdir(Path.home())
     conf.TOKEN = akses.muat_token(a.token_baru)
 
+    peringatan = kon.koneksi_muat()
+    if peringatan:
+        lg.log("WARN", peringatan)
     try:
         models = mdl.daftar_model()
     except Exception as e:  # noqa: BLE001
-        lg.log("ERR", f"Tidak bisa terhubung ke llama-server di {agen.LLAMA_URL}: {e}")
-        sys.exit(1)
+        # Tidak lagi berhenti: llama-server dinyalakan terpisah (./llama_server.sh) dan alamatnya
+        # bisa diisi atau diperbaiki dari web (Pengaturan koneksi).
+        models = None
+        galat_llama = f"{type(e).__name__}: {e}"
     try:
         httpd = ThreadingHTTPServer((a.host, a.port), web.H)
     except OSError as e:
@@ -53,10 +59,16 @@ def main():
         sys.exit(1)
 
     ip = akses.ip_lan() if a.host == "0.0.0.0" else a.host
-    lg.log("INFO", f"llama-server berjalan di:\n {agen.LLAMA_URL} (jumlah model tersedia:{len(models)} )")
-    for m in models:
-        if m["llama"] == "loaded":
-            lg.log("WARN", f"{m['id']} sudah termuat (bukan oleh aplikasi ini), dibiarkan")
+    if models is None:
+        lg.log("WARN", f"Belum bisa menghubungi llama-server di {kon.koneksi_alamat()} ({galat_llama})")
+        lg.log("WARN", "Nyalakan dengan ./llama_server.sh (terminal lain), atau isi alamat/API key di web: "
+                       "tombol \"Atur koneksi\"")
+    else:
+        lg.log("INFO", f"Server model di:\n {kon.koneksi_alamat()} (jumlah model tersedia:{len(models)}"
+                       f"{', ada API key' if agen.LLAMA_KEY else ''})")
+        for m in models:
+            if m["llama"] == "loaded":
+                lg.log("WARN", f"{m['id']} sudah termuat (bukan oleh aplikasi ini), dibiarkan")
     lg.log("OK", f"Server jalan di:\n http://{ip}:{a.port}")
     lg.log("OK", f"Alamat browser dapat di akses di:\n http://{ip}:{a.port}/?token={conf.TOKEN}")
     lg.log("INFO", "Model belum dimuat. Pilih model dari tampilan web.")

@@ -23,7 +23,7 @@ simpan_chat baca_chat baru_chat cuplikan_chat hapus_semua_chat daftar_chat Ctx s
 agent_proses agent_tambah _gabung_potongan agent_baca STATIS H catat_event keluar main agen tim
 """.split()
 
-URUTAN = ["server_config", "server_state", "server_log", "server_akses", "server_model", "server_chat",
+URUTAN = ["server_config", "server_state", "server_log", "server_akses", "server_model", "server_koneksi", "server_chat",
           "server_prompt", "server_peran", "server_unggah", "server_ctx", "server_agent", "server_handoff", "server_status",
           "server_http", "server_main"]
 

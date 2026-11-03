@@ -6,28 +6,76 @@ import urllib.request
 from . import agen_config as cfg
 
 
+class _TanpaRedirect(urllib.request.HTTPRedirectHandler):
+    """Menolak pengalihan: urllib ikut mengirim header Authorization ke alamat tujuan pengalihan,
+    sehingga kunci API bisa bocor ke server lain."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER_AMAN = urllib.request.build_opener(_TanpaRedirect)
+
+
+def llama_kepala(tambahan=None):
+    """Header permintaan ke llama-server/penyedia, termasuk Authorization bila ada kunci API."""
+    h = {"Content-Type": "application/json"}
+    if cfg.LLAMA_KEY:
+        h["Authorization"] = "Bearer " + cfg.LLAMA_KEY
+    if tambahan:
+        h.update(tambahan)
+    return h
+
+
+def llama_buka(req, timeout):
+    """Buka permintaan. Bila memakai kunci API, pengalihan (redirect) ditolak supaya kunci tidak bocor."""
+    if cfg.LLAMA_KEY:
+        return _OPENER_AMAN.open(req, timeout=timeout)
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def llama_url(path, dasar=None, v1=None):
+    """Alamat lengkap untuk `path`. Jalur "/v1/..." memakai awalan API milik server
+    (mis. "/v1beta/openai" pada sebagian penyedia)."""
+    if path.startswith("/v1/"):
+        path = (cfg.LLAMA_V1 if v1 is None else v1) + path[3:]
+    return (cfg.LLAMA_URL if dasar is None else dasar) + path
+
+
 def llama(path, data=None, timeout=300):
     req = urllib.request.Request(
-        cfg.LLAMA_URL + path,
+        llama_url(path),
         data=json.dumps(data).encode() if data is not None else None,
-        headers={"Content-Type": "application/json"},
+        headers=llama_kepala(),
         method="POST" if data is not None else "GET")
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with llama_buka(req, timeout) as r:
         return json.loads(r.read().decode())
+
+
+def llama_uji(dasar, v1, kunci, timeout=10):
+    """Ambil daftar model dari alamat/kunci YANG BELUM DITERAPKAN (untuk tombol "Uji koneksi").
+    Selalu menolak pengalihan, dengan atau tanpa kunci. Mengembalikan JSON; error dilempar apa adanya."""
+    h = {"Content-Type": "application/json"}
+    if kunci:
+        h["Authorization"] = "Bearer " + kunci
+    req = urllib.request.Request(llama_url("/v1/models", dasar, v1), headers=h)
+    with _OPENER_AMAN.open(req, timeout=timeout) as r:
+        return json.loads(r.read(4_000_000).decode("utf-8", "replace"))
 
 
 def stream_chat(model, pesan, batal, tools=None):
     """Generator potongan JSON dari llama-server (stream SSE)."""
     body = {"model": model, "messages": pesan, "temperature": 0.3,
-            "max_tokens": cfg.MAX_TOKENS, "stream": True,
-            "chat_template_kwargs": {"enable_thinking": False}}
+            "max_tokens": cfg.MAX_TOKENS, "stream": True}
+    if cfg.LLAMA_JENIS != "online":   # parameter khusus llama-server; penyedia ketat menolaknya
+        body["chat_template_kwargs"] = {"enable_thinking": False}
     if tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"
     req = urllib.request.Request(
-        cfg.LLAMA_URL + "/v1/chat/completions", data=json.dumps(body).encode(),
-        headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=600) as r:
+        llama_url("/v1/chat/completions"), data=json.dumps(body).encode(),
+        headers=llama_kepala())
+    with llama_buka(req, 600) as r:
         for mentah in r:
             if batal.is_set():
                 break  # keluar dari 'with' menutup koneksi dan menghentikan generasi
@@ -102,4 +150,4 @@ def _event_info(timings):
             "tok": gen, "pakai": pakai, "maks": cfg.CTX_MAKS}
 
 
-__all__ = ['llama', 'stream_chat', '_gabung_tool_call', '_baca_stream', '_event_info']
+__all__ = ['llama', 'llama_url', 'llama_kepala', 'llama_buka', 'llama_uji', 'stream_chat', '_gabung_tool_call', '_baca_stream', '_event_info']

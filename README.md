@@ -37,16 +37,19 @@ Terminal hanya untuk menyalakan aplikasi dan menampilkan log.
  (tampilan chat)    server web + tool            mesin AI (llama.cpp)            file di ~/models
 ```
 
-Ada **dua program yang harus hidup bersamaan**:
+Ada **dua program terpisah**, masing-masing dijalankan sendiri (biasanya di dua terminal):
 
-| Program | Tugas | Port |
-|---|---|---|
-| `llama-server` | menjalankan model AI (otak) | 8080 |
-| `asisten.py` | tampilan web, tool, riwayat chat | 8090 |
+| Program | Dijalankan dengan | Tugas | Port |
+|---|---|---|---|
+| `llama-server` | `./llama_server.sh` | menjalankan model AI (otak); log lengkapnya tampil di terminalnya | 8080 |
+| `asisten.py` | `python3 asisten.py` | **hanya** server web: tampilan, tool, riwayat chat | 8090 |
 
-Penting: `asisten.py` **tidak membawa model sendiri**. Ia hanya meminta `llama-server`
-memuat dan membongkar model. Jadi sebelum `asisten.py` dijalankan, `llama-server` sudah
-harus menyala dan di folder model sudah ada minimal satu file `.gguf`.
+`asisten.py` **tidak membawa model sendiri dan tidak menyalakan llama-server**. Ia hanya terhubung ke
+sebuah alamat server model. Alamat itu (dan API key bila ada) diisi dari web lewat tombol
+**Atur koneksi**, jadi server model bisa berada di Pi yang sama, perangkat lain di jaringan, atau
+penyedia online yang kompatibel OpenAI. `asisten.py` tetap menyala walau server model belum hidup;
+isi alamatnya, atau nyalakan `./llama_server.sh`, lalu muat ulang daftar model.
+`./start.sh` adalah jalan pintas yang menjalankan keduanya sekaligus.
 
 ## Yang dibutuhkan
 
@@ -140,7 +143,35 @@ perangkat dan versi lain, jadi coba dulu model kecil.
 ### 4. Jalankan llama-server
 
 `ai_asisten` memakai llama-server dalam **mode router**: server membaca semua `.gguf` di sebuah
-folder, lalu model dimuat dan dibongkar sesuai permintaan aplikasi.
+folder, lalu model dimuat dan dibongkar sesuai permintaan aplikasi. Cara termudah adalah skrip
+`llama_server.sh`, dijalankan di **terminal tersendiri**:
+
+```bash
+cd ~/ai_asisten
+./llama_server.sh                      # port 8080, hanya dari Pi ini
+./llama_server.sh --port 8081 --host 0.0.0.0 --ctx 16384 --api-key RAHASIA   # contoh opsi
+```
+
+Terminal itu menampilkan ringkasan (program, folder model dan jumlah `.gguf`, konteks, host:port,
+apakah API key dipakai), lalu `OK  ISI ALAMAT INI di web (Pengaturan koneksi): http://IP:PORT`, dan
+sesudahnya **seluruh log llama-server** mengalir di sana. Ctrl+C menghentikannya.
+
+| Opsi | Arti |
+|---|---|
+| `--port N` | port yang didengarkan (bawaan 8080) |
+| `--host ALAMAT` | `127.0.0.1` (bawaan, hanya Pi ini) atau `0.0.0.0` (bisa diakses perangkat lain; disarankan bersama `--api-key`) |
+| `--models-dir DIR` | folder `.gguf` (bawaan `~/models`) |
+| `--ctx N` | ukuran konteks (bawaan 8192) |
+| `--api-key KUNCI` | llama-server hanya melayani permintaan yang membawa kunci ini. Kunci diteruskan lewat variabel `LLAMA_API_KEY`, bukan argumen, jadi tidak tampil di daftar proses |
+| `--log BERKAS` | tulis log llama-server ke berkas, bukan ke terminal |
+| `--bin JALUR`, `--tunggu DETIK` | lokasi llama-server; batas menunggu siap |
+| `-- opsi...` | semua sesudah `--` diteruskan ke llama-server, mis. `./llama_server.sh -- -t 4` |
+
+Opsi ini juga bisa lewat variabel lingkungan (`LLAMA_PORT`, `LLAMA_HOST`, `ASISTEN_MODELS_DIR`,
+`ASISTEN_CTX`, `LLAMA_API_KEY`, `LLAMA_BIN`, `LLAMA_ARGS`); opsi baris perintah menang. Skrip menolak
+berjalan bila port sudah dipakai, dan memberi tahu bila program llama-server tidak ditemukan.
+
+Bila ingin menjalankan llama-server tanpa skrip, perintah setaranya:
 
 ```bash
 ~/llama.cpp/build/bin/llama-server \
@@ -192,10 +223,15 @@ Folder hasilnya harus bernama `~/ai_asisten`.
 
 ### 6. Jalankan asisten
 
+Di terminal lain (llama-server tetap hidup di terminal pertamanya):
+
 ```bash
 cd ~/ai_asisten
 python3 asisten.py
 ```
+
+Alamat llama-server bawaannya `http://127.0.0.1:8080`. Bila servernya di port/perangkat lain,
+isi dari web ([Koneksi model](#koneksi-model-alamat-dan-api-key)); tidak perlu menjalankan ulang asisten.
 
 Terminal menampilkan alamat seperti ini:
 
@@ -219,15 +255,17 @@ Lupa IP Pi-nya? Jalankan `hostname -I` di Pi.
 
 Ada tiga cara menjalankannya. Pilih salah satu.
 
-### Cara 1: `start.sh` (paling mudah)
+### Cara 1: `start.sh` (jalan pintas, satu perintah)
 
 ```bash
 cd ~/ai_asisten
 ./start.sh
 ```
 
-Skrip ini menyalakan `llama-server` bila belum hidup, menunggu sampai siap, lalu menjalankan
-`asisten.py`. Tekan Ctrl+C untuk berhenti: asisten menutup diri dulu (model dibongkar), baru
+Skrip ini hanyalah jalan pintas: ia menjalankan `llama_server.sh` (log-nya ke `llama-server.log`,
+bukan ke terminal) bila llama-server belum hidup, menunggu sampai siap, lalu menjalankan
+`asisten.py`. Untuk hanya menyalakan asisten (server model sudah ada di tempat lain, atau memakai
+penyedia online), pakai `./start.sh --tanpa-llama`. Tekan Ctrl+C untuk berhenti: asisten menutup diri dulu (model dibongkar), baru
 llama-server ikut dihentikan, dan hanya bila skrip ini yang menyalakannya. Opsi `asisten.py`
 bisa ditambahkan di belakangnya, misalnya `./start.sh --port 8091 --idle 10`. Log llama-server
 ada di `llama-server.log`.
@@ -235,7 +273,7 @@ ada di `llama-server.log`.
 Pengaturan lewat variabel lingkungan, contoh:
 `LLAMA_BIN=/opt/llama/llama-server ASISTEN_MODELS_DIR=/mnt/models ./start.sh`
 (daftar lengkap di [Pengaturan](#pengaturan-variabel-lingkungan)).
-Kalau muncul `Permission denied`, jalankan `chmod +x start.sh` sekali, atau pakai `bash start.sh`.
+Kalau muncul `Permission denied`, jalankan `chmod +x start.sh llama_server.sh` sekali, atau pakai `bash start.sh`.
 
 ### Cara 2: otomatis saat Pi menyala (systemd)
 
@@ -264,15 +302,15 @@ Catatan: jalur proyek, llama-server, dan folder model tidak boleh mengandung spa
 bila jalurnya berubah. Jangan menjalankan `start.sh` bersamaan dengan layanan (port bentrok):
 hentikan layanan dulu.
 
-### Cara 3: manual (dua terminal)
+### Cara 3: dua terminal (disarankan bila ingin melihat log llama-server)
 
 Jalankan dua hal ini (di dua terminal, atau pakai `tmux`):
 
 ```bash
-# terminal 1
-~/llama.cpp/build/bin/llama-server --models-dir ~/models --host 127.0.0.1 --port 8080 -c 8192 --jinja
+# terminal 1: log lengkap llama-server tampil di sini
+cd ~/ai_asisten && ./llama_server.sh
 
-# terminal 2
+# terminal 2: server web
 cd ~/ai_asisten && python3 asisten.py
 ```
 
@@ -283,6 +321,35 @@ sudo apt install -y tmux
 tmux new -s ai        # lalu jalankan kedua perintah di jendela terpisah (Ctrl+b lalu %)
 # lepas dengan Ctrl+b lalu d, kembali dengan: tmux attach -t ai
 ```
+
+### Koneksi model (alamat dan API key)
+
+Di web, tombol **Atur koneksi** (di layar Mulai sesi dan di halaman Agent) membuka dialog:
+
+| Kolom | Isi |
+|---|---|
+| Alamat server | alamat llama-server (mis. `http://192.168.1.5:8080`) atau penyedia online (mis. `https://api.openai.com/v1`). Awalan `http://` dilengkapi otomatis, akhiran `/v1` boleh ada atau tidak |
+| Jenis server | **llama-server** (lokal/jaringan sendiri) atau **Penyedia online** (OpenAI, OpenRouter, Groq, DeepSeek, dll). Penyedia online tidak dikirimi parameter khusus llama.cpp yang ditolak sebagian penyedia |
+| API key | opsional untuk llama-server; wajib untuk penyedia online |
+
+**Uji koneksi** menghubungi server dengan isi formulir (tanpa menerapkannya) dan melaporkan jumlah model
+serta apakah server memakai mode router. **Simpan** menerapkan dan menyimpannya di `pengaturan.json`
+(izin 600, tidak ikut git), jadi tetap berlaku setelah asisten dimulai ulang dan menang atas
+`LLAMA_BASE_URL`/`LLAMA_API_KEY`. **Pakai bawaan** menghapusnya. Mengganti server ditolak selama ada chat
+atau proses Agent berjalan; model yang dimuat aplikasi ini di server lama dibongkar dulu.
+
+**Apakah semua model akan tampil?** Ya: daftar model adalah isi `/v1/models` server itu, apa adanya.
+
+| Server | Yang tampil dan cara kerjanya |
+|---|---|
+| llama-server mode router (`--models-dir`) | semua model di folder itu. Dimuat saat **Mulai** dan dibongkar saat selesai (seperti biasa). Ukuran (GB) hanya tampil bila folder modelnya terbaca dari mesin yang menjalankan asisten |
+| llama-server satu model (`-m`) | model itu saja, dipakai langsung (tidak ada muat/bongkar) |
+| Penyedia online | semua yang dilaporkan penyedia, **termasuk model non-chat** (embedding, gambar, dll). Daftar yang panjang mendapat kolom **Cari model**. Model dipakai langsung, tanpa muat/bongkar. Penyedia yang tidak punya `/v1/models` menghasilkan daftar kosong |
+
+Catatan untuk penyedia online: pemakaian token dikenai biaya di akun penyedia; kualitas pemanggilan tool
+tergantung modelnya; `ASISTEN_CTX` (bawaan 8192) menentukan seberapa banyak riwayat dikirim, naikkan
+bila model yang dipakai berkonteks panjang. Penyedia yang menolak `max_tokens` (sebagian model baru
+mewajibkan `max_completion_tokens`) belum didukung. Alamat dengan awalan lain seperti `/v1beta/openai` dikenali.
 
 ### Opsi `asisten.py`
 
@@ -704,6 +771,7 @@ dipakai, bukan disalin saat impor, supaya perubahan itu langsung berlaku.
 | lokasi folder, `MODELS_DIR`, batas buffer proses Agent | `server/server_config.py` |
 | rute `/api/...`, izin token, file statis web, alur `kirim` dan `agent_jalankan` | `server/server_http.py` |
 | cara memuat/membongkar model, idle, tombol Selesai | `server/server_model.py` |
+| alamat server model, API key, jenis server, uji koneksi, `pengaturan.json` | `server/server_koneksi.py` |
 | menyimpan dan membaca riwayat obrolan | `server/server_chat.py` |
 | izin lewat web (mode AUTO, konfirmasi) | `server/server_ctx.py` |
 | buffer dan long-poll proses Agent di latar belakang; memulai proses (`mulai_proses`) | `server/server_agent.py` |
@@ -758,7 +826,9 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 
 | Variabel | Bawaan | Fungsi |
 |---|---|---|
-| `LLAMA_BASE_URL` | `http://127.0.0.1:8080` | alamat llama-server (boleh berakhiran `/v1`) |
+| `LLAMA_BASE_URL` | `http://127.0.0.1:8080` | alamat awal server model (boleh berakhiran `/v1`). Pengaturan dari web (`pengaturan.json`) menang atas ini |
+| `LLAMA_API_KEY` | kosong | API key awal untuk server model. Dipakai juga oleh `llama_server.sh` sebagai kunci yang diwajibkan |
+| `ASISTEN_PENGATURAN` | `pengaturan.json` di folder proyek | lokasi berkas pengaturan koneksi dari web |
 | `ASISTEN_MODELS_DIR` | `~/models` | folder file `.gguf`, dipakai untuk menampilkan ukuran model. Harus sama dengan `--models-dir` llama-server |
 | `ASISTEN_CTX` | `8192` | ukuran konteks; samakan dengan `-c` di llama-server. Juga menentukan seberapa banyak riwayat yang dikirim ke model |
 | `ASISTEN_MAX_TOKENS` | `700` | batas token satu jawaban. Naikkan bila jawaban atau isi file sering terpotong (makin besar, makin sedikit riwayat yang muat) |
@@ -773,15 +843,16 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 | `ASISTEN_UNGGAH_MB` | `10` | ukuran maksimum satu unggahan (zip), dalam MB |
 | `ASISTEN_PROMPT_DIR` | `prompt/` di folder proyek | folder berkas prompt untuk skill Tanpa (satu prompt satu berkas `.json`) |
 
-Khusus `start.sh` (dan sebagian `deploy/pasang-layanan.sh`):
+Khusus `llama_server.sh` dan `start.sh` (dan sebagian `deploy/pasang-layanan.sh`):
 
 | Variabel | Bawaan | Fungsi |
 |---|---|---|
 | `LLAMA_BIN` | `~/llama.cpp/build/bin/llama-server` | lokasi llama-server (juga dipakai `pasang-layanan.sh`) |
 | `LLAMA_PORT` | `8080` | port llama-server yang dinyalakan (juga dipakai `pasang-layanan.sh`) |
-| `LLAMA_ARGS` | kosong | opsi tambahan untuk llama-server, mis. `"-t 4"` (hanya `start.sh`) |
-| `LLAMA_TUNGGU` | `120` | detik menunggu llama-server siap (hanya `start.sh`) |
-| `LLAMA_LOG` | `llama-server.log` di folder proyek | berkas log llama-server (hanya `start.sh`) |
+| `LLAMA_HOST` | `127.0.0.1` | alamat bind llama-server (`0.0.0.0` = terbuka untuk jaringan) (hanya `llama_server.sh`) |
+| `LLAMA_ARGS` | kosong | opsi tambahan untuk llama-server, mis. `"-t 4"` |
+| `LLAMA_TUNGGU` | `120` | detik menunggu llama-server siap |
+| `LLAMA_LOG` | kosong (`llama_server.sh`), `llama-server.log` di folder proyek (`start.sh`) | berkas log llama-server; kosong = log tampil di terminal |
 
 `ASISTEN_MODELS_DIR` dan `ASISTEN_CTX` juga dipakai skrip ini untuk `--models-dir` dan `-c`, jadi
 nilainya otomatis sama dengan asisten. Bila `LLAMA_BASE_URL` diisi, `start.sh` memakai llama-server
@@ -792,6 +863,12 @@ di alamat itu dan tidak menyalakan yang lokal.
 - Semua `/api` wajib **token** (`.token`, izin 600). Jangan bagikan alamat berisi token.
 - Berkas unggahan tidak tepercaya: nama dan jalur divalidasi, hanya teks UTF-8, zip dibatasi (tanpa `..`,
   symlink, terenkripsi, zip bomb), dan obrolan berlampiran memakai aturan yang sama seperti setelah tool Web.
+- **API key** model online disimpan di `pengaturan.json` (izin 600, tidak ikut git). Kunci tidak pernah dikirim balik
+  ke browser (web hanya tahu ada/tidaknya), tidak ditulis ke log, dan tidak disimpan di browser. Kunci dikirim hanya
+  sebagai header `Authorization` ke alamat yang kamu isi, dan **pengalihan (redirect) ditolak** saat memakai kunci agar
+  tidak bocor ke server lain; bila penyedia mengalihkan, pakai alamat tujuannya (mis. `https://`). Alamat `http://` ke
+  server di internet diberi peringatan karena kunci terkirim tanpa enkripsi. Siapa pun yang memegang token web bisa
+  mengubah alamat/kunci ini, jadi jaga token seperti sebelumnya.
 - Server memakai HTTP biasa di jaringan lokal. Jangan buka port 8090 ke internet.
   Untuk akses dari luar rumah, pakai VPN seperti Tailscale.
 - Perintah berikut **selalu** minta izin, juga di mode AUTO, baik lewat tool khusus maupun lewat `jalankan_perintah`:
@@ -825,7 +902,8 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `server/server_config.py` | folder (`web/`, `riwayat/`, `.token`), `MODELS_DIR`, token, batas buffer Agent |
 | `server/server_state.py` | keadaan bersama: model aktif, `GEN_LOCK`, izin menunggu, buffer proses Agent |
 | `server/server_log.py`, `server_akses.py` | log berwarna di terminal; token akses dan alamat IP |
-| `server/server_model.py` | daftar model, muat/bongkar di llama-server, idle, tombol Selesai |
+| `server/server_model.py` | daftar model, muat/bongkar di llama-server (dilewati bila tanpa mode router), idle, tombol Selesai |
+| `server/server_koneksi.py` | alamat server model + API key + jenis (`pengaturan.json`), uji koneksi, penerapan ke paket `agen` |
 | `server/server_chat.py` | penyimpanan riwayat obrolan |
 | `server/server_ctx.py` | konteks satu proses generasi: mode AUTO, batal, izin lewat web |
 | `server/server_agent.py`, `server_status.py` | buffer event Agent di latar belakang; isi `/api/status` |
@@ -840,9 +918,9 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `server/server_http.py` | penangan HTTP: rute `/api`, file statis, proses generasi di thread |
 | `server/server_main.py` | argumen baris perintah, siklus hidup server, penutupan rapi |
 | `agen/` | paket inti agen (dulu satu berkas `agen.py`); `import agen` tetap dipakai seperti biasa |
-| `agen/agen_config.py` | konfigurasi: `LLAMA_URL`, `CTX_MAKS`, `MAX_TOKENS`, `GERBANG`, `LOG_AKSI`, batas peringkasan |
+| `agen/agen_config.py` | konfigurasi: `LLAMA_URL`, `LLAMA_KEY`, `LLAMA_JENIS`, `CTX_MAKS`, `MAX_TOKENS`, `GERBANG`, `LOG_AKSI`, batas peringkasan |
 | `agen/agen_prompt.py` | prompt sistem, skill web dan berpikir kritis, gerbang tool, jatah riwayat |
-| `agen/agen_llama.py` | klien llama-server: permintaan biasa, stream SSE, pembaca jawaban satu putaran |
+| `agen/agen_llama.py` | klien server model: permintaan biasa, stream SSE, header `Authorization`, penolakan redirect, pembaca jawaban satu putaran |
 | `agen/agen_memori.py` | pemangkasan riwayat agar muat di konteks dan peringkasan pesan lama |
 | `agen/agen_kritik.py` | skill berpikir kritis tahap 2 (model memeriksa drafnya sendiri) |
 | `agen/agen_giliran.py` | loop agen: `giliran()` dan eksekusi tool calls |
@@ -859,12 +937,14 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `tim/` | paket Agent, dipecah per tanggung jawab (lihat tabel "Mengubah perilaku Agent"); dipakai lewat `import tim` |
 | `web/index.html`, `index.css`, `index.js` | tampilan chat |
 | `web/agent.html`, `agent.css`, `agent.js` | tampilan Agent (tombol **Agent** di chat) |
-| `start.sh` | menyalakan llama-server (bila belum hidup) lalu asisten, dengan satu perintah |
+| `llama_server.sh` | menyalakan llama-server di terminal sendiri: banner alamat/port, log lengkap, opsi `--port --host --models-dir --ctx --api-key` |
+| `start.sh` | jalan pintas: menjalankan `llama_server.sh` (bila perlu) lalu asisten, dengan satu perintah |
+| `web/koneksi.js`, `koneksi.css` | dialog **Atur koneksi** (alamat, jenis, API key, uji) |
 | `deploy/` | `pasang-layanan.sh` dan templat unit systemd (`*.service.in`) |
 | `.github/workflows/tests.yml` | CI GitHub: menjalankan pengujian di Python 3.9, 3.11, 3.13 |
 | `tests/` | pengujian otomatis (`unittest`) |
 | `cli_lama.py` | versi CLI lama (tanpa web), masih bisa dipakai, dan memakai pengaman perintah yang sama. Contoh: `python3 cli_lama.py "cek suhu CPU"` |
-| `riwayat/`, `.token`, `aksi.log*`, `llama-server.log` | data (dibuat otomatis, tidak ikut git) |
+| `riwayat/`, `.token`, `pengaturan.json`, `aksi.log*`, `llama-server.log` | data (dibuat otomatis, tidak ikut git) |
 
 ## Pengujian
 
@@ -882,8 +962,9 @@ pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek b
 Agent: urutan muat/bongkar model, putaran koreksi, Pemeriksa yang menjalankan dan menentukan, keamanan nama berkas, dan
 endpoint `/api/agent`, dan log langsung di halaman Agent (`tests/test_tim.py` + `tests/agent_smoke.js`,
 memakai llama-server dan model palsu; tes `agent_smoke.js` butuh `node`).
-rotasi `aksi.log` (`tests/test_aksilog.py`), serta `start.sh` dan `deploy/pasang-layanan.sh`
-(`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).
+rotasi `aksi.log` (`tests/test_aksilog.py`), pengaturan koneksi dan API key (`tests/test_koneksi.py` dengan server model palsu
+yang meminta kunci, mengalihkan, dan berpura-pura router atau bukan; `tests/koneksi_smoke.js` butuh `node`), serta `start.sh`,
+`llama_server.sh`, dan `deploy/pasang-layanan.sh` (`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).
 Tidak butuh model termuat dan tidak butuh llama-server menyala.
 
 Setiap push ke GitHub menjalankan pengujian yang sama lewat GitHub Actions
@@ -893,7 +974,10 @@ Setiap push ke GitHub menjalankan pengujian yang sama lewat GitHub Actions
 
 | Gejala | Penyebab umum dan solusi |
 |---|---|
-| `Tidak bisa terhubung ke llama-server di http://127.0.0.1:8080` lalu program berhenti | llama-server belum menyala atau beda port. Jalankan dulu ([langkah 4](#4-jalankan-llama-server)), cek dengan `curl http://127.0.0.1:8080/v1/models`. Kalau server di perangkat lain, atur `LLAMA_BASE_URL` |
+| Terminal: `Belum bisa menghubungi llama-server di ...` (aplikasi tetap menyala) | llama-server belum menyala atau alamatnya beda. Nyalakan `./llama_server.sh` ([langkah 4](#4-jalankan-llama-server)), cek dengan `curl http://127.0.0.1:8080/v1/models`, atau isi alamat yang benar lewat **Atur koneksi** di web |
+| Web: `Tidak bisa menghubungi llama-server` | Sama seperti di atas. Dialog **Atur koneksi** → **Uji koneksi** menunjukkan penyebabnya (ditolak 401 = API key salah/kurang, 404 = alamat salah, tidak bisa terhubung = server mati/port salah) |
+| Uji koneksi: `Server mengalihkan ke alamat lain` | Penyedia mengalihkan (sering `http://` → `https://`). Pakai alamat tujuannya; kunci sengaja tidak diteruskan ke pengalihan |
+| Daftar model online sangat panjang / ada model aneh | Itu isi `/v1/models` penyedia (termasuk embedding dll). Pakai kolom **Cari model** |
 | `Tidak bisa membuka port 8090` | Port dipakai program lain (mungkin `asisten.py` yang sudah jalan). Tutup yang lama, atau pakai `--port 8091` |
 | Daftar model kosong di web | Tidak ada `.gguf` di folder model, atau llama-server dijalankan tanpa `--models-dir`. Cek `ls ~/models` dan perintah llama-server |
 | Ukuran model tidak tampil | `ASISTEN_MODELS_DIR` tidak sama dengan folder `--models-dir` |
@@ -907,9 +991,10 @@ Setiap push ke GitHub menjalankan pengujian yang sama lewat GitHub Actions
 | Riwayat terasa dilupakan | Konteks terbatas (`ASISTEN_CTX`), riwayat lama dipangkas saat dikirim ke model. Pastikan nilainya sama dengan `-c` di llama-server |
 | `./start.sh`: `Permission denied` | `chmod +x start.sh deploy/pasang-layanan.sh`, atau jalankan dengan `bash start.sh` |
 | `./start.sh`: `llama-server tidak ditemukan` | Belum dibangun, atau jalurnya lain. Bangun ([langkah 2](#2-pasang-llamacpp-llama-server)) atau isi `LLAMA_BIN=/jalur/ke/llama-server ./start.sh` |
-| `./start.sh`: `llama-server berhenti saat dinyalakan` | Baca 20 baris log yang ditampilkan (lengkapnya di `llama-server.log`). Umumnya ada opsi yang tidak dikenal versi llama.cpp-mu, atau port 8080 dipakai program lain (coba `LLAMA_PORT=8081 ./start.sh`) |
+| `./start.sh` atau `./llama_server.sh`: `llama-server berhenti saat dinyalakan` | Baca 20 baris log yang ditampilkan (lengkapnya di `llama-server.log`). Umumnya ada opsi yang tidak dikenal versi llama.cpp-mu, atau port dipakai program lain (coba `./llama_server.sh --port 8081`, lalu isi alamatnya di web) |
+| `./llama_server.sh`: `port 8080 sudah dipakai` | Sudah ada llama-server (atau program lain) di port itu. Hentikan yang lama, atau pakai `--port` lain |
 | Layanan systemd tidak menyala setelah Pi reboot | Jalankan `sudo loginctl enable-linger $USER`, lalu reboot. Periksa `systemctl --user status ai-asisten llama-server` |
-| `ai-asisten` sempat gagal lalu menyala sendiri saat boot | Normal: ia menunggu llama-server siap dan mencoba lagi tiap 5 detik. Lihat `journalctl --user -u ai-asisten` |
+| `ai-asisten` menyala tetapi daftar model kosong saat baru boot | Normal bila llama-server belum siap: asisten tidak lagi berhenti, cukup tekan **Muat ulang daftar model** beberapa detik kemudian |
 | `aksi.log` terlalu besar | Diputar otomatis pada 1 MB. Ubah batasnya dengan `ASISTEN_LOG_MAKS_KB` (0 = tanpa rotasi) |
 | Suhu CPU atau status throttling tidak tampil | Suhu dibaca dari `/sys/class/thermal/thermal_zone0/temp` (tidak ada di semua perangkat). Status throttling butuh `vcgencmd`, yang hanya ada di Raspberry Pi |
 

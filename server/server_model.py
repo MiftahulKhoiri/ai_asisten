@@ -13,12 +13,20 @@ def daftar_model():
     data = agen.llama("/v1/models", timeout=10)["data"]
     hasil = []
     for m in data:
+        if not isinstance(m, dict) or not isinstance(m.get("id"), str):
+            continue
         f = conf.MODELS_DIR / (m["id"] + ".gguf")
         mb = round(f.stat().st_size / 1048576) if f.exists() else None
         hasil.append({"id": m["id"], "mb": mb,
                       "llama": (m.get("status") or {}).get("value")})
     hasil.sort(key=lambda x: x["mb"] or 0)
     return hasil
+
+
+def router_aktif(models):
+    """True bila server punya mode router (tiap model membawa status loaded/unloaded dan bisa
+    dimuat/dibongkar). Server satu-model dan penyedia online tidak punya status itu."""
+    return any(m.get("llama") for m in models)
 
 
 _POTONGAN_GGUF = re.compile(r"-(\d+)-of-\d+$")
@@ -77,7 +85,9 @@ def muat_model(nama):
         if nama not in info:
             raise RuntimeError("Model tidak ditemukan di llama-server")
         awal = info[nama]["llama"]
-        if awal != "loaded":
+        if not router_aktif(list(info.values())):
+            lg.log("INFO", f"Server tanpa mode router: {nama} dipakai langsung (tanpa muat/bongkar)")
+        elif awal != "loaded":
             lg.log("INFO", f"Memuat model {nama} ...")
             if awal != "loading":
                 agen.llama("/models/load", {"model": nama}, timeout=30)
@@ -124,7 +134,7 @@ def bongkar_model():
         except Exception as e:  # noqa: BLE001
             lg.log("ERR", f"Gagal membongkar {nama}: {e}")
     elif nama:
-        lg.log("INFO", f"{nama} dimuat pihak lain, dibiarkan")
+        lg.log("INFO", f"{nama} tidak dibongkar (bukan dimuat oleh aplikasi ini)")
     elif target:
         try:
             _unload(target)
@@ -164,4 +174,4 @@ def sentuh():
         state.S["aktivitas"] = time.time()
 
 
-__all__ = ['daftar_model', 'berkas_belum_dikenal', 'status_llama', '_unload', 'muat_model', 'bongkar_model', 'selesai_sesi', 'jaga_idle', 'sentuh', '_POTONGAN_GGUF']
+__all__ = ['daftar_model', 'router_aktif', 'berkas_belum_dikenal', 'status_llama', '_unload', 'muat_model', 'bongkar_model', 'selesai_sesi', 'jaga_idle', 'sentuh', '_POTONGAN_GGUF']

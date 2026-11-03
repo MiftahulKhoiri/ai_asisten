@@ -3,6 +3,7 @@
 import agen
 import tim
 from . import server_agent as agt
+from . import server_koneksi as kon
 from . import server_model as mdl
 from . import server_prompt as prm
 from . import server_state as state
@@ -24,10 +25,13 @@ def status_json():
     d["prompt"] = prm.rakit_tambahan(state.S["prompt"])[1] if d["prompt_mode"] == "tambah" else prm.rakit(state.S["prompt"])[1]
     d["prompt_id"] = state.S["prompt"]
     d["agent"] = agt.agent_proses()       # proses Agent (juga yang diserahkan dari obrolan)
+    d["koneksi"] = kon.koneksi_ringkas()  # alamat, jenis, ada/tidaknya API key (kuncinya tidak dikirim)
     if d["status"] != "siap":
         try:
             d["models"] = mdl.daftar_model()
-            d["belum_dikenal"] = mdl.berkas_belum_dikenal([m["id"] for m in d["models"]])
+            d["router"] = mdl.router_aktif(d["models"])
+            d["belum_dikenal"] = (mdl.berkas_belum_dikenal([m["id"] for m in d["models"]])
+                                  if d["router"] else [])   # folder model lokal hanya relevan untuk router lokal
         except Exception:  # noqa: BLE001
             d["models"] = []
             d["belum_dikenal"] = []
@@ -37,12 +41,13 @@ def status_json():
 
 def agent_status():
     """Data untuk halaman Agent: daftar model dan apakah Agent boleh dijalankan sekarang."""
-    d = {"models": [], "pesan": "", "folder": str(tim.KERJA),
+    d = {"models": [], "pesan": "", "folder": str(tim.KERJA), "koneksi": kon.koneksi_ringkas(),
          "langkah": {"min": tim.LANGKAH_MIN, "maks": tim.LANGKAH_MAKS,
                      "bawaan": tim.LANGKAH_BAWAAN},
          "token_tahap": tim.TOKEN_TAHAP, "uji_detik": tim.UJI_DETIK}
     try:
         d["models"] = mdl.daftar_model()
+        d["router"] = mdl.router_aktif(d["models"])
     except Exception:  # noqa: BLE001
         d["pesan"] = "Tidak bisa menghubungi llama-server"
     with state.S_LOCK:

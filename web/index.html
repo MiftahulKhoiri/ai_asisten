@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="index.css">
 <link rel="stylesheet" href="unggah.css">
 <link rel="stylesheet" href="serahkan.css">
+<link rel="stylesheet" href="koneksi.css">
 </head>
 <body>
 <div id="app">
@@ -60,7 +61,9 @@
       <div id="promptRingkas" class="redup kecil" hidden><span id="promptRingkasTeks"></span><button type="button" class="tautan" id="btnPromptUbah">Ubah</button></div>
       <div id="langkahModel">
         <div class="langkah">2. Pilih model</div>
+        <div id="koneksiBaris"></div>
         <div id="modelPesan"></div>
+        <input type="text" id="cariModel" placeholder="Cari model..." autocomplete="off" aria-label="Cari model" hidden>
         <div id="daftarModel" role="radiogroup" aria-label="Model"></div>
         <p id="modelInfo" class="redup kecil"></p>
         <div class="langkah">3. Mulai</div>
@@ -96,6 +99,7 @@
 <script src="unggah.js"></script>
 <script src="prompt.js"></script>
 <script src="serahkan.js"></script>
+<script src="koneksi.js"></script>
 <script src="index.js"></script>
 </body>
 </html>
