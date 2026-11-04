@@ -216,6 +216,11 @@ def _pesan_galat(e, kunci):
     """Teks galat yang membantu pengguna. Tidak pernah memuat kunci."""
     if isinstance(e, urllib.error.HTTPError):
         k = e.code
+        if k == 403 and kunci:
+            # 403 belum tentu key salah (key salah biasanya 401): bisa juga key tanpa izin untuk
+            # endpoint ini, atau penyedia/CDN memblokir permintaan (wilayah, jaringan, klien).
+            return ("Ditolak server (403): key tidak punya izin, atau permintaan diblokir penyedia "
+                    "(cek key/izinnya, wilayah, dan akses jaringan)")
         if k in (401, 403):
             return (f"Ditolak server ({k}): API key salah atau belum diisi" if kunci
                     else f"Ditolak server ({k}): server ini butuh API key")

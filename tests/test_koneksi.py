@@ -407,6 +407,30 @@ class TestPermintaan(Dasar):
         self.assertEqual(len(p.catatan), 4)
         self.assertTrue(all(c[2] == "Bearer " + KUNCI for c in p.catatan), p.catatan)
 
+    def test_user_agent_bukan_python_urllib_di_semua_jalur(self):
+        """Groq dkk. (Cloudflare) menolak 'Python-urllib/x' dengan 403 'error code: 1010' sebelum kunci
+        diperiksa, dan pesan galatnya jadi menyesatkan ('API key salah'). Semua jalur keluar harus
+        memperkenalkan diri dengan nama klien sendiri."""
+        p = self.palsu(kunci=KUNCI)
+        kon.koneksi_uji({"alamat": p.alamat, "key": KUNCI, "jenis": "online"})
+        kon.koneksi_terapkan(p.alamat, KUNCI, "online")
+        agen.llama("/v1/models", timeout=5)
+        list(agen.stream_chat("m1", [{"role": "user", "content": "x"}], threading.Event()))
+        list(tim_llm._stream("m1", [{"role": "user", "content": "x"}], threading.Event(), 100))
+        self.assertGreaterEqual(len(p.kepala), 4)
+        for k in p.kepala:
+            self.assertEqual(k.get("user-agent"), "ai_asisten/1.0", k)
+            self.assertNotIn("python-urllib", k.get("user-agent", "").lower())
+
+    def test_galat_403_dengan_kunci_tidak_menuduh_kunci_salah(self):
+        e403 = urllib.error.HTTPError("u", 403, "x", {}, None)
+        e401 = urllib.error.HTTPError("u", 401, "x", {}, None)
+        self.assertIn("diblokir penyedia", kon._pesan_galat(e403, KUNCI))
+        self.assertNotIn("salah", kon._pesan_galat(e403, KUNCI))
+        self.assertIn("butuh API key", kon._pesan_galat(e403, ""))
+        self.assertIn("API key salah", kon._pesan_galat(e401, KUNCI))
+        self.assertNotIn(KUNCI, kon._pesan_galat(e403, KUNCI))
+
     def test_tanpa_kunci_tidak_ada_header(self):
         p = self.palsu()
         kon.koneksi_terapkan(p.alamat, "", "llama")

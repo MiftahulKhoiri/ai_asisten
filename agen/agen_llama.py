@@ -17,10 +17,16 @@ class _TanpaRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER_AMAN = urllib.request.build_opener(_TanpaRedirect)
 
 
+# urllib memperkenalkan diri sebagai "Python-urllib/3.x"; penyedia di belakang Cloudflare (mis. Groq)
+# menolaknya dengan 403 "error code: 1010" SEBELUM kunci API diperiksa. Memakai nama klien sendiri
+# (jujur, bukan menyamar sebagai browser) membuat permintaan lolos.
+UA_KLIEN = "ai_asisten/1.0"
+
+
 def llama_kepala(tambahan=None, kunci=None):
     """Header permintaan, termasuk Authorization bila ada kunci API. kunci=None = kunci koneksi utama."""
     kunci = cfg.LLAMA_KEY if kunci is None else kunci
-    h = {"Content-Type": "application/json"}
+    h = {"Content-Type": "application/json", "User-Agent": UA_KLIEN}
     if kunci:
         h["Authorization"] = "Bearer " + kunci
     if tambahan:
@@ -66,7 +72,7 @@ def llama(path, data=None, timeout=300, koneksi=None):
 def llama_uji(dasar, v1, kunci, timeout=10):
     """Ambil daftar model dari alamat/kunci YANG BELUM DITERAPKAN (untuk tombol "Uji koneksi").
     Selalu menolak pengalihan, dengan atau tanpa kunci. Mengembalikan JSON; error dilempar apa adanya."""
-    h = {"Content-Type": "application/json"}
+    h = {"Content-Type": "application/json", "User-Agent": UA_KLIEN}
     if kunci:
         h["Authorization"] = "Bearer " + kunci
     s = {"url": dasar, "key": kunci or ""}
