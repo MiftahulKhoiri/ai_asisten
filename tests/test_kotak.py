@@ -90,6 +90,47 @@ class TestBatas(DasarKotak):
         self.assertEqual(lim["RLIMIT_CORE"], 0)
         self.assertGreaterEqual(lim["RLIMIT_NPROC"], tim_kotak.PROSES_TAMBAHAN)
 
+    def test_hitungan_task_memasukkan_thread(self):
+        """RLIMIT_NPROC menghitung thread: hitungan harus ikut naik ketika thread bertambah."""
+        import threading
+        sebelum = tim_kotak._proses_milik_sendiri()
+        berhenti = threading.Event()
+        ts = [threading.Thread(target=berhenti.wait, daemon=True) for _ in range(150)]
+        try:
+            for t in ts:
+                t.start()
+            self.assertGreaterEqual(tim_kotak._proses_milik_sendiri(), sebelum + 150)
+        finally:
+            berhenti.set()
+            for t in ts:
+                t.join(5)
+
+    def test_program_masih_bisa_membuat_proses_dan_thread_saat_server_banyak_thread(self):
+        """Regresi: di sistem dengan banyak thread, batas lama (hanya menghitung proses) lebih kecil dari
+        yang sudah terpakai sehingga fork/thread di program uji gagal (BlockingIOError / can't start new thread)."""
+        import threading
+        berhenti = threading.Event()
+        ts = [threading.Thread(target=berhenti.wait, daemon=True) for _ in range(150)]
+        try:
+            for t in ts:
+                t.start()
+            kode, out = self.jalan("""
+                import subprocess, threading
+                print(subprocess.run(["echo", "anak"], capture_output=True, text=True).stdout.strip())
+                hasil = []
+                ts = [threading.Thread(target=lambda: hasil.append(1)) for _ in range(20)]
+                for t in ts: t.start()
+                for t in ts: t.join()
+                print("THREAD", len(hasil))
+                """)
+        finally:
+            berhenti.set()
+            for t in ts:
+                t.join(5)
+        self.assertEqual(kode, 0, out)
+        self.assertIn("anak", out)
+        self.assertIn("THREAD 20", out)
+
     def test_ukuran_berkas_dibatasi(self):
         with mock.patch.object(tim_kotak, "FSIZE_MB", 1):
             kode, out = self.jalan("""

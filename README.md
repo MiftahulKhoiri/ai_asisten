@@ -989,7 +989,7 @@ Keamanan: program buatan model dijalankan **hanya bila kamu menyalakan izinnya d
 (`ASISTEN_AGENT_UJI_DTK`). Perintah uji dibatasi pada `python3`/`node` + berkas dari lembar tugas.
 Program uji juga **dikurung** (`tim/tim_kotak.py`): environment bersih (kunci API dan variabel server tidak terbawa;
 `HOME` mengarah ke folder sementara yang dihapus), batas memori (`ASISTEN_UJI_RAM_MB`), waktu CPU, ukuran berkas yang
-ditulis, jumlah berkas terbuka dan proses baru, **jaringan diputus** bila sistem mendukung `unshare -rn`, dan keluaran
+ditulis, jumlah berkas terbuka dan proses/thread baru (maksimal 128 di atas yang sudah dipakai penggunamu), **jaringan diputus** bila sistem mendukung `unshare -rn`, dan keluaran
 hanya dibaca bagian akhirnya (RAM server aman walau program mencetak tanpa henti). Ini pengurungan dasar, bukan sandbox
 penuh: program masih bisa membaca berkas milikmu lewat jalur absolut (mis. `~/.token`), jadi tetap nyalakan izin uji jalan
 hanya untuk tugas yang kamu percaya. Catatan isolasi ikut dikirim ke Pemeriksa, supaya kegagalan akibat jaringan terputus

@@ -34,7 +34,7 @@ from pathlib import Path
 RAM_MB_BAWAAN = 512
 FSIZE_MB = 20          # ukuran satu berkas yang boleh ditulis program (juga membatasi keluaran)
 NOFILE = 256
-PROSES_TAMBAHAN = 64   # proses baru yang boleh dibuat program, di atas yang sudah ada milik pengguna ini
+PROSES_TAMBAHAN = 128  # task (proses/thread) baru yang boleh dibuat program, di atas yang sudah ada milik pengguna ini
 
 _PELUNCUR = (
     "import json, os, resource, sys\n"
@@ -86,13 +86,17 @@ def _node(cmd):
 
 
 def _proses_milik_sendiri():
+    """Jumlah TASK (proses + thread) milik pengguna ini. RLIMIT_NPROC di Linux menghitung thread juga:
+    menghitung proses saja membuat batas lebih kecil dari yang sudah terpakai (mis. Raspberry Pi OS
+    dengan desktop: puluhan proses, ratusan thread), sehingga program uji tidak bisa membuat
+    proses maupun thread sama sekali."""
     uid, n = os.getuid(), 0
     try:
         for d in os.listdir("/proc"):
             if d.isdigit():
                 try:
                     if os.stat("/proc/" + d).st_uid == uid:
-                        n += 1
+                        n += len(os.listdir("/proc/%s/task" % d)) or 1
                 except OSError:
                     continue
     except OSError:

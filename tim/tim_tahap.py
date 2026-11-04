@@ -204,8 +204,11 @@ def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran, mc2=None, pem
         if penerima != mc2:
             yield from _giliran(pemuat, penerima, putaran)
         sanggah = tambahan_sanggah(menolak, menolak.get("kutipan"))
+        # Tanpa `berkas`: ronde ini hanya menjawab "benarkah temuan itu?", dan temuan yang menolak SUDAH
+        # diverifikasi. Menanyakan ulang kutipan di sini terbukti membuat model berbalik "tidak ada bug"
+        # hanya karena kutipan perbaikannya (bukan kode) tidak ada, padahal ia baru saja membenarkan temuan.
         c = yield from _minta_nilai(penerima, pesan_chat(sistem_peran(ctx, "periksa"), user + sanggah),
-                                    user + sanggah, ctx, jejak, "sanggah-%d" % putaran, bukti, berkas)
+                                    user + sanggah, ctx, jejak, "sanggah-%d" % putaran, bukti)
     else:
         c = penerima = None
     return _putuskan_dua(a, mc, b, mc2, c, penerima if c is not None else None, bukti)

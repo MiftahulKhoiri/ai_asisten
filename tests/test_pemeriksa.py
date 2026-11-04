@@ -237,6 +237,29 @@ class TestPemeriksaKedua(DasarAgent):
         self.assertIn("Keputusan lemah", laporan)
         self.assertEqual(set(llama.state.values()), {"unloaded"})
 
+    def test_sanggahan_membenarkan_temuan_tidak_ditanya_ulang_kutipannya(self):
+        """Regresi dari uji di Pi: penerima berbalik membenarkan temuan, tetapi "dilihat"-nya berisi teks
+        perbaikan (bukan kode). Dulu kutipan itu ditanya ulang, model berbalik lagi ke "tidak ada bug", dan
+        temuan yang benar lolos sebagai "jadi". Sekarang membenarkan = sepakat menolak, tanpa tanya ulang."""
+        llama = LlamaPalsu("A", "B", "C", "D")
+        kode = "=== FILE: main.py ===\ndef jumlah(a, b):\n    return a - b\nprint(jumlah(2, 3))\n=== END ===\n"
+        s = StreamPalsu([RENCANA], [kode, KODE_BAIK],
+                        [NILAI_OK,                                            # C menerima
+                         tolak(),                                             # D menolak, kutipan ADA di kode
+                         tolak(dilihat="return a + b",                        # C membenarkan; kutipan = teks perbaikan
+                               perbaikan="ganti minus jadi plus"),
+                         NILAI_OK, NILAI_OK])                                 # putaran 2
+        self.pasang(llama, s)
+        ev, _ = self.jalan(self.cfg2())
+        urut = [m for p, m in s.panggilan if p == "PEMERIKSA"]
+        self.assertEqual(urut[:3], ["C", "D", "C"])
+        folder = Path(self._tmp.name) / ev[-1]["id"]
+        self.assertFalse(list((folder / "jejak").glob("*sanggah-1-kutipan*")))
+        nilai = [e for e in ev if e["t"] == "nilai"]
+        self.assertFalse(nilai[0]["ok"])
+        self.assertIn("membenarkan temuan", nilai[0]["ringkas"])
+        self.assertTrue((folder / "koreksi_1.md").exists())
+
     def test_fakta_kegagalan_mengalahkan_penerima(self):
         # sintaks rusak (fakta sistem) -> penolakan dipertahankan walau penerima bertahan
         llama = LlamaPalsu("A", "B", "C", "D")
