@@ -588,7 +588,8 @@ perlu header `anthropic-workspace-id` yang belum didukung di sini.
 | Opsi | Fungsi |
 |---|---|
 | `--port 8090` | port web (bawaan 8090) |
-| `--host 0.0.0.0` | alamat bind (bawaan 0.0.0.0 supaya bisa dibuka dari HP) |
+| `--host 0.0.0.0` | alamat bind (bawaan 0.0.0.0 supaya bisa dibuka dari HP; bawaannya juga bisa diubah lewat `ASISTEN_HOST`) |
+| `--lokal` | hanya bisa dibuka dari perangkat ini (sama dengan `--host 127.0.0.1`), mis. bila diakses lewat terowongan atau proksi di Pi yang sama |
 | `--idle 20` | menit tanpa aktivitas sebelum model dibongkar (0 = tidak pernah) |
 | `--auto` | mode AUTO, tanpa konfirmasi (hati-hati, lihat [Keamanan](#keamanan)) |
 | `--token-baru` | buat token baru (token lama tidak berlaku) |
@@ -839,37 +840,6 @@ Aturan lain:
 - Rute: `GET /api/agent/prompt?peran=...`, `GET /api/agent/prompt/ekspor?peran=...&id=...`,
   `POST /api/agent/prompt` (tambah), `/ubah`, `/impor`, `/hapus` (semuanya dengan `peran` di badan permintaan).
 
-<<<<<<< Updated upstream
-### Sidang Pemeriksa (dua model saling memeriksa)
-
-Satu Pemeriksa bermodel kecil bisa salah ke dua arah: **menyetujui** kode yang sebenarnya bermasalah, atau
-**menolak** dengan "masalah" karangan sehingga Pelaksana menulis ulang kode yang sudah benar. Karena itu
-tersedia model kedua, **Penantang** (pilihan di bawah Pemeriksa; kosong = tanpa sidang, perilaku lama
-persis). Jawaban "relevan atau tidak": relevan, **asal dibatasi dan berpijak pada bukti**, karena dua model
-kecil yang berdiskusi bebas gampang saling mengiyakan dan memakan waktu.
-
-Jalannya sidang (berlaku di tahap **Periksa** dan **Diagnosa**):
-
-1. Pemeriksa menilai seperti biasa.
-2. Penantang menilai hasil **yang sama secara mandiri**, tanpa melihat penilaian Pemeriksa (supaya tidak
-   ikut-ikutan). Keputusan sama → **sepakat**, selesai.
-3. Keputusan beda → Pemeriksa membaca penilaian Penantang lalu menjawab (mempertahankan atau mengubah
-   pendapat), Penantang menimbang jawabannya, dan seterusnya sampai **Giliran sidang** (1-3) habis.
-4. Masih beda → aturan tetap, bukan suara terbanyak:
-   - masalah yang menunjuk **berkas atau baris yang tidak ada** dianggap tuduhan karangan dan dibuang;
-   - program gagal dijalankan → perlu perbaikan;
-   - pihak penolak tidak punya masalah yang tersisa → diterima;
-   - pihak penolak **berbukti kuat** (lokasi valid *dan* kutipan "dilihat" benar-benar ada di kode/hasil
-     menjalankan) → perlu perbaikan;
-   - selain itu keputusan tetap pada **Pemeriksa** (penentu menurut rancangan tim).
-
-Sidang **dilewati** bila penolakan Pemeriksa sudah ditopang fakta (program gagal dijalankan): tidak ada yang
-perlu dibantah. Hasilnya tampil sebagai kartu **Sidang** (siapa menilai apa, putusan, dan alasannya), tercatat
-di log, di `diagnosa.json`, dan di baris **Sidang Pemeriksa** pada laporan akhir. Jejak tiap giliran ada di
-`jejak/*-sidang-*.txt`. Biayanya: 1 panggilan model tambahan bila sepakat; tiap giliran lanjutan bisa
-menukar model di memori (nyalakan "Bongkar model tiap tahap" hanya bila RAM terbatas). Penantang harus
-model yang berbeda dari Pemeriksa; model Pelaksana boleh dipakai sebagai Penantang.
-=======
 ### Pemeriksa kedua dan pembuktian temuan
 
 Satu Pemeriksa bermodel kecil bisa salah ke dua arah: **menyetujui** kode yang sebenarnya bermasalah, atau
@@ -905,7 +875,6 @@ pengaman, semuanya bekerja di tahap **Periksa** (dan pembuktian juga di tahap **
 
 Jejak tiap penilaian ada di `jejak/` (`periksa-N`, `periksa2-N`, `sanggah-N`, serta `-kutipan` untuk tanya
 ulang kutipan). Aturan keputusan dua Pemeriksa ada di `tim_tahap._putuskan_dua` (fungsi murni, mudah diuji).
->>>>>>> Stashed changes
 
 ### Alur menyesuaikan jenis tugas
 
@@ -948,11 +917,7 @@ Pilihan di halaman Agent:
 - **2 model**: Model 1 = Perencana + Pemeriksa + Penjelas, Model 2 = Pelaksana.
 - **3 model**: tiap peran punya model sendiri (model yang sama boleh dipakai untuk dua peran).
   Minimal harus ada 2 model yang berbeda.
-<<<<<<< Updated upstream
-- **Penantang (opsional)** dan **Giliran sidang** (1-3): lihat [Sidang Pemeriksa](#sidang-pemeriksa-dua-model-saling-memeriksa).
-=======
 - **Pemeriksa kedua (opsional)**: lihat [Pemeriksa kedua dan pembuktian temuan](#pemeriksa-kedua-dan-pembuktian-temuan).
->>>>>>> Stashed changes
 - **Maksimal putaran koreksi** (1-10): berapa kali Pelaksana boleh mengulang.
 - **Bongkar model tiap tahap**: hemat RAM; model yang dipakai tahap berikutnya tidak dibongkar.
 - **Izinkan Pemeriksa menjalankan program hasil**: izin ada di pengaturan ini (mati secara bawaan).
@@ -1049,23 +1014,14 @@ berkas yang relevan:
 | batas token, batas waktu uji, folder kerja, batas berkas, validasi pengaturan dari web | `tim/tim_config.py` |
 | alur putaran (Pelaksana menulis -> Pemeriksa menjalankan + menentukan), deteksi macet, pemulihan hasil terbaik, pemakaian ulang diagnosa | `tim/tim_alur.py` |
 | pilihan jalur (buat / perbaiki / cari bug) dan aturan kata kuncinya | `tim/tim_jalur.py` |
-<<<<<<< Updated upstream
-| tiap tahap model (Diagnosa, Perencana, Pelaksana menulis, Pemeriksa menjalankan + menentukan, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
-| alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian, pembuktian lokasi/kutipan terhadap kode | `tim/tim_cek.py` |
-=======
 | tiap tahap model (Diagnosa, Perencana, Pelaksana menulis, Pemeriksa menjalankan + menentukan, Pemeriksa kedua + sanggahan, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
 | alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian, pembuktian lokasi/kutipan terhadap kode, kemiripan masalah | `tim/tim_cek.py` |
->>>>>>> Stashed changes
 | cara membaca keluaran Pelaksana (`=== FILE: ===`), nama berkas aman | `tim/tim_berkas.py` |
 | lembar tugas: perintah uji yang diizinkan, harapan keluaran | `tim/tim_spec.py` |
 | muat/bongkar model di llama-server | `tim/tim_model.py` |
 | aliran jawaban model, pengambilan JSON | `tim/tim_llm.py` |
 | bagian fakta pada laporan akhir | `tim/tim_laporan.py` |
-<<<<<<< Updated upstream
-| Sidang Pemeriksa: prompt Penantang, giliran, dan aturan keputusan saat tidak sepakat | `tim/tim_sidang.py` |
-=======
 | kotak uji jalan: environment bersih, batas RAM/CPU/proses/berkas, jaringan diputus, keluaran dibatasi | `tim/tim_kotak.py` |
->>>>>>> Stashed changes
 | riwayat proses (daftar, baca, hapus) | `tim/tim_riwayat.py` |
 
 Dari luar cukup `import tim` (`tim.jalankan`, `tim.daftar_run`, ...). Konstanta pengaturan
@@ -1168,6 +1124,11 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 | `ASISTEN_UJI_KELUARAN_KB` | `200` | keluaran program uji yang dibaca kembali (bagian akhirnya), dalam KB |
 | `ASISTEN_AGENT_EVENT` | `20000` | jumlah event Agent yang disimpan di RAM server; kecilkan (mis. `3000`) di perangkat RAM 1 GB |
 | `ASISTEN_MAKS_KONEKSI` | `32` | koneksi HTTP serentak ke server web; di atas itu dijawab 503 |
+| `ASISTEN_HOST` | `0.0.0.0` | alamat bind server web bila `--host` tidak diberikan (`127.0.0.1` = hanya perangkat ini) |
+| `ASISTEN_IZIN_IP` | kosong | alamat/CIDR di luar jaringan lokal yang boleh terhubung, dipisah koma, mis. `203.0.113.7,198.51.100.0/24` |
+| `ASISTEN_IZIN_PUBLIK` | `0` | `1` menerima koneksi dari alamat internet mana pun (tidak disarankan; HTTP polos) |
+| `ASISTEN_GAGAL_MAKS` | `10` | token salah dalam semenit dari satu alamat sebelum alamat itu dikunci (minimal 3) |
+| `ASISTEN_GAGAL_KUNCI` | `30` | lama kunci pertama dalam detik; berlipat dua tiap terkunci lagi, maksimal 600 |
 | `ASISTEN_UNGGAH_MB` | `10` | ukuran maksimum satu unggahan (zip), dalam MB |
 | `ASISTEN_PROMPT_DIR` | `prompt/` di folder proyek | folder berkas prompt untuk skill Tanpa (satu prompt satu berkas `.json`) |
 
@@ -1197,8 +1158,22 @@ di alamat itu dan tidak menyalakan yang lokal.
   tidak bocor ke server lain; bila penyedia mengalihkan, pakai alamat tujuannya (mis. `https://`). Alamat `http://` ke
   server di internet diberi peringatan karena kunci terkirim tanpa enkripsi. Siapa pun yang memegang token web bisa
   mengubah alamat/kunci ini, jadi jaga token seperti sebelumnya.
-- Server memakai HTTP biasa di jaringan lokal. Jangan buka port 8090 ke internet.
-  Untuk akses dari luar rumah, pakai VPN seperti Tailscale.
+- Server memakai HTTP biasa (token tidak terenkripsi di jaringan), jadi pakai di jaringan tepercaya. Jangan buka port
+  8090 ke internet; untuk akses dari luar rumah pakai VPN seperti Tailscale. Server tetap bind `0.0.0.0` supaya HP bisa
+  menjangkau Pi, tetapi sebagai lapis kedua:
+  - **Alamat dari internet ditolak (403).** Yang diterima hanya perangkat ini, jaringan rumah/kantor (`10.x`,
+    `172.16-31.x`, `192.168.x`, IPv6 lokal), dan rentang VPN Tailscale (`100.64.0.0/10`). Port yang tanpa sengaja
+    diteruskan (*port-forward*) di router tidak langsung membuka server. Tambah alamat tertentu dengan
+    `ASISTEN_IZIN_IP=203.0.113.7,198.51.100.0/24`, atau buka semuanya dengan `ASISTEN_IZIN_PUBLIK=1` (tidak disarankan).
+  - **Token salah berulang dikunci sementara.** Setelah `ASISTEN_GAGAL_MAKS` (10) token salah dalam semenit dari satu
+    alamat, alamat itu dikunci `ASISTEN_GAGAL_KUNCI` (30) detik dengan jawaban 429. Kunci berikutnya berlipat dua
+    (maksimal 10 menit). Selama terkunci, token benar pun ditolak, supaya tebakan tidak bisa diteruskan. Perangkat
+    ini sendiri (`127.0.0.1`) tidak pernah dikunci. Bila halaman web memakai token lama berulang-ulang, tunggu kunci
+    habis lalu buka alamat dengan token baru.
+  - Semua jawaban membawa `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, dan `Referrer-Policy: no-referrer`
+    (token ada di alamat `?token=`, jadi tidak boleh bocor lewat Referer).
+  - Server tidak mempercayai `X-Forwarded-For`. Di belakang proksi di Pi yang sama, semua klien terlihat sebagai
+    `127.0.0.1`, sehingga penyaring alamat dan pengunci token tidak berlaku. Pasang pembatasan di proksinya.
 - Perintah berikut **selalu** minta izin, juga di mode AUTO, baik lewat tool khusus maupun lewat `jalankan_perintah`:
   `sudo`; instal/hapus paket (`apt`, `pip`, `npm`, dll.); `rm`; `find ... -delete`; `kill`/`pkill`/`killall`; `git push`;
   `chmod`/`chown -R`; dan perintah yang mengeksekusi teks lain (`| sh`, `bash -c`, `eval`, `base64 -d`, `$(curl ...)`).
@@ -1219,7 +1194,13 @@ di alamat itu dan tidak menyalakan yang lokal.
   `[setelah tool web ...]`). Obrolan baru mulai bersih. File yang diunduh dari web lalu dibaca belum dilindungi seperti ini.
 - Perintah berbahaya **selalu diblokir**, termasuk yang dibungkus (`bash -c 'rm -rf /'`) atau diberi tanda kutip/backslash: menghapus `/`, home, atau folder sistem (`rm`, `mv`, `find -delete`), `chmod/chown -R` di sana, `mkfs`, `dd of=/dev/...`, `reboot`/`shutdown`, `kill -9 -1`, *fork bomb*, serta `git push --force`, `git reset --hard`, dan `git clean -f` lewat shell.
 - Semua aksi tool dicatat di `aksi.log`. Berkas ini diputar otomatis pada 1 MB (maksimal 3 salinan lama), jadi tidak membesar tanpa batas.
-- Daftar blokir hanya pengaman dasar berbasis pola. Perintah yang disamarkan lewat variabel atau *brace expansion* (`{rm,-rf,/}`) masih bisa lolos dari pola-polanya. Baca perintah sebelum menekan Ya.
+- Nama perintah yang disamarkan ikut dijaga. Variabel yang diberi nilai di dalam perintah itu sendiri diisi dulu sebelum
+  dicocokkan, jadi `X=rm; $X -rf ~` **diblokir** seperti `rm -rf ~`. Bila nama perintah baru ditentukan saat shell berjalan
+  (`$X -rf ~`, `$(echo rm) ...`, `` `echo rm` ... ``, `{rm,-rf,/}`, `/bin/r? ...`, `/???/r[m] ...`), perintah **selalu minta
+  izin**, juga di mode AUTO. Pemakaian biasa (`echo $HOME`, `ls *.py`, `[ -f x ]`, `mkdir -p d/{a,b}`) tidak terganggu.
+- Daftar blokir tetap pengaman dasar berbasis pola, bukan sandbox. Variabel yang nilainya datang dari luar perintah
+  (lingkungan, berkas, keluaran perintah lain) tidak bisa dibaca polanya, dan `python3 -c` hanya ditahan oleh aturan izin.
+  Baca perintah sebelum menekan Ya.
 - Model kecil bisa salah mengerti perintah. Untuk pemula, biarkan mode AUTO **mati**.
 
 ## Berkas
@@ -1229,7 +1210,7 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `asisten.py` | pintu masuk (`python3 asisten.py`); isinya dipecah ke paket `server/` |
 | `server/server_config.py` | folder (`web/`, `riwayat/`, `.token`), `MODELS_DIR`, token, batas buffer Agent |
 | `server/server_state.py` | keadaan bersama: model aktif, `GEN_LOCK`, izin menunggu, buffer proses Agent |
-| `server/server_log.py`, `server_akses.py` | log berwarna di terminal; token akses dan alamat IP |
+| `server/server_log.py`, `server_akses.py` | log berwarna di terminal; token akses, alamat IP, penyaring alamat klien, dan pembatas token salah |
 | `server/server_model.py` | daftar model, muat/bongkar di llama-server (dilewati bila tanpa mode router), idle, tombol Selesai |
 | `server/server_koneksi.py` | daftar koneksi model (utama + tambahan): alamat, API key, jenis, nama (`pengaturan.json`), uji, hapus, penerapan ke paket `agen` |
 | `server/server_chat.py` | penyimpanan riwayat obrolan |
@@ -1290,12 +1271,9 @@ pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek b
 Agent: urutan muat/bongkar model, putaran koreksi, Pemeriksa yang menjalankan dan menentukan, keamanan nama berkas, dan
 endpoint `/api/agent`, dan log langsung di halaman Agent (`tests/test_tim.py` + `tests/agent_smoke.js`,
 memakai llama-server dan model palsu; tes `agent_smoke.js` butuh `node`),
-<<<<<<< Updated upstream
-Sidang Pemeriksa dua model, termasuk aturan keputusan dan tampilannya di halaman Agent (`tests/test_sidang.py`).
-=======
 penguatan Pemeriksa: pembuktian kutipan, Pemeriksa kedua + sanggahan, deteksi macet, tanda keputusan lemah (`tests/test_pemeriksa.py`),
 kotak uji jalan: environment bersih, batas memori/berkas/waktu, jaringan diputus (`tests/test_kotak.py`; tes jaringan dilewati bila `unshare -rn` tidak tersedia),
->>>>>>> Stashed changes
+akses jaringan server: penyaring alamat, kunci token salah, header aman (`tests/test_jaringan.py`), dan perintah shell yang disamarkan (`tests/test_samar.py`),
 rotasi `aksi.log` (`tests/test_aksilog.py`), pengaturan koneksi dan API key (`tests/test_koneksi.py` dengan server model palsu, termasuk lokal + online sekaligus,
 yang meminta kunci, mengalihkan, dan berpura-pura router atau bukan; `tests/koneksi_smoke.js` butuh `node`), serta `start.sh`,
 `llama_server.sh`, dan `deploy/pasang-layanan.sh` (`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).
@@ -1322,7 +1300,8 @@ Setiap push ke GitHub menjalankan pengujian yang sama lewat GitHub Actions
 | `llama-server gagal memuat model` | RAM tidak cukup, file model rusak/terpotong, atau model tidak didukung versi llama.cpp. Lihat log di terminal llama-server, coba model lebih kecil, unduh ulang dengan `wget -c` |
 | `Model belum siap setelah 5 menit` | Model terlalu besar untuk perangkat, atau kartu SD/disk lambat. Coba model lebih kecil |
 | Halaman web menolak / "Akses ditolak (token salah)" | Buka lagi alamat lengkap yang berisi `?token=...` dari terminal. Token hilang? Jalankan `python3 asisten.py --token-baru` |
-| HP tidak bisa membuka alamatnya | HP dan Pi harus satu Wi-Fi, IP bisa berubah (cek `hostname -I`), dan `asisten.py` jangan dijalankan dengan `--host 127.0.0.1` |
+| HP tidak bisa membuka alamatnya | HP dan Pi harus satu Wi-Fi, IP bisa berubah (cek `hostname -I`), dan `asisten.py` jangan dijalankan dengan `--lokal` atau `--host 127.0.0.1`. Bila HP memakai data seluler atau alamat publik, server menjawab 403 `Ditolak: alamat di luar jaringan lokal`; sambungkan lewat Wi-Fi/VPN, atau izinkan alamatnya dengan `ASISTEN_IZIN_IP` |
+| Jawaban 429 `Terlalu banyak token salah` | Alamat itu dikunci sementara karena token salah berulang. Tunggu sesuai detik di pesan (header `Retry-After`), lalu buka alamat dengan token yang benar |
 | Model langsung memanggil tool untuk sapaan, atau jawabannya ngawur | Model terlalu kecil/tidak cocok untuk tool calling. Coba skill **Tanpa skill**, atau ganti model. Pastikan llama-server memakai `--jinja` |
 | Jawaban berakhir dengan `[Jawaban terpotong ...]`, atau `tulis_file` gagal dengan pesan terpotong | Batas token satu jawaban (`ASISTEN_MAX_TOKENS`, bawaan 700) tercapai. Ketik `lanjut`, naikkan nilainya, atau minta file ditulis bertahap (`tambah=true`) |
 | Riwayat terasa dilupakan | Konteks terbatas (`ASISTEN_CTX`), riwayat lama dipangkas saat dikirim ke model. Pastikan nilainya sama dengan `-c` di llama-server |

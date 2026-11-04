@@ -16,6 +16,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import agen
 import tim
 from . import server_agent as agt
+from . import server_akses as akses
 from . import server_config as conf
 from . import server_ctx as kts
 from . import server_log as lg
@@ -51,9 +52,20 @@ STATIS = {
 }
 
 
+# Dikirim di SEMUA jawaban: token bisa ada di alamat (?token=), jadi alamat tidak boleh bocor lewat Referer,
+# dan halaman tidak boleh dibingkai situs lain.
+TAJUK_AMAN = (("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"),
+              ("Referrer-Policy", "no-referrer"))
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
+
+    def end_headers(self):
+        for k, v in TAJUK_AMAN:
+            self.send_header(k, v)
+        super().end_headers()
 
     def _json(self, kode, obj):
         data = json.dumps(obj, ensure_ascii=False).encode()
@@ -62,6 +74,8 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            if kode == 429:
+                self.send_header("Retry-After", str(getattr(self, "_ulang_detik", 30)))
             self.end_headers()
             self.wfile.write(data)
         except (BrokenPipeError, ConnectionResetError, OSError):
@@ -93,9 +107,19 @@ class H(BaseHTTPRequestHandler):
                 return
             if not path.startswith("/api/"):
                 return self._json(404, {"error": "Tidak ditemukan"})
+            ip = self.client_address[0]
+            sisa = akses.PEMBATAS.sisa_kunci(ip)
+            if sisa > 0:        # terkunci: token tidak diperiksa, dan tidak dicatat di log (tanpa banjir log)
+                detik = int(sisa) + 1
+                self._ulang_detik = detik
+                return self._json(429, {"error": f"Terlalu banyak token salah. Coba lagi {detik} detik lagi."})
             if not self._auth():
-                lg.log("WARN", f"Akses ditolak dari {self.client_address[0]} (token salah)")
+                kunci = akses.PEMBATAS.catat_gagal(ip)
+                lg.log("WARN", f"Akses ditolak dari {ip} (token salah)")
+                if kunci:
+                    lg.log("WARN", f"{ip} dikunci {kunci} detik: terlalu banyak token salah")
                 return self._json(401, {"error": "Token salah"})
+            akses.PEMBATAS.catat_berhasil(ip)
             self.rute(metode, path)
         except FileNotFoundError:
             self._json(404, {"error": "Tidak ditemukan"})
@@ -685,4 +709,4 @@ class H(BaseHTTPRequestHandler):
                     lg.log("WARN", "Klien terputus, proses dibatalkan")
 
 
-__all__ = ['STATIS', 'H']
+__all__ = ['STATIS', 'TAJUK_AMAN', 'H']

@@ -32,6 +32,14 @@ def _env_int(nama, bawaan, minimum):
 # Perangkat RAM kecil (mis. Raspberry Pi 1 GB): kecilkan lewat ASISTEN_AGENT_EVENT dan ASISTEN_MAKS_KONEKSI.
 AGENT_MAKS_EVENT = _env_int("ASISTEN_AGENT_EVENT", 20000, 500)   # event tertua dibuang bila buffer melebihi ini
 MAKS_KONEKSI = _env_int("ASISTEN_MAKS_KONEKSI", 32, 4)           # koneksi HTTP serentak (satu thread per koneksi)
+# Akses jaringan. Bind tetap 0.0.0.0 (HP/Termux harus bisa menjangkau Pi), tetapi alamat dari internet
+# publik ditolak kecuali dibuka sengaja; token salah yang berulang dikunci sementara (lihat server_akses.py).
+IZIN_PUBLIK = os.environ.get("ASISTEN_IZIN_PUBLIK", "").strip().lower() in ("1", "ya", "true", "on")
+IZIN_IP = os.environ.get("ASISTEN_IZIN_IP", "")                   # tambahan: IP/CIDR dipisah koma, mis. 203.0.113.0/24
+GAGAL_MAKS = _env_int("ASISTEN_GAGAL_MAKS", 10, 3)                # token salah dalam GAGAL_JENDELA detik sebelum dikunci
+GAGAL_KUNCI = _env_int("ASISTEN_GAGAL_KUNCI", 30, 5)              # detik kunci pertama; berlipat dua tiap terkunci lagi
+GAGAL_JENDELA = 60
+GAGAL_KUNCI_MAKS = 600
 AGENT_BATCH = 4000            # event paling banyak per jawaban /api/agent/event
 AGENT_TUNGGU_MAKS = 25        # detik paling lama satu long-poll menunggu event baru
 
@@ -58,4 +66,4 @@ MAKS_BERKAS_PROMPT = 64_000      # byte satu berkas prompt yang mau dibaca
 MAKS_IMPOR_PROMPT = 256_000      # byte teks impor
 
 __all__ = ['PENGATURAN_FILE', 'PROMPT_DIR', 'MAKS_CATATAN_PROMPT', 'MAKS_BERKAS_PROMPT', 'MAKS_IMPOR_PROMPT', 'PROMPT_FILE', 'PROMPT_BAWAAN', 'MAKS_PROMPT', 'MAKS_NAMA_PROMPT', 'MAKS_ISI_PROMPT', 'UNGGAH', 'ID_PAKET', 'MAKS_UNGGAH_BYTE', 'MAKS_ZIP_TOTAL', 'MAKS_ZIP_ENTRI',
-           'MAKS_BERKAS_PAKET', 'UNGGAH_UMUR_JAM', 'BASE', 'WEB', 'RIWAYAT', 'TOKEN_FILE', 'MODELS_DIR', 'ID_RE', 'TOKEN', 'IDLE_MENIT', 'WARNA', 'AGENT_MAKS_EVENT', 'MAKS_KONEKSI', 'AGENT_BATCH', 'AGENT_TUNGGU_MAKS']
+           'MAKS_BERKAS_PAKET', 'UNGGAH_UMUR_JAM', 'BASE', 'WEB', 'RIWAYAT', 'TOKEN_FILE', 'MODELS_DIR', 'ID_RE', 'TOKEN', 'IDLE_MENIT', 'WARNA', 'AGENT_MAKS_EVENT', 'MAKS_KONEKSI', 'IZIN_PUBLIK', 'IZIN_IP', 'GAGAL_MAKS', 'GAGAL_KUNCI', 'GAGAL_JENDELA', 'GAGAL_KUNCI_MAKS', 'AGENT_BATCH', 'AGENT_TUNGGU_MAKS']

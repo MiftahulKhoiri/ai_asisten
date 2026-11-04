@@ -5,6 +5,7 @@ import os
 import signal
 import sys
 import threading
+import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 import agen
@@ -33,8 +34,30 @@ class ServerTerbatas(ThreadingHTTPServer):
         super().__init__(*a, **k)
         self._slot = threading.BoundedSemaphore(conf.MAKS_KONEKSI)
         self.ditolak = 0
+        self.ditolak_asing = 0        # koneksi dari alamat di luar jaringan lokal (lihat server_akses.alamat_diizinkan)
+        self._dilog_asing = {}        # alamat -> kapan terakhir dicatat di log (agar log tidak banjir)
+
+    def _tolak_asing(self, request, ip):
+        self.ditolak_asing += 1
+        jam = time.monotonic()
+        if jam - self._dilog_asing.get(ip, -1e9) > 600:
+            if len(self._dilog_asing) > 256:
+                self._dilog_asing.clear()
+            self._dilog_asing[ip] = jam
+            lg.log("WARN", f"Koneksi dari {ip} ditolak: bukan alamat jaringan lokal "
+                           "(izinkan dengan ASISTEN_IZIN_IP=alamat atau ASISTEN_IZIN_PUBLIK=1)")
+        try:
+            request.settimeout(2)
+            pesan = b"Ditolak: alamat di luar jaringan lokal.\n"
+            request.sendall(b"HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\n"
+                            b"Content-Length: " + str(len(pesan)).encode() + b"\r\nConnection: close\r\n\r\n" + pesan)
+        except OSError:
+            pass
+        self.shutdown_request(request)
 
     def process_request(self, request, client_address):
+        if not akses.alamat_diizinkan(client_address[0]):
+            return self._tolak_asing(request, client_address[0])
         if not self._slot.acquire(blocking=False):
             self.ditolak += 1
             try:
@@ -59,7 +82,10 @@ class ServerTerbatas(ThreadingHTTPServer):
 
 def main():
     ap = argparse.ArgumentParser(description="AI Asisten: server web + log terminal.")
-    ap.add_argument("--host", default="0.0.0.0", help="alamat bind (default 0.0.0.0)")
+    ap.add_argument("--host", default=os.environ.get("ASISTEN_HOST", "0.0.0.0"),
+                    help="alamat bind (default 0.0.0.0, atau ASISTEN_HOST)")
+    ap.add_argument("--lokal", action="store_true",
+                    help="hanya bisa diakses dari perangkat ini (sama dengan --host 127.0.0.1)")
     ap.add_argument("--port", type=int, default=8090, help="port (default 8090)")
     ap.add_argument("--idle", type=int, default=20,
                     help="menit tanpa aktivitas sebelum model dibongkar (0 = mati)")
@@ -68,6 +94,8 @@ def main():
     ap.add_argument("--token-baru", action="store_true", help="buat token baru")
     ap.add_argument("--tanpa-warna", action="store_true")
     a = ap.parse_args()
+    if a.lokal:
+        a.host = "127.0.0.1"
     if a.tanpa_warna:
         conf.WARNA = False
     conf.IDLE_MENIT = a.idle
@@ -93,6 +121,18 @@ def main():
         lg.log("ERR", f"Tidak bisa membuka port {a.port}: {e}")
         sys.exit(1)
 
+    for salah in akses.jaringan_tambahan()[1]:
+        lg.log("WARN", f"ASISTEN_IZIN_IP: \"{salah}\" bukan alamat IP/CIDR yang sah, diabaikan")
+    if a.host in ("127.0.0.1", "localhost", "::1"):
+        lg.log("INFO", "Hanya bisa diakses dari perangkat ini (bind lokal)")
+    else:
+        lg.log("WARN", "Server terbuka di jaringan lewat HTTP polos: token tidak terenkripsi, pakai hanya di "
+                       "jaringan tepercaya (atau lewat VPN/terowongan HTTPS)")
+        if conf.IZIN_PUBLIK:
+            lg.log("WARN", "ASISTEN_IZIN_PUBLIK=1: alamat dari internet juga DITERIMA. Pastikan port ini tidak "
+                           "diteruskan (port-forward) ke internet tanpa pelindung lain")
+        else:
+            lg.log("INFO", "Hanya alamat jaringan lokal/VPN yang diterima; alamat internet ditolak (403)")
     ip = akses.ip_lan() if a.host == "0.0.0.0" else a.host
     if models is None:
         lg.log("WARN", f"Belum bisa menghubungi llama-server di {kon.koneksi_alamat()} ({galat_llama})")

@@ -60,6 +60,18 @@ _TULIS = (r"(?:>|\b(?:tee|cp|mv|ln|truncate|install|rsync|"
           r"(?:sed|perl)\s+(?:-\S+\s+)*-\S*i\S*)\b)")
 
 
+# ---- Penyamaran nama perintah (butuh pemeriksaan tersendiri, lihat cek_perintah) ----------
+# Kata PERTAMA sebuah perintah (setelah pemisah, sudo/env/..., dan `NAMA=nilai` di depannya).
+# Bila kata itu baru ditentukan saat shell berjalan, polanya tidak bisa membaca nama aslinya.
+_KATA1 = (_AWAL + r"(?:[A-Za-z_]\w*=\S*\s+)*")
+_SAMAR = [
+    _KATA1 + r"\$",                                   # $X -rf ~   ${X}   $(echo rm)   $'\x72m'
+    _KATA1 + r"`",                                     # `echo rm` -rf ~
+    _KATA1 + r"\S*\{[^{}\s]*,[^{}\s]*\}",              # {rm,-rf,/}   r{m,m}
+    _KATA1 + r"(?!\[\[?(?:\s|$))(?:\S*[*?]|\S+\[)",     # /bin/r?   /???/r[m]   (tapi bukan test `[ ... ]`)
+]
+
+
 KONFIRMASI_SELALU = [
     r"\bsudo\b",
     r"\b(?:apt|apt-get)\s+(?:-\S+\s+)*(?:install|remove|purge|upgrade|dist-upgrade|"
@@ -96,6 +108,33 @@ KONFIRMASI_SELALU = [
 ]
 
 
+KONFIRMASI_SELALU += _SAMAR
+
+
+_ASSIGN = re.compile(r"(?:^|[;&|(\n]\s*|\b(?:export|local|declare|readonly)\s+(?:-\S+\s+)*)"
+                     r"([A-Za-z_]\w*)=([^\s;&|()]*)")
+
+
+def _isi_variabel(p):
+    """Isi `$NAMA` / `${NAMA}` dengan nilai yang diberikan DI DALAM perintah itu sendiri
+    (`X=rm; $X -rf ~` -> `X=rm; rm -rf ~`), supaya daftar blokir bisa membaca nama sebenarnya.
+    Variabel yang tidak diberi nilai di sini (dari lingkungan) dibiarkan. Mengembalikan teks baru, atau None."""
+    nilai = {}
+    for m in _ASSIGN.finditer(p):
+        if len(nilai) < 32:
+            nilai[m.group(1)] = m.group(2)
+    if not nilai:
+        return None
+    baru = p
+    for _ in range(3):                                  # nilai boleh merujuk variabel lain
+        lama = baru
+        baru = re.sub(r"\$(?:\{(\w+)\}|(\w+))",
+                      lambda m: nilai.get(m.group(1) or m.group(2), m.group(0)), baru)
+        if baru == lama:
+            break
+    return baru if baru != p else None
+
+
 def _normal(p):
     p = p.replace("${IFS}", " ").replace("$IFS", " ")
     p = re.sub(r"[\\'\"]", "", p)
@@ -106,10 +145,17 @@ def cek_perintah(perintah):
     """'blokir' (selalu ditolak), 'izin' (selalu tanya, juga di mode AUTO), atau None.
 
     Dicocokkan pada teks asli dan teks yang tanda kutip/backslash-nya dibuang, supaya
-    `bash -c 'rm -rf /'` atau `r\\m -rf /` tidak lolos. Ini pengaman dasar berbasis pola:
-    variabel, brace expansion, atau `python -c` tetap bisa menyamarkan perintah.
+    `bash -c 'rm -rf /'` atau `r\\m -rf /` tidak lolos. Variabel yang diberi nilai di dalam perintah
+    itu sendiri diisi dulu (`X=rm; $X -rf ~` diblokir), dan nama perintah yang baru ditentukan saat
+    shell berjalan (`$X ...`, `$(...)`, `{rm,-rf,/}`, `/bin/r?`) selalu ditanyakan. Ini tetap pengaman
+    berbasis pola, bukan sandbox: kode inline lewat interpreter ditangani aturan "izin", sisanya
+    bergantung pada konfirmasi pengguna.
     """
-    kand = (perintah, _normal(perintah))
+    kand = [perintah, _normal(perintah)]
+    for k in tuple(kand):
+        isi = _isi_variabel(k)
+        if isi:
+            kand += [isi, _normal(isi)]
     if any(re.search(p, k) for p in BAHAYA for k in kand):
         return "blokir"
     if any(re.search(p, k) for p in KONFIRMASI_SELALU for k in kand):
