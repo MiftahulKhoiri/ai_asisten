@@ -20,10 +20,14 @@ def status_model(nama):
 
     Server tanpa mode router (satu model, atau penyedia online) tidak melaporkan status dan tidak
     bisa memuat/membongkar: modelnya selalu dianggap siap ('loaded'), dan bukan milik kita."""
-    data = agen.llama("/v1/models", timeout=10)["data"]
+    cid, asli = agen.pecah_model(nama)
+    if cid == agen.KONEKSI_UTAMA:
+        data = agen.llama("/v1/models", timeout=10)["data"]
+    else:
+        data = agen.llama("/v1/models", timeout=10, koneksi=cid)["data"]
     router = any(isinstance(m, dict) and (m.get("status") or {}).get("value") for m in data)
     for m in data:
-        if isinstance(m, dict) and m.get("id") == nama:
+        if isinstance(m, dict) and m.get("id") == asli:
             if not router:
                 return "loaded"
             return (m.get("status") or {}).get("value") or "unloaded"

@@ -1,6 +1,7 @@
 """server_model.py - daftar model, muat/bongkar di llama-server, idle, dan sesi."""
 
 import re
+import threading
 import time
 import urllib.error
 import agen
@@ -9,18 +10,84 @@ from . import server_log as lg
 from . import server_state as state
 
 
-def daftar_model():
-    data = agen.llama("/v1/models", timeout=10)["data"]
+def _galat_singkat(e):
+    """Penyebab singkat sebuah koneksi gagal (tanpa kunci atau isi jawaban)."""
+    if isinstance(e, urllib.error.HTTPError):
+        return ("ditolak (%d): periksa API key" % e.code) if e.code in (401, 403) else ("galat server %d" % e.code)
+    if isinstance(e, urllib.error.URLError):
+        return "tidak bisa terhubung"
+    return type(e).__name__
+
+
+def _daftar_satu(cid):
+    """Model dari satu koneksi. Kunci model koneksi tambahan diberi awalan id koneksinya."""
+    s = agen.sambungan(cid)
+    if cid == agen.KONEKSI_UTAMA:
+        data = agen.llama("/v1/models", timeout=10)["data"]
+    else:
+        data = agen.llama("/v1/models", timeout=10, koneksi=cid)["data"]
     hasil = []
     for m in data:
         if not isinstance(m, dict) or not isinstance(m.get("id"), str):
             continue
-        f = conf.MODELS_DIR / (m["id"] + ".gguf")
-        mb = round(f.stat().st_size / 1048576) if f.exists() else None
-        hasil.append({"id": m["id"], "mb": mb,
-                      "llama": (m.get("status") or {}).get("value")})
+        mb = None
+        if cid == agen.KONEKSI_UTAMA:       # folder model lokal hanya cocok untuk koneksi utama
+            f = conf.MODELS_DIR / (m["id"] + ".gguf")
+            mb = round(f.stat().st_size / 1048576) if f.exists() else None
+        hasil.append({"id": agen.kunci_model(cid, m["id"]), "nama": m["id"], "mb": mb,
+                      "llama": (m.get("status") or {}).get("value"),
+                      "koneksi": cid, "jenis": s["jenis"], "sumber": s["nama"]})
+    router = any(h["llama"] for h in hasil)
+    for h in hasil:
+        h["router"] = router
     hasil.sort(key=lambda x: x["mb"] or 0)
     return hasil
+
+
+def daftar_model():
+    """Semua model dari semua koneksi (utama dulu, lalu tambahan), dikelompokkan per koneksi.
+    Koneksi yang gagal dilewati dan dicatat di state.KONEKSI_STATUS; bila SEMUA gagal, galat koneksi
+    utama dilempar (perilaku lama, saat hanya ada satu koneksi)."""
+    ids = [agen.KONEKSI_UTAMA] + list(agen.LLAMA_EXTRA)
+    hasil_per, galat = {}, {}
+
+    def ambil(cid):
+        try:
+            hasil_per[cid] = _daftar_satu(cid)
+        except Exception as e:  # noqa: BLE001
+            galat[cid] = e
+
+    if len(ids) == 1:
+        ambil(ids[0])
+    else:
+        ts = [threading.Thread(target=ambil, args=(c,), daemon=True) for c in ids]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+    status = {}
+    for cid in ids:
+        if cid in hasil_per:
+            status[cid] = {"ok": True, "jumlah": len(hasil_per[cid]), "galat": ""}
+        else:
+            status[cid] = {"ok": False, "jumlah": 0, "galat": _galat_singkat(galat[cid])}
+    state.KONEKSI_STATUS.clear()
+    state.KONEKSI_STATUS.update(status)
+    if not hasil_per:
+        raise galat[ids[0]]
+    hasil = []
+    for cid in ids:
+        hasil += hasil_per.get(cid, [])
+    return hasil
+
+
+def nama_tampil(kunci):
+    """Nama model untuk ditampilkan: model koneksi utama (llama-server) apa adanya, selain itu diberi nama koneksinya."""
+    if not kunci:
+        return kunci
+    cid, nama = agen.pecah_model(kunci)
+    s = agen.sambungan(cid)
+    return nama if cid == agen.KONEKSI_UTAMA and s["jenis"] != "online" else "%s · %s" % (nama, s["nama"])
 
 
 def router_aktif(models):
@@ -57,7 +124,7 @@ def berkas_belum_dikenal(ids):
 
 
 def status_llama(nama):
-    for m in daftar_model():
+    for m in _daftar_satu(agen.pecah_model(nama)[0]):
         if m["id"] == nama:
             return m["llama"]
     return None
@@ -85,7 +152,7 @@ def muat_model(nama):
         if nama not in info:
             raise RuntimeError("Model tidak ditemukan di llama-server")
         awal = info[nama]["llama"]
-        if not router_aktif(list(info.values())):
+        if not info[nama].get("router", router_aktif(list(info.values()))):
             lg.log("INFO", f"Server tanpa mode router: {nama} dipakai langsung (tanpa muat/bongkar)")
         elif awal != "loaded":
             lg.log("INFO", f"Memuat model {nama} ...")
@@ -174,4 +241,4 @@ def sentuh():
         state.S["aktivitas"] = time.time()
 
 
-__all__ = ['daftar_model', 'router_aktif', 'berkas_belum_dikenal', 'status_llama', '_unload', 'muat_model', 'bongkar_model', 'selesai_sesi', 'jaga_idle', 'sentuh', '_POTONGAN_GGUF']
+__all__ = ['daftar_model', 'nama_tampil', 'router_aktif', 'berkas_belum_dikenal', 'status_llama', '_unload', 'muat_model', 'bongkar_model', 'selesai_sesi', 'jaga_idle', 'sentuh', '_POTONGAN_GGUF']

@@ -20,3 +20,23 @@
 .kon-aksi [hidden]{display:none}
 .kon-baris .tautan,.kon-dlg .tautan{background:none;border:0;padding:0;color:var(--aksen);font:inherit;text-decoration:underline;cursor:pointer}
 .kon-dlg .tautan[hidden]{display:none}
+
+/* daftar koneksi di dialog */
+.kon-daftar{margin:10px 0}
+.kon-item{padding:10px 12px;margin:8px 0;background:var(--bg);border:1px solid var(--garis);border-radius:12px}
+.kon-item-atas{display:flex;align-items:center;gap:8px}
+.kon-nama{overflow-wrap:anywhere}
+.kon-lencana{flex:none;font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--garis)}
+.kon-lencana.llama{color:var(--ok);border-color:var(--ok)}
+.kon-lencana.online{color:var(--aksen);border-color:var(--aksen)}
+.kon-item-sub{margin-top:4px;overflow-wrap:anywhere}
+.kon-item-stat{margin-top:2px;overflow-wrap:anywhere}
+.kon-item-stat.ok{color:var(--ok)}
+.kon-item-stat.gagal{color:var(--bahaya)}
+.kon-item-aksi{display:flex;gap:16px;margin-top:6px;font-size:14px}
+.kon-tambah{width:100%;margin:6px 0}
+.kon-tambah[hidden]{display:none}
+.kon-form{margin-top:10px;padding:12px;border:1px solid var(--aksen);border-radius:12px}
+.kon-form[hidden]{display:none}
+.kon-fjudul{font-weight:600;margin-bottom:4px}
+.kon-tutup{width:100%;margin-top:12px}

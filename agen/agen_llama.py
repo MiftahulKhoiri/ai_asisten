@@ -17,19 +17,21 @@ class _TanpaRedirect(urllib.request.HTTPRedirectHandler):
 _OPENER_AMAN = urllib.request.build_opener(_TanpaRedirect)
 
 
-def llama_kepala(tambahan=None):
-    """Header permintaan ke llama-server/penyedia, termasuk Authorization bila ada kunci API."""
+def llama_kepala(tambahan=None, kunci=None):
+    """Header permintaan, termasuk Authorization bila ada kunci API. kunci=None = kunci koneksi utama."""
+    kunci = cfg.LLAMA_KEY if kunci is None else kunci
     h = {"Content-Type": "application/json"}
-    if cfg.LLAMA_KEY:
-        h["Authorization"] = "Bearer " + cfg.LLAMA_KEY
+    if kunci:
+        h["Authorization"] = "Bearer " + kunci
     if tambahan:
         h.update(tambahan)
     return h
 
 
-def llama_buka(req, timeout):
+def llama_buka(req, timeout, kunci=None):
     """Buka permintaan. Bila memakai kunci API, pengalihan (redirect) ditolak supaya kunci tidak bocor."""
-    if cfg.LLAMA_KEY:
+    kunci = cfg.LLAMA_KEY if kunci is None else kunci
+    if kunci:
         return _OPENER_AMAN.open(req, timeout=timeout)
     return urllib.request.urlopen(req, timeout=timeout)
 
@@ -42,13 +44,23 @@ def llama_url(path, dasar=None, v1=None):
     return (cfg.LLAMA_URL if dasar is None else dasar) + path
 
 
-def llama(path, data=None, timeout=300):
+def llama(path, data=None, timeout=300, koneksi=None):
+    """Permintaan ke server model. Bila `data` memuat "model", koneksinya dicari dari kunci model itu
+    (utama atau tambahan) dan namanya diganti nama asli di server tersebut; selain itu dipakai `koneksi`
+    (None = koneksi utama)."""
+    if koneksi is None and isinstance(data, dict) and isinstance(data.get("model"), str):
+        s, asli = cfg.sambungan_model(data["model"])
+        data = dict(data, model=asli)
+        if s["jenis"] == "online":
+            data.pop("chat_template_kwargs", None)
+    else:
+        s = cfg.sambungan(koneksi)
     req = urllib.request.Request(
-        llama_url(path),
+        llama_url(path, s["url"], s["v1"]),
         data=json.dumps(data).encode() if data is not None else None,
-        headers=llama_kepala(),
+        headers=llama_kepala(kunci=s["key"]),
         method="POST" if data is not None else "GET")
-    with llama_buka(req, timeout) as r:
+    with llama_buka(req, timeout, s["key"]) as r:
         return json.loads(r.read().decode())
 
 
@@ -65,17 +77,18 @@ def llama_uji(dasar, v1, kunci, timeout=10):
 
 def stream_chat(model, pesan, batal, tools=None):
     """Generator potongan JSON dari llama-server (stream SSE)."""
-    body = {"model": model, "messages": pesan, "temperature": 0.3,
+    s, asli = cfg.sambungan_model(model)
+    body = {"model": asli, "messages": pesan, "temperature": 0.3,
             "max_tokens": cfg.MAX_TOKENS, "stream": True}
-    if cfg.LLAMA_JENIS != "online":   # parameter khusus llama-server; penyedia ketat menolaknya
+    if s["jenis"] != "online":   # parameter khusus llama-server; penyedia ketat menolaknya
         body["chat_template_kwargs"] = {"enable_thinking": False}
     if tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"
     req = urllib.request.Request(
-        llama_url("/v1/chat/completions"), data=json.dumps(body).encode(),
-        headers=llama_kepala())
-    with llama_buka(req, 600) as r:
+        llama_url("/v1/chat/completions", s["url"], s["v1"]), data=json.dumps(body).encode(),
+        headers=llama_kepala(kunci=s["key"]))
+    with llama_buka(req, 600, s["key"]) as r:
         for mentah in r:
             if batal.is_set():
                 break  # keluar dari 'with' menutup koneksi dan menghentikan generasi

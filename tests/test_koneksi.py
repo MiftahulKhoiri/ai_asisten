@@ -25,6 +25,7 @@ import agen  # noqa: E402
 import asisten  # noqa: E402
 import tim  # noqa: E402
 from server import server_koneksi as kon  # noqa: E402
+from server import server_state as sstate  # noqa: E402
 from server import server_model as mdl  # noqa: E402
 from tim import tim_llm, tim_model  # noqa: E402
 
@@ -106,6 +107,13 @@ class Dasar(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
         p = mock.patch.dict(kon.SUMBER, {"nilai": "bawaan"})
+        p.start()
+        self.addCleanup(p.stop)
+        for d in (agen.LLAMA_EXTRA, sstate.KONEKSI_STATUS):          # koneksi tambahan & status tiap tes mulai kosong
+            p = mock.patch.dict(d, clear=True)
+            p.start()
+            self.addCleanup(p.stop)
+        p = mock.patch.object(agen, "LLAMA_NAMA", "")
         p.start()
         self.addCleanup(p.stop)
         with asisten.S_LOCK:
@@ -577,6 +585,259 @@ class TestRute(Dasar):
             self.assertIn(tipe, r.headers["Content-Type"].encode())
 
 
+# ---------------------------------------------------------------- beberapa koneksi sekaligus
+class TestMulti(Dasar):
+    """Lokal (router) + penyedia online (berkunci) bersamaan: daftar gabungan dan routing per model."""
+
+    def siapkan(self, **kw_online):
+        self.lokal = self.palsu(ids=("a", "b"))
+        self.online = self.palsu(kunci=KUNCI, router=False, **({"ids": ("gpt-1", "gpt-2")} | kw_online))
+        kon.koneksi_terapkan(self.lokal.alamat, "", "llama")
+        kode, d = kon.koneksi_simpan({"id": "baru", "nama": "OpenRouter", "alamat": self.online.alamat + "/v1",
+                                      "key": KUNCI, "jenis": "online"})
+        self.assertEqual((kode, d["ok"]), (200, True), d)
+        self.cid = d["id"]
+
+    def test_tambah_koneksi_tidak_mengubah_utama(self):
+        self.siapkan()
+        self.assertEqual(agen.LLAMA_URL, self.lokal.alamat)
+        self.assertEqual(agen.LLAMA_KEY, "")
+        self.assertRegex(self.cid, r"^k[0-9a-f]{6}$")
+        e = agen.LLAMA_EXTRA[self.cid]
+        self.assertEqual((e["nama"], e["url"], e["v1"], e["key"], e["jenis"]),
+                         ("OpenRouter", self.online.alamat, "/v1", KUNCI, "online"))
+
+    def test_daftar_gabungan_dengan_lencana_dan_kunci_unik(self):
+        self.siapkan()
+        h = mdl.daftar_model()
+        self.assertEqual([m["id"] for m in h], ["a", "b", self.cid + "::gpt-1", self.cid + "::gpt-2"])
+        on = h[2]
+        self.assertEqual((on["nama"], on["jenis"], on["koneksi"], on["sumber"], on["router"]),
+                         ("gpt-1", "online", self.cid, "OpenRouter", False))
+        lo = h[0]
+        self.assertEqual((lo["nama"], lo["jenis"], lo["koneksi"], lo["router"]), ("a", "llama", "lokal", True))
+        self.assertEqual(sstate.KONEKSI_STATUS[self.cid]["jumlah"], 2)
+        self.assertTrue(sstate.KONEKSI_STATUS["lokal"]["ok"])
+
+    def test_nama_sama_di_dua_sumber_tidak_bentrok(self):
+        self.siapkan(ids=("a", "x"))                       # "a" ada di lokal dan online
+        ids = [m["id"] for m in mdl.daftar_model()]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertIn("a", ids)
+        self.assertIn(self.cid + "::a", ids)
+
+    def test_chat_online_memakai_kunci_dan_nama_asli_tanpa_param_llama(self):
+        self.siapkan()
+        list(agen.stream_chat(self.cid + "::gpt-1", [{"role": "user", "content": "hi"}], threading.Event()))
+        c = self.online.yang("/chat/completions")[0]
+        self.assertEqual(c[2], "Bearer " + KUNCI)
+        body = json.loads(c[3])
+        self.assertEqual(body["model"], "gpt-1")
+        self.assertNotIn("chat_template_kwargs", body)
+        self.assertEqual(self.lokal.yang("/chat/completions"), [])          # tidak bocor ke server lokal
+
+    def test_chat_lokal_tanpa_kunci_dan_tidak_menyentuh_online(self):
+        self.siapkan()
+        list(agen.stream_chat("a", [{"role": "user", "content": "hi"}], threading.Event()))
+        c = self.lokal.yang("/chat/completions")[0]
+        self.assertEqual(c[2], "")
+        body = json.loads(c[3])
+        self.assertEqual(body["model"], "a")
+        self.assertIn("chat_template_kwargs", body)
+        self.assertEqual(self.online.yang("/chat/completions"), [])
+
+    def test_kunci_utama_tidak_dikirim_ke_koneksi_lain(self):
+        self.lokal = self.palsu(kunci="KUNCI-UTAMA-1")
+        self.online = self.palsu(kunci=KUNCI, router=False)
+        kon.koneksi_terapkan(self.lokal.alamat, "KUNCI-UTAMA-1", "llama")
+        cid = kon.koneksi_simpan({"id": "baru", "alamat": self.online.alamat, "key": KUNCI, "jenis": "online"})[1]["id"]
+        mdl.daftar_model()
+        for c in self.online.catatan:
+            self.assertNotIn("KUNCI-UTAMA-1", c[2])
+        for c in self.lokal.catatan:
+            self.assertNotIn(KUNCI, c[2])
+        self.assertTrue(cid)
+
+    def test_agent_tim_memakai_koneksi_model(self):
+        self.siapkan()
+        list(tim_llm._stream(self.cid + "::gpt-2", [{"role": "user", "content": "x"}], threading.Event(), 100))
+        c = self.online.yang("/chat/completions")[0]
+        self.assertEqual(c[2], "Bearer " + KUNCI)
+        body = json.loads(c[3])
+        self.assertEqual(body["model"], "gpt-2")
+        self.assertNotIn("chat_template_kwargs", body)
+        list(tim_llm._stream("b", [{"role": "user", "content": "x"}], threading.Event(), 100))
+        c = self.lokal.yang("/chat/completions")[0]
+        self.assertEqual((c[2], json.loads(c[3])["model"]), ("", "b"))
+        self.assertEqual(len(self.online.yang("/chat/completions")), 1)
+
+    def test_agent_status_model_per_koneksi(self):
+        self.siapkan()
+        self.assertEqual(tim_model.status_model(self.cid + "::gpt-1"), "loaded")     # penyedia online: selalu siap
+        self.assertEqual(tim_model.status_model("a"), "unloaded")                     # lokal (router): belum dimuat
+        self.assertIsNone(tim_model.status_model(self.cid + "::tidak-ada"))
+
+    def test_sebagian_gagal_model_lain_tetap_tampil(self):
+        self.siapkan()
+        self.online.tutup()
+        h = mdl.daftar_model()
+        self.assertEqual([m["id"] for m in h], ["a", "b"])
+        st = sstate.KONEKSI_STATUS[self.cid]
+        self.assertFalse(st["ok"])
+        self.assertTrue(st["galat"])
+        self.assertNotIn(KUNCI, json.dumps(st))
+
+    def test_semua_gagal_melempar(self):
+        self.siapkan()
+        self.lokal.tutup()
+        self.online.tutup()
+        with self.assertRaises(Exception):
+            mdl.daftar_model()
+
+    def test_hanya_online_gagal_tidak_melempar_bila_utama_hidup(self):
+        self.siapkan(balas=(401, {"error": "x"}))
+        h = mdl.daftar_model()
+        self.assertEqual([m["id"] for m in h], ["a", "b"])
+        self.assertFalse(sstate.KONEKSI_STATUS[self.cid]["ok"])
+
+    def test_nama_tampil(self):
+        self.siapkan()
+        self.assertEqual(mdl.nama_tampil(self.cid + "::gpt-1"), "gpt-1 · OpenRouter")
+        self.assertEqual(mdl.nama_tampil("a"), "a")
+
+    def test_ringkasan_memuat_semua_koneksi_tanpa_kunci(self):
+        self.siapkan()
+        mdl.daftar_model()
+        r = kon.koneksi_ringkas()
+        self.assertEqual([c["id"] for c in r["daftar"]], ["lokal", self.cid])
+        self.assertEqual([c["utama"] for c in r["daftar"]], [True, False])
+        self.assertTrue(r["daftar"][1]["key_ada"])
+        self.assertEqual(r["daftar"][1]["jumlah"], 2)
+        self.assertEqual(r["maks_tambahan"], kon.MAKS_TAMBAHAN)
+        self.assertNotIn(KUNCI, json.dumps(r))
+
+    def test_ubah_koneksi_tambahan_mempertahankan_kunci(self):
+        self.siapkan()
+        kode, d = kon.koneksi_simpan({"id": self.cid, "nama": "Ganti", "alamat": self.online.alamat + "/v1"})
+        self.assertEqual(kode, 200)
+        self.assertEqual(agen.LLAMA_EXTRA[self.cid]["nama"], "Ganti")
+        self.assertEqual(agen.LLAMA_EXTRA[self.cid]["key"], KUNCI)
+        kon.koneksi_simpan({"id": self.cid, "alamat": self.online.alamat + "/v1", "key": ""})
+        self.assertEqual(agen.LLAMA_EXTRA[self.cid]["key"], "")
+
+    def test_hapus_koneksi_tambahan(self):
+        self.siapkan()
+        mdl.daftar_model()
+        kode, d = kon.koneksi_hapus({"id": self.cid})
+        self.assertEqual((kode, d["ok"]), (200, True))
+        self.assertNotIn(self.cid, agen.LLAMA_EXTRA)
+        self.assertNotIn(self.cid, sstate.KONEKSI_STATUS)
+        self.assertEqual([m["id"] for m in mdl.daftar_model()], ["a", "b"])
+        self.assertNotIn(KUNCI, self.berkas.read_text() if self.berkas.exists() else "")
+
+    def test_hapus_ditolak_untuk_utama_tak_dikenal_dan_saat_sibuk(self):
+        self.siapkan()
+        self.assertEqual(kon.koneksi_hapus({"id": "lokal"})[0], 400)
+        self.assertEqual(kon.koneksi_hapus({"id": "kzzzzzz"})[0], 404)
+        self.assertEqual(kon.koneksi_hapus({"id": 5})[0], 404)
+        self.assertEqual(kon.koneksi_hapus(["x"])[0], 404)
+        with mock.patch.object(kon, "_sibuk", return_value=True):
+            self.assertEqual(kon.koneksi_hapus({"id": self.cid})[0], 409)
+            self.assertEqual(kon.koneksi_simpan({"id": "baru", "alamat": "http://127.0.0.1:9"})[0], 409)
+        self.assertIn(self.cid, agen.LLAMA_EXTRA)
+
+    def test_simpan_id_tak_dikenal_ditolak(self):
+        kode, d = kon.koneksi_simpan({"id": "kzzzzzz", "alamat": "http://127.0.0.1:9"})
+        self.assertEqual(kode, 400)
+
+    def test_batas_koneksi_tambahan(self):
+        for i in range(kon.MAKS_TAMBAHAN):
+            kode, d = kon.koneksi_simpan({"id": "baru", "alamat": "http://127.0.0.1:%d" % (9000 + i), "jenis": "online"})
+            self.assertEqual(kode, 200, d)
+        kode, d = kon.koneksi_simpan({"id": "baru", "alamat": "http://127.0.0.1:9999", "jenis": "online"})
+        self.assertEqual(kode, 400)
+        self.assertEqual(len(agen.LLAMA_EXTRA), kon.MAKS_TAMBAHAN)
+
+    def test_nama_otomatis_bila_kosong(self):
+        d = kon.koneksi_simpan({"id": "baru", "alamat": "https://api.openai.com/v1", "key": KUNCI, "jenis": "online"})[1]
+        self.assertTrue(agen.LLAMA_EXTRA[d["id"]]["nama"])
+        self.assertNotIn(KUNCI, agen.LLAMA_EXTRA[d["id"]]["nama"])
+
+    def test_tersimpan_di_berkas_rahasia_dan_dimuat_ulang(self):
+        self.siapkan()
+        self.assertEqual(stat.S_IMODE(self.berkas.stat().st_mode), 0o600)
+        isi = json.loads(self.berkas.read_text())
+        self.assertEqual(len(isi["tambahan"]), 1)
+        agen.LLAMA_EXTRA.clear()
+        kon.koneksi_muat()
+        self.assertEqual(list(agen.LLAMA_EXTRA), [self.cid])
+        self.assertEqual(agen.LLAMA_EXTRA[self.cid]["key"], KUNCI)
+        self.assertEqual(agen.LLAMA_EXTRA[self.cid]["jenis"], "online")
+
+    def test_reset_hanya_koneksi_utama(self):
+        self.siapkan()
+        kon.koneksi_reset()
+        self.assertIn(self.cid, agen.LLAMA_EXTRA)
+
+    def test_status_model_tambahan_tidak_pakai_router(self):
+        self.siapkan()
+        self.assertIsNone(mdl.status_llama(self.cid + "::gpt-1"))                  # tanpa status = tak ada muat/bongkar
+        self.assertEqual(mdl.status_llama("a"), "unloaded")
+
+
+class TestMultiRute(TestRute):
+    """Rute HTTP untuk beberapa koneksi (memakai penyiapan server dari TestRute)."""
+
+    def test_hapus_wajib_token(self):
+        self.assertEqual(self.req("POST", "/api/koneksi/hapus", {"id": "x"}, token=False)[0], 401)
+
+    def test_alur_tambah_status_gabungan_hapus(self):
+        lokal = self.palsu(ids=("a", "b"))
+        online = self.palsu(kunci=KUNCI, router=False, ids=("g1", "g2", "g3"))
+        kon.koneksi_terapkan(lokal.alamat, "", "llama")
+        kode, isi = self.req("POST", "/api/koneksi", {"id": "baru", "nama": "OpenRouter", "alamat": online.alamat,
+                                                    "key": KUNCI, "jenis": "online"})
+        self.assertEqual(kode, 200)
+        self.assertNotIn(KUNCI.encode(), isi)
+        cid = json.loads(isi)["id"]
+        for path in ("/api/status", "/api/agent/status"):
+            kode, isi = self.req("GET", path)
+            d = json.loads(isi)
+            self.assertEqual(kode, 200, path)
+            self.assertEqual([m["id"] for m in d["models"]],
+                             ["a", "b"] + [cid + "::" + n for n in ("g1", "g2", "g3")], path)
+            self.assertEqual([c["id"] for c in d["koneksi"]["daftar"]], ["lokal", cid], path)
+            self.assertTrue(d["koneksi"]["daftar"][1]["ok"], path)
+            self.assertNotIn(KUNCI.encode(), isi)
+        kode, isi = self.req("GET", "/api/status")
+        d = json.loads(isi)
+        self.assertTrue(d["router"])                      # ditentukan koneksi utama saja
+        kode, isi = self.req("POST", "/api/koneksi/hapus", {"id": cid})
+        self.assertEqual(kode, 200)
+        self.assertEqual([c["id"] for c in json.loads(isi)["koneksi"]["daftar"]], ["lokal"])
+        self.assertEqual(self.req("POST", "/api/koneksi/hapus", {"id": cid})[0], 404)
+
+    def test_satu_koneksi_gagal_status_tetap_menjawab(self):
+        lokal = self.palsu(ids=("a",))
+        kon.koneksi_terapkan(lokal.alamat, "", "llama")
+        cid = json.loads(self.req("POST", "/api/koneksi", {"id": "baru", "alamat": "http://127.0.0.1:1", "jenis": "online"})[1])["id"]
+        kode, isi = self.req("GET", "/api/status")
+        d = json.loads(isi)
+        self.assertEqual(kode, 200)
+        self.assertEqual([m["id"] for m in d["models"]], ["a"])
+        gagal = [c for c in d["koneksi"]["daftar"] if c["id"] == cid][0]
+        self.assertFalse(gagal["ok"])
+        self.assertTrue(gagal["galat"])
+
+    def test_uji_koneksi_tambahan_memakai_kunci_tersimpan(self):
+        online = self.palsu(kunci=KUNCI, router=False)
+        cid = json.loads(self.req("POST", "/api/koneksi", {"id": "baru", "alamat": online.alamat, "key": KUNCI, "jenis": "online"})[1])["id"]
+        kode, isi = self.req("POST", "/api/koneksi/uji", {"id": cid, "alamat": online.alamat})
+        d = json.loads(isi)
+        self.assertTrue(d["ok"], d)
+
+
+
 # ---------------------------------------------------------------- aplikasi tetap hidup tanpa llama-server
 class TestAplikasiTanpaLlama(unittest.TestCase):
     def test_asisten_naik_walau_llama_server_mati_dan_berhenti_rapi(self):
@@ -632,6 +893,22 @@ class TestTampilan(unittest.TestCase):
         r = subprocess.run([node, str(ROOT / "tests" / "koneksi_smoke.js")], capture_output=True, text=True, timeout=60)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("OK", r.stdout)
+
+    def test_pilihan_model_agent_dikelompokkan_lokal_online(self):
+        node = __import__("shutil").which("node")
+        if not node:
+            self.skipTest("node tidak terpasang")
+        with tempfile.TemporaryDirectory() as d:
+            nd = Path(d) / "ev.ndjson"
+            nd.write_text(json.dumps({"type": "info", "teks": "x"}) + "\n")
+            r = subprocess.run([node, str(ROOT / "tests" / "agent_smoke.js"), str(nd), "campur"],
+                               capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        h = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertEqual([(g["tag"], g["label"]) for g in h["pilihan"]],
+                         [("optgroup", "Lokal · llama-server"), ("optgroup", "Online · OpenRouter")])
+        self.assertEqual([[o["v"] for o in g["anak"]] for g in h["pilihan"]], [["A", "B"], ["k1::gpt-4o"]])
+        self.assertEqual(h["pilihan"][1]["anak"][0]["t"], "gpt-4o ☁")          # kunci "k1::" tidak tampil
 
     def test_halaman_memuat_dialog_koneksi(self):
         for nama in ("index.html", "agent.html"):

@@ -114,7 +114,19 @@ details.tool .rg{flex:1;min-width:0}
 .langkah{margin:16px 0 6px;font-size:13px;color:var(--redup)}
 .model.on{border-color:var(--aksen);box-shadow:0 0 0 1px var(--aksen) inset}
 .model.on .nama::before{content:"\2713  ";color:var(--aksen)}
-#daftarModel.mati .model,#daftarModel.mati+#modelInfo{opacity:.6}
+#daftarModel.mati .model{opacity:.6}
+/* daftar model ada di balik satu tombol; baru terbuka bila diketuk */
+.pilihModel{display:flex;align-items:center;gap:10px;width:100%;text-align:left;margin:6px 0;padding:12px 14px;background:var(--panel);border:1px solid var(--garis);border-radius:12px}
+.pilihModel .teks{flex:1;min-width:0}
+.pilihModel .nama{display:block;font-weight:600;overflow-wrap:anywhere}
+.pilihModel .meta{display:block;color:var(--redup);font-size:13px}
+.pilihModel .panah{flex:none;color:var(--redup)}
+.pilihModel[aria-expanded="true"]{border-color:var(--aksen)}
+.pilihModel:disabled{opacity:.6}
+#modelPanel{max-height:min(55vh,420px);overflow-y:auto;margin:4px 0 8px;padding:0 2px;border-top:1px solid var(--garis)}
+#modelPanel[hidden]{display:none}
+#modelPanel .model{margin:8px 0}
+#modelPanel #cariModel{margin:10px 0 2px}
 #btnMulai{display:block;width:100%;padding:13px;font-size:16px;font-weight:600}
 #btnMulai:disabled{opacity:.5}
 
@@ -144,3 +156,13 @@ details.tool .rg{flex:1;min-width:0}
 .promptBaris .cat{display:block;font-size:12px;color:var(--redup);font-weight:400;margin-top:2px}
 .promptBaris .nm>span{min-width:0}
 .promptBaris .ekspor{flex:none;border:0;background:none;color:var(--aksen);font-size:15px;padding:6px 8px;cursor:pointer}
+
+/* kelompok model: Lokal vs Online */
+.nama .lencana{margin-left:8px;vertical-align:1px;font-weight:400}
+.lencana.lokal{color:var(--ok);border-color:var(--ok)}
+.lencana.online{color:var(--aksen);border-color:var(--aksen)}
+.grupModel{position:sticky;top:0;z-index:1;margin:12px 0 4px;padding:6px 2px;font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--redup);background:var(--bg);border-bottom:1px solid var(--garis)}
+.grupModel.online{color:var(--aksen)}
+.grupModel[hidden],#koneksiGalat[hidden]{display:none}
+#modelPanel .grupModel:first-of-type{margin-top:4px}
+#koneksiGalat{color:var(--bahaya)}

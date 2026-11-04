@@ -14,6 +14,7 @@ S = {"model": None, "target": None, "status": "kosong", "pesan": "",
 S_LOCK = threading.RLock()
 GEN_LOCK = threading.Lock()   # hanya satu proses generasi pada satu waktu
 AKTIF = {"ctx": None}
+KONEKSI_STATUS = {}           # id koneksi -> {"ok", "jumlah", "galat"} dari pembacaan daftar model terakhir
 KONF = {}                     # kid -> [Event, setuju]
 
 # Proses Agent berjalan di latar belakang, terlepas dari halaman web: semua event disimpan di
@@ -24,4 +25,4 @@ AGENT = {"sesi": None, "id": None, "tugas": "", "events": [], "awal": 0,
 AGENT_COND = threading.Condition()
 
 
-__all__ = ['S', 'S_LOCK', 'GEN_LOCK', 'AKTIF', 'KONF', 'AGENT', 'AGENT_COND']
+__all__ = ['KONEKSI_STATUS', 'S', 'S_LOCK', 'GEN_LOCK', 'AKTIF', 'KONF', 'AGENT', 'AGENT_COND']

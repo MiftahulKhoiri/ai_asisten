@@ -141,7 +141,7 @@
     if (k.textContent !== aktv.label) k.textContent = aktv.label;   // jangan ganti node tiap detik (pembaca layar)
     const d = Math.floor((Date.now() - aktv.mulai) / 1000);
     $('lencanaSub').textContent = aktv.selesai ? 'ketuk untuk lihat log'
-      : (aktv.model ? aktv.model + ' · ' : '') + d + ' dtk';
+      : (aktv.model ? namaTampil(aktv.model) + ' · ' : '') + d + ' dtk';
     if (panelBuka) gambarSekarang();
   }
   function gambarRingkas() {
@@ -151,7 +151,7 @@
     const d = Math.floor((Date.now() - aktv.mulai) / 1000);
     const box = $('logSekarang'); box.innerHTML = '';
     box.appendChild(document.createTextNode(aktv.label));
-    box.appendChild(el('small', '', (aktv.model ? 'Model: ' + aktv.model + ' · ' : '') +
+    box.appendChild(el('small', '', (aktv.model ? 'Model: ' + namaTampil(aktv.model) + ' · ' : '') +
       (aktv.selesai ? 'proses berhenti' : d + ' dtk pada langkah ini')));
     gambarRingkas();
   }
@@ -160,7 +160,7 @@
     const nama = Object.keys(modelState);
     if (!nama.length) { box.appendChild(el('div', 'redup', '-')); return; }
     for (const n of nama) {
-      const r = el('div', 'mrow'), mn = el('span', 'mn', n);
+      const r = el('div', 'mrow'), mn = el('span', 'mn', namaTampil(n));
       if (peranModel[n]) mn.appendChild(el('small', '', peranModel[n]));
       r.append(el('span', 'dot ' + modelState[n]), mn, el('span', 'ms', NAMA_STATE[modelState[n]] || modelState[n]));
       box.appendChild(r);
@@ -270,12 +270,30 @@
     if (!ada(cfg.c)) cfg.c = models[Math.floor(models.length / 2)].id;
     if (cfg.p === cfg.e && models.length > 1) cfg.e = models.find(m => m.id !== cfg.p).id;
   }
+  /* nama yang ditampilkan: nama asli model + penanda Online (kunci "koneksi::nama" tidak ditampilkan) */
+  function namaTampil(id) {
+    const m = models.find(x => x.id === id);
+    return m ? (m.nama || m.id) + (m.jenis === 'online' ? ' ☁' : '') : (id || '');
+  }
   function isiPilihan(sel, nilai) {
     sel.innerHTML = '';
+    const sumber = new Set(models.map(m => m.koneksi || 'lokal'));
+    const grup = {};
     for (const m of models) {
       const o = document.createElement('option'); o.value = m.id;
-      o.textContent = m.id + (m.mb ? ' · ' + gb(m.mb) : '');
-      sel.appendChild(o);
+      o.textContent = (m.nama || m.id) + (m.jenis === 'online' ? ' ☁' : '') + (m.mb ? ' · ' + gb(m.mb) : '');
+      let induk = sel;
+      if (sumber.size > 1) {                    // beberapa sumber: kelompokkan Lokal / Online · penyedia
+        const cid = m.koneksi || 'lokal';
+        if (!grup[cid]) {
+          grup[cid] = document.createElement('optgroup');
+          const j = m.jenis === 'online' ? 'Online' : 'Lokal', n = m.sumber || cid;
+          grup[cid].label = n.toLowerCase() === j.toLowerCase() ? j : j + ' · ' + n;
+          sel.appendChild(grup[cid]);
+        }
+        induk = grup[cid];
+      }
+      induk.appendChild(o);
     }
     if (models.some(m => m.id === nilai)) sel.value = nilai;
   }
@@ -294,7 +312,7 @@
     $('ketMode').textContent = cfg.mode === 3
       ? 'Tiap peran punya model sendiri. Model yang sama boleh dipilih untuk dua peran.'
       : 'Model 1 merencana dan memeriksa, Model 2 menulis program.';
-    const sig = models.map(m => m.id).join('|');
+    const sig = models.map(m => m.id + '~' + (m.sumber || '') + '~' + (m.jenis || '')).join('|');
     if (paksaDaftar || sig !== daftarSig) {   // jangan bangun ulang pilihan saat polling (menutup menu di HP)
       daftarSig = sig;
       isiPilihan($('selP'), cfg.p); isiPilihan($('selE'), cfg.e); isiPilihan($('selC'), cfg.c);
@@ -444,7 +462,7 @@
     k.appendChild(el('b', 'jdl', 'Tim siap · maks ' + cfg.maks + ' putaran'));
     for (const [kunci, ik, nama, mdl, tugas] of baris) {
       const r = el('div', 'baris-tim r-' + kunci), rt = el('span', 'rt');
-      rt.append(el('b', '', nama + ' · ' + mdl), el('small', '', tugas));
+      rt.append(el('b', '', nama + ' · ' + namaTampil(mdl)), el('small', '', tugas));
       r.append(el('span', 'rk', ik), rt); k.appendChild(r);
     }
     const adaPrompt = PERAN_PROMPT.filter(([p]) => cfg.prompt[p] && cfg.prompt[p].ids.length).map(([p, nama]) => nama + ' (' + (cfg.prompt[p].mode === 'ganti' ? 'ganti' : 'tambah') + ')');
@@ -675,7 +693,7 @@
     const d = el('details', 'tool tahap r-' + ev.tahap), s = el('summary');
     const lc = lencana('menunggu', 'berjalan');
     const rg = el('span', 'rg');
-    rg.append(el('b', '', ev.peran + (ev.putaran ? ' · putaran ' + ev.putaran : '')), el('small', '', ev.model));
+    rg.append(el('b', '', ev.peran + (ev.putaran ? ' · putaran ' + ev.putaran : '')), el('small', '', namaTampil(ev.model)));
     s.append(el('span', 'ik', IKON[ev.tahap] || '⚙'), rg, lc);
     const stat = el('div', 'stat', 'Menyiapkan model ...'), pre = el('pre');
     d.append(s, stat, pre); d.open = true; $('pesan').appendChild(d);

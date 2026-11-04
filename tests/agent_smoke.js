@@ -71,7 +71,11 @@ async function fetchPalsu(url, opt) {
   if (url === '/api/agent/status') {
     const proses = MODE === 'lampirkan'
       ? {sesi: 's1', id: null, tugas: 'buat program halo', aktif: true, status: null, lalu: 42} : null;
-    return respon({models: [{id: 'A', mb: 1100}, {id: 'B', mb: 2300}], chat_aktif: false,
+    const MODEL_CAMPUR = [
+      {id: 'A', nama: 'A', mb: 1100, koneksi: 'lokal', jenis: 'lokal', sumber: 'llama-server'},
+      {id: 'B', nama: 'B', mb: 2300, koneksi: 'lokal', jenis: 'lokal', sumber: 'llama-server'},
+      {id: 'k1::gpt-4o', nama: 'gpt-4o', koneksi: 'k1', jenis: 'online', sumber: 'OpenRouter'}];
+    return respon({models: MODE === 'campur' ? MODEL_CAMPUR : [{id: 'A', mb: 1100}, {id: 'B', mb: 2300}], chat_aktif: false,
                    sibuk: false, proses});
   }
   if (url.startsWith('/api/agent/event?')) {
@@ -144,6 +148,7 @@ vm.createContext(konteks);
     await new Promise(r => setTimeout(r, 30));
   } catch (e) { galat.push(String(e && e.stack || e)); }
   const hasil = {
+    pilihan: (byId['selP'] ? byId['selP'].children : []).map(c => ({tag: c.tag, label: c.label, teks: c._text, anak: (c.children || []).map(x => ({v: x.value, t: x._text}))})),
     galat, err, dikirim: kirimBody.teks && kirimBody.teks.teks,
     baris_log: baris.length,
     lencana_tampil: lencana.hidden === false,

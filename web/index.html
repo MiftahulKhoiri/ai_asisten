@@ -63,9 +63,16 @@
         <div class="langkah">2. Pilih model</div>
         <div id="koneksiBaris"></div>
         <div id="modelPesan"></div>
-        <input type="text" id="cariModel" placeholder="Cari model..." autocomplete="off" aria-label="Cari model" hidden>
-        <div id="daftarModel" role="radiogroup" aria-label="Model"></div>
+        <button type="button" id="btnDaftarModel" class="pilihModel" aria-expanded="false" aria-controls="modelPanel" disabled>
+          <span class="teks"><span class="nama"><span id="modelLabel">Pilih model</span><span class="lencana" id="modelBadge" hidden></span></span><span class="meta" id="modelJumlah"></span></span>
+          <span class="panah" id="modelPanah" aria-hidden="true">&#9662;</span>
+        </button>
+        <div id="modelPanel" hidden>
+          <input type="text" id="cariModel" placeholder="Cari model..." autocomplete="off" aria-label="Cari model" hidden>
+          <div id="daftarModel" role="radiogroup" aria-label="Model"></div>
+        </div>
         <p id="modelInfo" class="redup kecil"></p>
+        <p id="koneksiGalat" class="err kecil" hidden></p>
         <div class="langkah">3. Mulai</div>
         <button class="btn" id="btnMulai" type="button" disabled>Mulai sesi</button>
         <p id="mulaiKet" class="redup kecil"></p>

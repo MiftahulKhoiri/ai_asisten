@@ -90,6 +90,10 @@ class TestLayarMulai(unittest.TestCase):
             self.assertIn(pasti, html)
         self.assertLess(html.index('id="skillBox"'), html.index('id="daftarModel"'))
         self.assertLess(html.index('id="daftarModel"'), html.index('id="btnMulai"'))
+        # daftar model ada di dalam panel tertutup di balik tombol
+        self.assertLess(html.index('id="btnDaftarModel"'), html.index('id="modelPanel"'))
+        self.assertLess(html.index('id="modelPanel"'), html.index('id="daftarModel"'))
+        self.assertRegex(html, r'<div id="modelPanel" hidden>')
 
     def test_mengetuk_model_tidak_lagi_memuat_langsung(self):
         js = (WEB / "index.js").read_text(encoding="utf-8")

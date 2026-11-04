@@ -162,6 +162,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(*kon.koneksi_uji(b))
             if path == "/api/koneksi":
                 return self._json(*kon.koneksi_simpan(b))
+            if path == "/api/koneksi/hapus":
+                return self._json(*kon.koneksi_hapus(b))
             if path == "/api/koneksi/reset":
                 return self._json(*kon.koneksi_reset())
             if path == "/api/prompt":

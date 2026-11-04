@@ -1,15 +1,17 @@
-/* koneksi.js - pengaturan koneksi ke llama-server atau penyedia model online (alamat + API key).
+/* koneksi.js - koneksi ke server model: llama-server lokal dan/atau penyedia online (alamat + API key).
  *
  *   const k = Koneksi.pasang({token, wadah, toast, setelahUbah});
  *   k.perbarui(status.koneksi);   // dari /api/status atau /api/agent/status
  *   k.buka();                     // membuka dialog
  *
- * `wadah` diisi satu baris ringkas ("Server model: ... [Atur koneksi]"). Kunci API hanya dikirim ke
- * server saat disimpan atau diuji; server tidak pernah mengirimnya kembali (hanya tahu ada/tidaknya).
+ * Boleh ada beberapa koneksi sekaligus (satu utama + tambahan); daftar model memuat model dari semuanya,
+ * dikelompokkan Lokal / Online. `wadah` diisi satu baris ringkas ("Sumber model: ... [Atur koneksi]").
+ * Kunci API hanya dikirim ke server saat disimpan atau diuji; server tidak pernah mengirimnya kembali
+ * (hanya tahu ada/tidaknya) dan kunci tidak disimpan di browser.
  */
 (function () {
   'use strict';
-  const JENIS = {llama: 'llama-server', online: 'penyedia online'};
+  const JENIS = {llama: 'Lokal', online: 'Online'};
 
   function el(tag, cls, teks) {
     const e = document.createElement(tag);
@@ -19,7 +21,7 @@
   }
 
   function pasang(opt) {
-    const st = {k: null, dlg: null, hapusKey: false, sibuk: false};
+    const st = {k: null, dlg: null, hapusKey: false, sibuk: false, edit: null};
     const toast = opt.toast || function () {};
 
     async function json(path, body) {
@@ -34,6 +36,10 @@
       return j;
     }
 
+    const daftar = () => (st.k && st.k.daftar) || [];
+    const cari = id => daftar().find(c => c.id === id) || null;
+    const lencana = c => (JENIS[c.jenis] || c.jenis);
+
     /* ---------- baris ringkas ---------- */
     let teks = null;
     if (opt.wadah) {
@@ -46,11 +52,14 @@
     }
     function ringkas(k) {
       if (!k) return '';
-      return 'Server model: ' + k.alamat + ' · ' + (JENIS[k.jenis] || k.jenis) + (k.key_ada ? ' · API key ✔' : '');
+      const d = k.daftar && k.daftar.length ? k.daftar : [{nama: k.alamat, jenis: k.jenis, ok: null}];
+      return 'Sumber model: ' + d.map(c => (c.ok === false ? '⚠ ' : '') + c.nama +
+      (c.nama.toLowerCase() === lencana(c).toLowerCase() ? '' : ' (' + lencana(c).toLowerCase() + ')')).join(' · ');
     }
     function perbarui(k) {
       if (k) st.k = k;
       if (teks) teks.textContent = ringkas(st.k);
+      if (st.dlg && !st.dlg.tirai.hidden) gambarDaftar();
     }
 
     /* ---------- dialog ---------- */
@@ -60,9 +69,17 @@
       const dlg = el('div', 'kon-dlg');
       dlg.setAttribute('role', 'dialog'); dlg.setAttribute('aria-modal', 'true'); dlg.setAttribute('aria-labelledby', 'konJudul');
       const judul = el('h3', '', 'Koneksi model'); judul.id = 'konJudul';
-      const ket = el('p', 'redup kecil', 'Isi alamat llama-server (yang dinyalakan ./llama_server.sh) atau penyedia online yang kompatibel OpenAI. ' +
-        'Semua model yang dilaporkan server akan tampil di daftar model.');
+      const ket = el('p', 'redup kecil', 'Boleh ada beberapa sumber sekaligus: llama-server lokal (yang dinyalakan ./llama_server.sh) ' +
+        'dan penyedia online yang kompatibel OpenAI. Semua model dari semua sumber tampil di daftar model, dikelompokkan Lokal dan Online.');
 
+      const list = el('div', 'kon-daftar');
+      const bTambah = el('button', 'btn abu kon-tambah', '+ Tambah koneksi'); bTambah.type = 'button';
+
+      const form = el('div', 'kon-form'); form.hidden = true;
+      const fJudul = el('div', 'kon-fjudul');
+      const lNama = el('label', 'kon-label', 'Nama (opsional)'); lNama.htmlFor = 'konNama';
+      const inNama = el('input'); inNama.id = 'konNama'; inNama.type = 'text'; inNama.autocomplete = 'off'; inNama.maxLength = 40;
+      inNama.placeholder = 'mis. OpenRouter';
       const lAlamat = el('label', 'kon-label', 'Alamat server'); lAlamat.htmlFor = 'konAlamat';
       const inAlamat = el('input'); inAlamat.id = 'konAlamat'; inAlamat.type = 'text'; inAlamat.inputMode = 'url';
       inAlamat.autocomplete = 'off'; inAlamat.autocapitalize = 'none'; inAlamat.spellcheck = false; inAlamat.maxLength = 300;
@@ -90,23 +107,54 @@
       const bUji = el('button', 'btn abu', 'Uji koneksi'); bUji.type = 'button';
       const bSimpan = el('button', 'btn', 'Simpan'); bSimpan.type = 'button';
       const bReset = el('button', 'btn abu', 'Pakai bawaan'); bReset.type = 'button';
-      bReset.title = 'Hapus pengaturan dari web dan kembali ke nilai awal (LLAMA_BASE_URL)';
-      const bTutup = el('button', 'btn abu', 'Tutup'); bTutup.type = 'button';
-      aksi.append(bUji, bSimpan, bReset, bTutup);
+      bReset.title = 'Kembalikan koneksi utama ke nilai awal (LLAMA_BASE_URL)';
+      const bBatal = el('button', 'btn abu', 'Batal'); bBatal.type = 'button';
+      aksi.append(bUji, bSimpan, bReset, bBatal);
+      form.append(fJudul, lNama, inNama, lAlamat, inAlamat, lJenis, seg, lKunci, inKunci, kunciKet, bHapusKey, hasil, aksi);
 
-      dlg.append(judul, ket, lAlamat, inAlamat, lJenis, seg, lKunci, inKunci, kunciKet, bHapusKey, hasil, aksi);
+      const bTutup = el('button', 'btn abu kon-tutup', 'Tutup'); bTutup.type = 'button';
+      dlg.append(judul, ket, list, bTambah, form, bTutup);
       tirai.appendChild(dlg);
       document.body.appendChild(tirai);
-      const d = {tirai, dlg, inAlamat, inKunci, kunciKet, bHapusKey, hasil, bUji, bSimpan, bReset, bTutup, bJenis, jenis: 'llama'};
+      const d = {tirai, dlg, list, bTambah, form, fJudul, inNama, inAlamat, inKunci, kunciKet, bHapusKey, hasil, bUji, bSimpan,
+        bReset, bBatal, bTutup, bJenis, jenis: 'llama'};
 
       tirai.addEventListener('mousedown', e => { if (e.target === tirai) tutup(); });
       tirai.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); tutup(); } });
       bTutup.onclick = tutup;
+      bTambah.onclick = () => bukaForm('baru');
+      bBatal.onclick = tutupForm;
       bUji.onclick = uji;
       bSimpan.onclick = simpan;
       bReset.onclick = reset;
       inKunci.addEventListener('input', () => { if (inKunci.value) st.hapusKey = false; gambarKunci(); });
       return d;
+    }
+
+    function gambarDaftar() {
+      const d = st.dlg, l = d.list;
+      l.textContent = '';
+      for (const c of daftar()) {
+        const baris = el('div', 'kon-item'); baris.dataset.id = c.id;
+        const atas = el('div', 'kon-item-atas');
+        atas.append(el('span', 'kon-lencana ' + c.jenis, lencana(c)), el('b', 'kon-nama', c.nama));
+        const sub = el('div', 'kon-item-sub redup kecil',
+          c.alamat + (c.key_ada ? ' · API key ✔' : '') + (c.utama ? ' · utama' : ''));
+        const stat = el('div', 'kon-item-stat kecil ' + (c.ok === false ? 'gagal' : c.ok ? 'ok' : 'redup'),
+          c.ok === false ? '⚠ ' + (c.galat || 'tidak terhubung') : c.ok ? '✔ ' + c.jumlah + ' model' : '');
+        const aksi = el('div', 'kon-item-aksi');
+        const bUbah = el('button', 'tautan kon-ubah', 'Ubah'); bUbah.type = 'button';
+        bUbah.onclick = () => bukaForm(c.id);
+        aksi.appendChild(bUbah);
+        if (!c.utama) {
+          const bHapus = el('button', 'tautan kon-hapus', 'Hapus'); bHapus.type = 'button';
+          bHapus.onclick = () => hapus(c);
+          aksi.appendChild(bHapus);
+        }
+        baris.append(atas, sub, stat, aksi);
+        l.appendChild(baris);
+      }
+      d.bTambah.hidden = daftar().length - 1 >= ((st.k && st.k.maks_tambahan) || 8);
     }
 
     function aturJenis(id) {
@@ -115,7 +163,7 @@
       for (const [k, b] of Object.entries(d.bJenis)) { b.classList.toggle('on', k === id); b.setAttribute('aria-checked', k === id ? 'true' : 'false'); }
     }
     function gambarKunci() {
-      const d = st.dlg, ada = !!(st.k && st.k.key_ada);
+      const d = st.dlg, c = st.edit && st.edit !== 'baru' ? cari(st.edit) : null, ada = !!(c && c.key_ada);
       d.inKunci.placeholder = ada && !st.hapusKey ? '•••••••• (tersimpan)' : 'Tempel API key (boleh kosong untuk llama-server lokal)';
       d.kunciKet.textContent = st.hapusKey ? 'API key tersimpan akan dihapus saat Simpan.'
         : ada ? 'Kosongkan kolom ini bila tidak ingin mengubah key yang tersimpan.'
@@ -129,7 +177,7 @@
       for (const t of tambahan || []) h.appendChild(el('div', 'redup kecil', t));
     }
     function badan() {
-      const d = st.dlg, b = {alamat: d.inAlamat.value.trim(), jenis: d.jenis};
+      const d = st.dlg, b = {id: st.edit, alamat: d.inAlamat.value.trim(), jenis: d.jenis, nama: d.inNama.value.trim()};
       if (d.inKunci.value) b.key = d.inKunci.value.trim();
       else if (st.hapusKey) b.key = '';
       return b;
@@ -165,44 +213,65 @@
         st.hapusKey = false; st.dlg.inKunci.value = '';
         perbarui(j.koneksi);
         toast(j.tersimpan === false ? (j.peringatan || 'Berlaku, tapi tidak tersimpan') : 'Koneksi disimpan');
-        tutup();
+        tutupForm();
         if (opt.setelahUbah) opt.setelahUbah(j.koneksi);
       } catch (e) { tulis('gagal', '✖ ' + e.message); }
       finally { kunci(false); }
     }
+    async function hapus(c) {
+      if (st.sibuk) return;
+      if (!confirm('Hapus koneksi "' + c.nama + '"? Model dari koneksi ini hilang dari daftar.')) return;
+      kunci(true);
+      try {
+        const j = await json('/api/koneksi/hapus', {id: c.id});
+        if (!j.ok) { toast(j.error || 'Gagal menghapus'); return; }
+        perbarui(j.koneksi);
+        toast('Koneksi dihapus');
+        if (opt.setelahUbah) opt.setelahUbah(j.koneksi);
+      } catch (e) { toast(e.message); }
+      finally { kunci(false); }
+    }
     async function reset() {
       if (st.sibuk) return;
-      if (!confirm('Hapus pengaturan koneksi dari web dan kembali ke nilai awal?')) return;
+      if (!confirm('Kembalikan koneksi utama ke nilai awal? Koneksi tambahan tidak berubah.')) return;
       kunci(true);
       try {
         const j = await json('/api/koneksi/reset', {});
         if (!j.ok) { tulis('gagal', '✖ ' + (j.error || 'Gagal')); return; }
         st.hapusKey = false; st.dlg.inKunci.value = '';
         perbarui(j.koneksi);
-        toast('Kembali ke koneksi bawaan');
-        tutup();
+        toast('Koneksi utama kembali ke bawaan');
+        tutupForm();
         if (opt.setelahUbah) opt.setelahUbah(j.koneksi);
       } catch (e) { tulis('gagal', '✖ ' + e.message); }
       finally { kunci(false); }
     }
 
-    function isi() {
-      const d = st.dlg, k = st.k || {alamat: '', jenis: 'llama', key_ada: false, sumber: 'bawaan'};
-      d.inAlamat.value = k.alamat || '';
+    function bukaForm(id) {
+      const d = st.dlg, baru = id === 'baru', c = baru ? null : cari(id);
+      st.edit = id; st.hapusKey = false;
+      d.fJudul.textContent = baru ? 'Koneksi baru' : 'Ubah: ' + (c ? c.nama : id);
+      d.inNama.value = c ? c.nama : '';
+      d.inAlamat.value = c ? c.alamat : '';
       d.inKunci.value = '';
-      st.hapusKey = false;
-      aturJenis(k.jenis === 'online' ? 'online' : 'llama');
+      aturJenis(c ? (c.jenis === 'online' ? 'online' : 'llama') : 'online');
       gambarKunci();
-      d.bReset.hidden = k.sumber !== 'web';
+      d.bReset.hidden = !(c && c.utama && st.k && st.k.sumber === 'web');
       d.hasil.className = 'kon-hasil';
-      d.hasil.textContent = k.peringatan ? '⚠ ' + k.peringatan : '';
+      d.hasil.textContent = c && c.peringatan ? '⚠ ' + c.peringatan : '';
+      d.form.hidden = false;
+      d.inAlamat.focus();
+    }
+    function tutupForm() {
+      st.edit = null;
+      if (st.dlg) st.dlg.form.hidden = true;
     }
     async function buka() {
       if (!st.dlg) st.dlg = bangun();
-      try { perbarui(await json('/api/koneksi')); } catch (e) { toast(e.message); }
-      isi();
+      try { st.k = await json('/api/koneksi'); perbarui(st.k); } catch (e) { toast(e.message); }
+      tutupForm();
+      gambarDaftar();
       st.dlg.tirai.hidden = false;
-      st.dlg.inAlamat.focus();
     }
     function tutup() {
       if (st.dlg) st.dlg.tirai.hidden = true;

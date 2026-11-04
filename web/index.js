@@ -116,7 +116,8 @@
   const NAMA_SKILL = {tanpa: 'Tanpa skill', web: 'Web', dasar: 'Dasar', kompleks: 'Kompleks', kritis: 'Berpikir kritis'};
   const SKILL_LAMA = {semua: 'kompleks'};
   let skill = null, skillTools = {};
-  let modelPilih = null, daftarModelAda = [], statusModel = 'kosong';     // langkah 2: model ditandai, dimuat saat Mulai
+  let modelPilih = null, daftarModelAda = [], statusModel = 'kosong', modelNama = {};
+  let panelModelBuka = false;                                              // daftar model tertutup sampai tombolnya diketuk     // langkah 2: model ditandai, dimuat saat Mulai
   try { modelPilih = localStorage.getItem('aa_model_pilih') || null; } catch (e) { modelPilih = null; }
   /* prompt pilihan: 'ganti' prompt bawaan (skill tanpa akses sistem) atau 'tambah' di bawah prompt sistem (Dasar/Kompleks) */
   const promptMode = () => (!!skill && (skill.includes('dasar') || skill.includes('kompleks'))) ? 'tambah' : 'ganti';
@@ -177,7 +178,7 @@
       if (s.status === 'siap' || (ag && ag.chat_id)) {
         if (s.status === 'siap') {
           setAgentAktif(false);
-          $('subModel').textContent = s.model + (s.skill ? ' · ' + labelSkill(s.skill) : '')
+          $('subModel').textContent = (s.model_tampil || s.model) + (s.skill ? ' · ' + labelSkill(s.skill) : '')
             + promptHeader(s);
           const adaTool = s.tool_aktif !== 0;
           $('input').placeholder = adaTool ? 'Ketik perintah...' : 'Ketik pesan...';
@@ -230,26 +231,58 @@
     statusModel = s.status; daftarModelAda = (s.models || []).map(m => m.id);
     if (modelPilih && !daftarModelAda.includes(modelPilih)) modelPilih = null;           // model hilang dari daftar
     if (!modelPilih && daftarModelAda.length === 1) modelPilih = daftarModelAda[0];       // hanya satu: langsung ditandai
+    modelNama = {};
+    const banyak = new Set((s.models || []).map(m => m.koneksi || 'lokal')).size > 1;   // beberapa sumber: beri judul kelompok
+    let grupAkhir = null;
     for (const m of (s.models || [])) {
-      const b = document.createElement('button'); b.className = 'model'; b.type = 'button'; b.dataset.model = m.id;
+      const cid = m.koneksi || 'lokal', jenis = m.jenis === 'online' ? 'online' : 'lokal';
+      modelNama[m.id] = {nama: m.nama || m.id, jenis, sumber: m.sumber || ''};
+      if (banyak && cid !== grupAkhir) {
+        grupAkhir = cid;
+        const h = document.createElement('div'); h.className = 'grupModel ' + jenis; h.dataset.grup = cid;
+        const sumber = (s.koneksi && s.koneksi.daftar || []).find(c => c.id === cid);
+        h.textContent = judulSumber(jenis, m.sumber || (sumber && sumber.nama) || cid);
+        box.appendChild(h);
+      }
+      const b = document.createElement('button'); b.className = 'model'; b.type = 'button'; b.dataset.model = m.id; b.dataset.grup = cid;
       b.setAttribute('role', 'radio');
       const gb = m.mb ? (m.mb / 1024).toFixed(1) + ' GB' : '';
       const hint = !m.mb ? '' : m.mb <= 1500 ? 'ringan, cepat' : m.mb <= 3000 ? 'sedang' : 'berat, lebih lambat';
-      const meta = [gb, hint, m.llama === 'loaded' ? 'sudah termuat' : '',
-        s.router === false && !m.mb ? 'tanpa muat/bongkar' : ''].filter(Boolean).join(' · ');
-      b.innerHTML = '<span class="nama">' + esc(m.id) + '</span>' + (meta ? '<span class="meta">' + esc(meta) + '</span>' : '');
+      const meta = [gb, hint, m.llama === 'loaded' && m.router !== false ? 'sudah termuat' : '',
+        m.router === false ? 'tanpa muat/bongkar' : ''].filter(Boolean).join(' · ');
+      b.innerHTML = '<span class="nama">' + esc(m.nama || m.id) + '<span class="lencana ' + jenis + '">' + (jenis === 'online' ? 'Online' : 'Lokal') + '</span></span>'
+        + (meta ? '<span class="meta">' + esc(meta) + '</span>' : '');
       b.onclick = () => pilihTanpaMuat(m.id);       // hanya memilih; dimuat setelah tombol Mulai
       box.appendChild(b);
     }
+    ketKoneksiGagal(s);
     const cari = $('cariModel');           // daftar panjang (penyedia online): kolom pencarian
     cari.hidden = (s.models || []).length <= 8;
     if (cari.hidden) cari.value = '';
     saringModel();
     gambarPilihan();
   }
+  /* "Lokal" saja bila nama sumbernya memang cuma "Lokal" (nama bawaan koneksi utama) */
+  function judulSumber(jenis, nama) {
+    const j = jenis === 'online' ? 'Online' : 'Lokal';
+    return !nama || nama.toLowerCase() === j.toLowerCase() ? j : j + ' · ' + nama;
+  }
   function saringModel() {
-    const q = $('cariModel').value.trim().toLowerCase();
-    for (const b of $('daftarModel').children) b.hidden = !!q && !(b.dataset.model || '').toLowerCase().includes(q);
+    const q = $('cariModel').value.trim().toLowerCase(), tampilGrup = new Set();
+    for (const b of $('daftarModel').children) {
+      if (b.dataset.model === undefined) continue;                 // judul kelompok diurus di bawah
+      const cocok = !q || (b.dataset.model + ' ' + ((modelNama[b.dataset.model] || {}).nama || '')).toLowerCase().includes(q);
+      b.hidden = !cocok;
+      if (cocok) tampilGrup.add(b.dataset.grup);
+    }
+    for (const h of $('daftarModel').querySelectorAll('.grupModel')) h.hidden = !tampilGrup.has(h.dataset.grup);
+  }
+  /* sumber yang gagal dihubungi tetap ditulis, supaya jelas kenapa modelnya tidak muncul */
+  function ketKoneksiGagal(s) {
+    const gagal = ((s.koneksi && s.koneksi.daftar) || []).filter(c => c.ok === false && !c.utama);
+    const e = $('koneksiGalat');
+    e.textContent = gagal.map(c => c.nama + ': ' + (c.galat || 'tidak terhubung')).join(' · ');
+    e.hidden = !gagal.length;
   }
   $('cariModel').oninput = saringModel;
   /* model dipilih dulu (ditandai), baru dimuat saat tombol Mulai ditekan */
@@ -263,18 +296,41 @@
   function pilihTanpaMuat(id) {
     modelPilih = id;
     try { localStorage.setItem('aa_model_pilih', id); } catch (e) { /* abaikan */ }
+    aturPanelModel(false);               // sudah memilih: daftar kembali tertutup
     gambarPilihan();
   }
+  /* daftar model disembunyikan di balik tombol; terbuka hanya saat diketuk */
+  function aturPanelModel(buka) {
+    panelModelBuka = !!buka && daftarModelAda.length > 0 && statusModel !== 'memuat';
+    $('modelPanel').hidden = !panelModelBuka;
+    $('btnDaftarModel').setAttribute('aria-expanded', panelModelBuka ? 'true' : 'false');
+    $('modelPanah').textContent = panelModelBuka ? '\u25B4' : '\u25BE';
+  }
+  function gambarTombolModel() {
+    const n = daftarModelAda.length, tombol = $('btnDaftarModel');
+    const ada = daftarModelAda.includes(modelPilih);
+    tombol.disabled = !n || statusModel === 'memuat';
+    const inf = modelNama[modelPilih];
+    $('modelLabel').textContent = !n ? 'Tidak ada model' : ada ? (inf ? inf.nama : modelPilih) : 'Pilih model';
+    $('modelBadge').hidden = !(n && ada && inf);
+    if (n && ada && inf) { $('modelBadge').textContent = inf.jenis === 'online' ? 'Online' : 'Lokal'; $('modelBadge').className = 'lencana ' + inf.jenis; }
+    $('modelJumlah').textContent = n ? n + ' model tersedia' + (ada ? ' · ketuk untuk mengganti' : '') : '';
+    if (panelModelBuka && (!n || statusModel === 'memuat')) aturPanelModel(false);
+  }
+  $('btnDaftarModel').onclick = () => aturPanelModel(!panelModelBuka);
+  aturPanelModel(false);
   function gambarPilihan() {
     const ada = daftarModelAda.includes(modelPilih);
     const memuat = statusModel === 'memuat';
+    gambarTombolModel();
     for (const b of $('daftarModel').children) {
+      if (b.dataset.model === undefined) continue;
       const on = b.dataset.model === modelPilih;
       b.className = 'model' + (on ? ' on' : ''); b.setAttribute('aria-checked', on ? 'true' : 'false');
     }
     $('btnMulai').disabled = !ada || memuat;
     $('btnMulai').textContent = memuat ? 'Memuat ...' : 'Mulai sesi';
-    $('mulaiKet').textContent = memuat ? '' : ada ? 'Siap: ' + modelPilih + ' · ' + labelSkill(skill || []) + (prm ? prm.ringkasPendek() : '') : 'Pilih satu model di atas dulu.';
+    $('mulaiKet').textContent = memuat ? '' : ada ? 'Siap: ' + ((modelNama[modelPilih] || {}).nama || modelPilih) + ' · ' + labelSkill(skill || []) + (prm ? prm.ringkasPendek() : '') : 'Pilih satu model di atas dulu.';
   }
   $('btnMulai').onclick = () => { if (modelPilih && daftarModelAda.includes(modelPilih) && statusModel !== 'memuat') pilihModel(modelPilih); };
 

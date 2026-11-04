@@ -45,9 +45,9 @@ Ada **dua program terpisah**, masing-masing dijalankan sendiri (biasanya di dua 
 | `asisten.py` | `python3 asisten.py` | **hanya** server web: tampilan, tool, riwayat chat | 8090 |
 
 `asisten.py` **tidak membawa model sendiri dan tidak menyalakan llama-server**. Ia hanya terhubung ke
-sebuah alamat server model. Alamat itu (dan API key bila ada) diisi dari web lewat tombol
-**Atur koneksi**, jadi server model bisa berada di Pi yang sama, perangkat lain di jaringan, atau
-penyedia online yang kompatibel OpenAI. `asisten.py` tetap menyala walau server model belum hidup;
+satu atau beberapa alamat server model. Alamat itu (dan API key bila ada) diisi dari web lewat tombol
+**Atur koneksi**, jadi server model bisa berada di Pi yang sama, perangkat lain di jaringan, dan/atau
+penyedia online yang kompatibel OpenAI, sekaligus. `asisten.py` tetap menyala walau server model belum hidup;
 isi alamatnya, atau nyalakan `./llama_server.sh`, lalu muat ulang daftar model.
 `./start.sh` adalah jalan pintas yang menjalankan keduanya sekaligus.
 
@@ -322,27 +322,56 @@ tmux new -s ai        # lalu jalankan kedua perintah di jendela terpisah (Ctrl+b
 # lepas dengan Ctrl+b lalu d, kembali dengan: tmux attach -t ai
 ```
 
-### Koneksi model (alamat dan API key)
+### Koneksi model (lokal dan online sekaligus)
 
-Di web, tombol **Atur koneksi** (di layar Mulai sesi dan di halaman Agent) membuka dialog:
+Boleh ada **beberapa sumber model sekaligus**: satu koneksi **utama** (biasanya llama-server di Pi atau jaringan
+sendiri) ditambah sampai 8 koneksi tambahan (OpenAI, OpenRouter, Groq, DeepSeek, dll). Di web, tombol
+**Atur koneksi** (di layar Mulai sesi dan di halaman Agent) membuka daftar koneksi:
 
-| Kolom | Isi |
+- Tiap koneksi tampil sebagai kartu: nama, lencana **Lokal** / **Online**, alamat, tanda API key, dan status
+  (`✔ 12 model` atau `⚠ alasan gagal`). **Ubah** membuka formulirnya; koneksi tambahan juga punya **Hapus**.
+- **+ Tambah koneksi** membuka formulir kosong. Koneksi utama tidak bisa dihapus, hanya diubah atau dikembalikan
+  ke bawaan (**Pakai bawaan**; tidak menyentuh koneksi tambahan).
+
+| Kolom formulir | Isi |
 |---|---|
+| Nama | opsional; bila kosong dibuat dari alamatnya (mis. `openai.com`) |
 | Alamat server | alamat llama-server (mis. `http://192.168.1.5:8080`) atau penyedia online (mis. `https://api.openai.com/v1`). Awalan `http://` dilengkapi otomatis, akhiran `/v1` boleh ada atau tidak |
-| Jenis server | **llama-server** (lokal/jaringan sendiri) atau **Penyedia online** (OpenAI, OpenRouter, Groq, DeepSeek, dll). Penyedia online tidak dikirimi parameter khusus llama.cpp yang ditolak sebagian penyedia |
+| Jenis server | **llama-server** (lokal/jaringan sendiri) atau **Penyedia online**. Penyedia online tidak dikirimi parameter khusus llama.cpp yang ditolak sebagian penyedia |
 | API key | opsional untuk llama-server; wajib untuk penyedia online |
 
 **Uji koneksi** menghubungi server dengan isi formulir (tanpa menerapkannya) dan melaporkan jumlah model
 serta apakah server memakai mode router. **Simpan** menerapkan dan menyimpannya di `pengaturan.json`
-(izin 600, tidak ikut git), jadi tetap berlaku setelah asisten dimulai ulang dan menang atas
-`LLAMA_BASE_URL`/`LLAMA_API_KEY`. **Pakai bawaan** menghapusnya. Mengganti server ditolak selama ada chat
+(izin 600, tidak ikut git), jadi tetap berlaku setelah asisten dimulai ulang; koneksi utama yang disimpan dari web
+menang atas `LLAMA_BASE_URL`/`LLAMA_API_KEY`. Mengubah atau menghapus koneksi ditolak selama ada chat
 atau proses Agent berjalan; model yang dimuat aplikasi ini di server lama dibongkar dulu.
 
-**Apakah semua model akan tampil?** Ya: daftar model adalah isi `/v1/models` server itu, apa adanya.
+**Daftar model digabung dan dikelompokkan.** Di tombol **Pilih model** (dan pilihan model di halaman Agent),
+model dikelompokkan menurut sumbernya, supaya jelas mana yang lokal dan mana yang online:
+
+```
+LOKAL · llama-server
+   Qwen3-4B                 Lokal   2.4 GB · sedang
+   gemma-3-1b               Lokal   0.8 GB · ringan, cepat
+ONLINE · OpenRouter
+   gpt-4o                   Online  tanpa muat/bongkar
+```
+
+Judul kelompok hanya muncul bila ada lebih dari satu sumber. Tombol pilihan menampilkan nama model dengan
+lencana Lokal/Online, dan di halaman Agent model online ditandai ☁. Kolom **Cari model** menyaring semua kelompok.
+Sumber yang gagal dihubungi tidak menghilangkan model sumber lain; alasannya tertulis di bawah daftar model.
+
+**Tiap model memakai koneksinya sendiri.** Chat dan Agent mengarahkan setiap permintaan ke server pemilik
+modelnya, lengkap dengan API key koneksi itu saja: Perencana bisa memakai model online sementara Pelaksana
+memakai model lokal, misalnya. Kunci satu koneksi tidak pernah dikirim ke koneksi lain. Di balik layar, nama
+model di koneksi tambahan disimpan sebagai `<id koneksi>::<nama>` (mis. `k1a2b3c::gpt-4o`) agar tidak bentrok
+dengan model lokal bernama sama; nama itu tidak tampil di layar dan server memakai nama aslinya.
+
+**Apakah semua model akan tampil?** Ya: daftar model tiap koneksi adalah isi `/v1/models` server itu, apa adanya.
 
 | Server | Yang tampil dan cara kerjanya |
 |---|---|
-| llama-server mode router (`--models-dir`) | semua model di folder itu. Dimuat saat **Mulai** dan dibongkar saat selesai (seperti biasa). Ukuran (GB) hanya tampil bila folder modelnya terbaca dari mesin yang menjalankan asisten |
+| llama-server mode router (`--models-dir`) | semua model di folder itu. Dimuat saat **Mulai** dan dibongkar saat selesai (seperti biasa). Ukuran (GB) hanya tampil untuk koneksi utama bila folder modelnya terbaca dari mesin yang menjalankan asisten |
 | llama-server satu model (`-m`) | model itu saja, dipakai langsung (tidak ada muat/bongkar) |
 | Penyedia online | semua yang dilaporkan penyedia, **termasuk model non-chat** (embedding, gambar, dll). Daftar yang panjang mendapat kolom **Cari model**. Model dipakai langsung, tanpa muat/bongkar. Penyedia yang tidak punya `/v1/models` menghasilkan daftar kosong |
 
@@ -365,7 +394,8 @@ mewajibkan `max_completion_tokens`) belum didukung. Alamat dengan awalan lain se
 ## Alur sesi
 
 1. Buka halaman web, lalu tiga langkah: **pilih skill** (boleh lebih dari satu), **pilih model**
-   (hanya menandainya), dan tekan **Mulai sesi**. Model baru dimuat setelah Mulai ditekan, jadi
+   (daftarnya tersembunyi di balik tombol **Pilih model**; ketuk untuk membuka, lalu ketuk satu model
+   untuk menandainya dan daftar menutup lagi), dan tekan **Mulai sesi**. Model baru dimuat setelah Mulai ditekan, jadi
    salah ketuk tidak langsung memuat model besar. Pilihan model diingat; bila hanya ada satu
    model, langsung ditandai.
 2. Chat. Jawaban muncul bertahap (streaming), tiap tool tampil sebagai kartu.
@@ -771,7 +801,7 @@ dipakai, bukan disalin saat impor, supaya perubahan itu langsung berlaku.
 | lokasi folder, `MODELS_DIR`, batas buffer proses Agent | `server/server_config.py` |
 | rute `/api/...`, izin token, file statis web, alur `kirim` dan `agent_jalankan` | `server/server_http.py` |
 | cara memuat/membongkar model, idle, tombol Selesai | `server/server_model.py` |
-| alamat server model, API key, jenis server, uji koneksi, `pengaturan.json` | `server/server_koneksi.py` |
+| koneksi model (utama + tambahan): alamat, API key, jenis, uji, hapus, `pengaturan.json` | `server/server_koneksi.py` |
 | menyimpan dan membaca riwayat obrolan | `server/server_chat.py` |
 | izin lewat web (mode AUTO, konfirmasi) | `server/server_ctx.py` |
 | buffer dan long-poll proses Agent di latar belakang; memulai proses (`mulai_proses`) | `server/server_agent.py` |
@@ -903,7 +933,7 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `server/server_state.py` | keadaan bersama: model aktif, `GEN_LOCK`, izin menunggu, buffer proses Agent |
 | `server/server_log.py`, `server_akses.py` | log berwarna di terminal; token akses dan alamat IP |
 | `server/server_model.py` | daftar model, muat/bongkar di llama-server (dilewati bila tanpa mode router), idle, tombol Selesai |
-| `server/server_koneksi.py` | alamat server model + API key + jenis (`pengaturan.json`), uji koneksi, penerapan ke paket `agen` |
+| `server/server_koneksi.py` | daftar koneksi model (utama + tambahan): alamat, API key, jenis, nama (`pengaturan.json`), uji, hapus, penerapan ke paket `agen` |
 | `server/server_chat.py` | penyimpanan riwayat obrolan |
 | `server/server_ctx.py` | konteks satu proses generasi: mode AUTO, batal, izin lewat web |
 | `server/server_agent.py`, `server_status.py` | buffer event Agent di latar belakang; isi `/api/status` |
@@ -939,7 +969,7 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `web/agent.html`, `agent.css`, `agent.js` | tampilan Agent (tombol **Agent** di chat) |
 | `llama_server.sh` | menyalakan llama-server di terminal sendiri: banner alamat/port, log lengkap, opsi `--port --host --models-dir --ctx --api-key` |
 | `start.sh` | jalan pintas: menjalankan `llama_server.sh` (bila perlu) lalu asisten, dengan satu perintah |
-| `web/koneksi.js`, `koneksi.css` | dialog **Atur koneksi** (alamat, jenis, API key, uji) |
+| `web/koneksi.js`, `koneksi.css` | dialog **Atur koneksi**: daftar koneksi (lokal/online), tambah, ubah, hapus, uji |
 | `deploy/` | `pasang-layanan.sh` dan templat unit systemd (`*.service.in`) |
 | `.github/workflows/tests.yml` | CI GitHub: menjalankan pengujian di Python 3.9, 3.11, 3.13 |
 | `tests/` | pengujian otomatis (`unittest`) |
@@ -962,7 +992,7 @@ pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek b
 Agent: urutan muat/bongkar model, putaran koreksi, Pemeriksa yang menjalankan dan menentukan, keamanan nama berkas, dan
 endpoint `/api/agent`, dan log langsung di halaman Agent (`tests/test_tim.py` + `tests/agent_smoke.js`,
 memakai llama-server dan model palsu; tes `agent_smoke.js` butuh `node`).
-rotasi `aksi.log` (`tests/test_aksilog.py`), pengaturan koneksi dan API key (`tests/test_koneksi.py` dengan server model palsu
+rotasi `aksi.log` (`tests/test_aksilog.py`), pengaturan koneksi dan API key (`tests/test_koneksi.py` dengan server model palsu, termasuk lokal + online sekaligus,
 yang meminta kunci, mengalihkan, dan berpura-pura router atau bukan; `tests/koneksi_smoke.js` butuh `node`), serta `start.sh`,
 `llama_server.sh`, dan `deploy/pasang-layanan.sh` (`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).
 Tidak butuh model termuat dan tidak butuh llama-server menyala.

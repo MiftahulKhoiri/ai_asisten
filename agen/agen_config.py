@@ -32,11 +32,59 @@ def pecah_alamat(alamat):
 
 
 LLAMA_URL, LLAMA_V1 = pecah_alamat(os.environ.get("LLAMA_BASE_URL", "http://127.0.0.1:8080"))
+
+
+def nama_otomatis(url, jenis, utama=False):
+    """Nama tampil bila pengguna tidak mengisi: 'Lokal' untuk koneksi utama llama-server, selain itu nama host."""
+    if utama and jenis != "online":
+        return "Lokal"
+    m = re.match(r"^[a-z]+://([^/]+)", url or "")
+    host = m.group(1) if m else (url or "server")
+    return host[4:] if host.startswith("api.") else host
+
+
+def sambungan(cid=None):
+    """Data koneksi: {"id","nama","url","v1","key","jenis"}. None atau 'lokal' = koneksi utama."""
+    if not cid or cid == KONEKSI_UTAMA:
+        return {"id": KONEKSI_UTAMA, "url": LLAMA_URL, "v1": LLAMA_V1, "key": LLAMA_KEY, "jenis": LLAMA_JENIS,
+                "nama": LLAMA_NAMA or nama_otomatis(LLAMA_URL, LLAMA_JENIS, True)}
+    s = LLAMA_EXTRA.get(cid)
+    if s is None:
+        raise KeyError("koneksi tidak dikenal: %s" % cid)
+    return dict(s, id=cid)
+
+
+def pecah_model(kunci):
+    """Kunci model -> (id koneksi, nama model di server). Tanpa awalan yang dikenal = koneksi utama."""
+    if isinstance(kunci, str) and PEMISAH_MODEL in kunci:
+        cid, _, nama = kunci.partition(PEMISAH_MODEL)
+        if cid in LLAMA_EXTRA and nama:
+            return cid, nama
+    return KONEKSI_UTAMA, kunci
+
+
+def kunci_model(cid, nama):
+    return nama if not cid or cid == KONEKSI_UTAMA else cid + PEMISAH_MODEL + nama
+
+
+def sambungan_model(kunci):
+    """Kunci model -> (data koneksi, nama model asli untuk dikirim ke server itu)."""
+    cid, nama = pecah_model(kunci)
+    return sambungan(cid), nama
 # Kunci API (penyedia online, atau llama-server yang dinyalakan dengan --api-key). Dikirim hanya
 # sebagai header Authorization; tidak pernah dicatat di log atau dikirim ke browser.
 LLAMA_KEY = os.environ.get("LLAMA_API_KEY", "").strip()
 # "llama" = llama-server (lokal/LAN, mengerti chat_template_kwargs), "online" = penyedia OpenAI-compatible.
 LLAMA_JENIS = "llama"
+LLAMA_NAMA = ""      # nama tampil koneksi utama ("" = otomatis)
+
+# Koneksi TAMBAHAN (mis. penyedia online di samping llama-server lokal), selain koneksi utama di atas.
+# Isi: id -> {"nama", "url", "v1", "key", "jenis"}. Model dari koneksi tambahan diberi awalan id-nya,
+# "<id>::<nama model>", supaya satu daftar bisa memuat model dari banyak server. Model koneksi utama
+# tetap memakai nama polos (jadi riwayat, pilihan tersimpan, dan konfigurasi lama tetap berlaku).
+KONEKSI_UTAMA = "lokal"
+PEMISAH_MODEL = "::"
+LLAMA_EXTRA = {}
 LOG_AKSI = ROOT / "aksi.log"
 
 
@@ -83,4 +131,4 @@ PESAN_TOOL_TERPOTONG = ("ERROR: panggilan tool terpotong karena batas token jawa
 KRITIK_MIN = 80   # draf lebih pendek dari ini (sapaan, jawaban singkat) tidak diperiksa ulang
 
 
-__all__ = ['ROOT', 'LLAMA_URL', 'LLAMA_V1', 'pecah_alamat', 'LLAMA_KEY', 'LLAMA_JENIS', 'LOG_AKSI', 'MAX_OUTPUT', 'MAX_STEPS', 'RINGKAS_AMBANG', 'RINGKAS_SISA_GILIRAN', 'RINGKAS_MAKS_KARAKTER', 'GERBANG', '_env_int', 'CTX_MAKS', 'MAX_TOKENS', 'CATATAN_TERPOTONG', 'PESAN_TOOL_TERPOTONG', 'KRITIK_MIN']
+__all__ = ['ROOT', 'LLAMA_URL', 'LLAMA_V1', 'pecah_alamat', 'LLAMA_NAMA', 'KONEKSI_UTAMA', 'PEMISAH_MODEL', 'LLAMA_EXTRA', 'nama_otomatis', 'sambungan', 'pecah_model', 'kunci_model', 'sambungan_model', 'LLAMA_KEY', 'LLAMA_JENIS', 'LOG_AKSI', 'MAX_OUTPUT', 'MAX_STEPS', 'RINGKAS_AMBANG', 'RINGKAS_SISA_GILIRAN', 'RINGKAS_MAKS_KARAKTER', 'GERBANG', '_env_int', 'CTX_MAKS', 'MAX_TOKENS', 'CATATAN_TERPOTONG', 'PESAN_TOOL_TERPOTONG', 'KRITIK_MIN']
