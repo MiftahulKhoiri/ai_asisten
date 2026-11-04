@@ -375,18 +375,98 @@ dengan model lokal bernama sama; nama itu tidak tampil di layar dan server memak
 | llama-server satu model (`-m`) | model itu saja, dipakai langsung (tidak ada muat/bongkar) |
 | Penyedia online | semua yang dilaporkan penyedia, **termasuk model non-chat** (embedding, gambar, dll). Daftar yang panjang mendapat kolom **Cari model**. Model dipakai langsung, tanpa muat/bongkar. Penyedia yang tidak punya `/v1/models` menghasilkan daftar kosong |
 
-**Claude langsung dari Anthropic.** Isi alamat `https://api.anthropic.com/v1`, jenis **Penyedia online**, dan API key dari
-Claude Console. Asisten menyesuaikan diri untuk alamat ini: tidak mengirim `temperature`, `top_p`, dan JSON mode (ditolak
-jalur kompatibel OpenAI milik Anthropic pada model Claude terbaru), dan daftar modelnya diambil lewat jalur asli Anthropic
-(header `x-api-key` dan `anthropic-version`, sampai 1000 model). `x-api-key` hanya dikirim ke `api.anthropic.com` untuk
-daftar model, tidak ke koneksi lain. Anthropic menyebut jalur kompatibel OpenAI ini untuk uji coba, bukan pemakaian jangka
-panjang: pikiran model (thinking) tidak ikut, dan `tool_choice` `required` tidak didukung. API key yang tidak terikat workspace
-perlu header `anthropic-workspace-id` yang belum didukung di sini.
+Langkah lengkap mendaftarkan model online, beserta alamat tiap penyedia (termasuk Claude), ada di
+[Mendaftarkan model online](#mendaftarkan-model-online-langkah-demi-langkah).
 
 Catatan untuk penyedia online: pemakaian token dikenai biaya di akun penyedia; kualitas pemanggilan tool
 tergantung modelnya; `ASISTEN_CTX` (bawaan 8192) menentukan seberapa banyak riwayat dikirim, naikkan
 bila model yang dipakai berkonteks panjang. Penyedia yang menolak `max_tokens` (sebagian model baru
 mewajibkan `max_completion_tokens`) belum didukung. Alamat dengan awalan lain seperti `/v1beta/openai` dikenali.
+
+### Mendaftarkan model online (langkah demi langkah)
+
+Model online (Claude, GPT, Gemini, dll) dipakai lewat **penyedia** yang punya API. Untuk mendaftarkannya asisten butuh
+**dua hal sekaligus**: **alamat server** penyedia dan **API key** dari akun penyedia itu. Key saja tidak cukup,
+karena tanpa alamat asisten tidak tahu ke mana key harus dikirim. Alamat dan key harus dari penyedia yang sama:
+key OpenRouter ditolak bila dikirim ke alamat OpenAI.
+
+**A. Ambil API key dan siapkan saldo**
+
+1. Daftar di situs penyedia dan buat API key di halaman pengelolaan key (lihat kolom "Ambil key" di tabel bawah).
+2. Salin key saat dibuat. Kebanyakan penyedia hanya menampilkannya sekali.
+3. Pastikan akunmu punya saldo atau kuota. Key tanpa saldo tetap bisa terhubung (daftar model tampil), tetapi
+   chat ditolak dengan galat pembayaran atau kuota. Langganan chat (mis. Claude Pro, ChatGPT Plus) **bukan** saldo
+   API; API ditagih terpisah.
+
+**B. Daftarkan di asisten**
+
+1. Buka web asisten, lalu ketuk **Atur koneksi** (di layar Mulai sesi atau di halaman Agent).
+2. Ketuk **+ Tambah koneksi**.
+3. Isi formulir:
+
+   | Kolom | Isi |
+   |---|---|
+   | Nama | bebas, mis. `Claude` atau `OpenRouter`. Nama ini tampil di judul kelompok daftar model |
+   | Alamat server | salin dari tabel di bawah, **persis** seperti tertulis. Jangan tambahkan `/chat/completions` atau `/models` |
+   | Jenis server | **Penyedia online** |
+   | API key | tempel key dari penyedia yang sama |
+
+4. Ketuk **Uji koneksi**. Hasil `✔ Terhubung · N model` berarti alamat dan key benar. Kalau gagal, lihat
+   [bila uji koneksi gagal](#bila-uji-koneksi-gagal).
+5. Ketuk **Simpan**. Koneksi tampil sebagai kartu bertanda **Online**, dan modelnya muncul di tombol **Pilih model**
+   dalam kelompok `ONLINE · nama`. Memilih model online dan menekan **Mulai sesi** langsung memakainya (tanpa muat/bongkar).
+6. Koneksi tersimpan di `pengaturan.json`, jadi tidak perlu diisi lagi setelah asisten dimulai ulang. Boleh mendaftarkan
+   beberapa penyedia sekaligus (sampai 8) di samping llama-server lokal.
+
+**Alamat server penyedia populer**
+
+| Penyedia | Alamat server | Ambil key |
+|---|---|---|
+| Anthropic (Claude) | `https://api.anthropic.com/v1` | platform.claude.com (Console, menu API keys) |
+| OpenAI | `https://api.openai.com/v1` | platform.openai.com/api-keys |
+| OpenRouter (banyak model dari berbagai penyedia, termasuk Claude) | `https://openrouter.ai/api/v1` | openrouter.ai/keys |
+| Groq | `https://api.groq.com/openai/v1` | console.groq.com/keys |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai` | aistudio.google.com/apikey |
+| DeepSeek | `https://api.deepseek.com` | platform.deepseek.com |
+| Mistral | `https://api.mistral.ai/v1` | console.mistral.ai |
+| Together AI | `https://api.together.xyz/v1` | api.together.ai |
+| xAI (Grok) | `https://api.x.ai/v1` | console.x.ai |
+| Cerebras | `https://api.cerebras.ai/v1` | cloud.cerebras.ai |
+| Fireworks AI | `https://api.fireworks.ai/inference/v1` | fireworks.ai |
+
+Alamat di atas adalah yang diketahui saat README ini ditulis; penyedia kadang mengubahnya. Bila uji koneksi gagal
+dengan 404, cari "OpenAI compatible" atau "Base URL" di dokumentasi penyedia dan pakai alamat yang tertulis di sana.
+Penyedia yang tidak kompatibel OpenAI (tidak punya `/v1/chat/completions`) tidak bisa dipakai langsung.
+Awalan `http://` atau `https://` boleh dilewati (dilengkapi otomatis, tetapi sebaiknya tulis `https://`), dan garis miring di
+ujung alamat diabaikan.
+
+**Contoh: Claude langsung dari Anthropic**
+
+1. Buat key di Claude Console, dan isi saldo di menu Billing. Langganan Claude Pro **tidak** termasuk akses API;
+   hanya paket Max, Ultra, dan Team yang mendapat kredit API bulanan, dan itu pun harus diklaim di pengaturan billing.
+2. Atur koneksi → **+ Tambah koneksi** → Nama `Claude`, Alamat `https://api.anthropic.com/v1`, Jenis **Penyedia online**,
+   tempel key → **Uji koneksi** → **Simpan**.
+3. Pilih model `claude-...` dari kelompok `ONLINE · Claude` (model kecil seperti Haiku jauh lebih murah untuk mencoba).
+
+Untuk alamat Anthropic asisten menyesuaikan permintaannya: tidak mengirim `temperature`, `top_p`, dan JSON mode (ditolak
+model Claude terbaru lewat jalur kompatibel OpenAI), dan daftar modelnya diambil lewat jalur asli Anthropic
+(header `x-api-key` dan `anthropic-version`, sampai 1000 model). Header `x-api-key` hanya dikirim ke `api.anthropic.com`,
+tidak ke koneksi lain. Anthropic menyebut jalur kompatibel OpenAI ini untuk uji coba, bukan pemakaian jangka panjang:
+pikiran model (thinking) tidak ikut, dan `tool_choice` `required` tidak didukung. API key yang tidak terikat workspace
+perlu header `anthropic-workspace-id` yang belum didukung di sini.
+
+#### Bila uji koneksi gagal
+
+| Pesan | Artinya dan cara memperbaiki |
+|---|---|
+| `Ditolak server (401)` | API key salah, terpotong saat disalin, atau bukan milik penyedia ini. Buat key baru, tempel ulang tanpa spasi |
+| `Ditolak server (403)` | Key tidak punya izin, wilayah/akun dibatasi, atau penyedia memblokir klien. Cek status akun di situs penyedia |
+| `Server menjawab galat 404` | Alamat salah. Bandingkan dengan tabel di atas; jangan tambahkan `/chat/completions` |
+| `Server mengalihkan ke alamat lain` | Pakai alamat tujuan pengalihan (biasanya `https://` bukan `http://`) |
+| `Tidak bisa terhubung` | Tidak ada internet dari Pi/HP, alamat salah ketik, atau server penyedia sedang bermasalah. Coba `curl -i -H "Authorization: Bearer KEY" ALAMAT/models` dari Pi (ganti `KEY` dan `ALAMAT`) |
+| `Jawaban server bukan JSON` | Alamat menunjuk ke halaman web, bukan ke API. Pakai alamat API dari tabel |
+| Terhubung, tetapi chat gagal dengan galat 402/429 atau pesan saldo/kuota | Saldo atau kuota habis, atau terlalu sering mengirim. Isi saldo, atau tunggu sebentar |
+| Terhubung, tetapi model yang dipilih ditolak (400/404) | Model itu bukan model chat (embedding, gambar) atau tidak tersedia di akunmu. Pilih model lain di daftar |
 
 ### Opsi `asisten.py`
 
@@ -1015,6 +1095,8 @@ Setiap push ke GitHub menjalankan pengujian yang sama lewat GitHub Actions
 | Terminal: `Belum bisa menghubungi llama-server di ...` (aplikasi tetap menyala) | llama-server belum menyala atau alamatnya beda. Nyalakan `./llama_server.sh` ([langkah 4](#4-jalankan-llama-server)), cek dengan `curl http://127.0.0.1:8080/v1/models`, atau isi alamat yang benar lewat **Atur koneksi** di web |
 | Web: `Tidak bisa menghubungi llama-server` | Sama seperti di atas. Dialog **Atur koneksi** → **Uji koneksi** menunjukkan penyebabnya (ditolak 401 = API key salah/kurang, 404 = alamat salah, tidak bisa terhubung = server mati/port salah) |
 | Uji koneksi: `Server mengalihkan ke alamat lain` | Penyedia mengalihkan (sering `http://` → `https://`). Pakai alamat tujuannya; kunci sengaja tidak diteruskan ke pengalihan |
+| Model online tidak muncul padahal API key sudah diisi | Biasanya alamat server belum diisi atau salah (key saja tidak cukup), atau lupa menekan **Simpan** setelah **Uji koneksi**. Lihat kartu koneksi di **Atur koneksi** (`✔ N model` atau `⚠ alasan`) dan [Mendaftarkan model online](#mendaftarkan-model-online-langkah-demi-langkah). Setelah mengganti berkas, jalankan ulang `asisten.py` dan muat ulang halaman |
+| Model online terhubung tetapi chat gagal soal saldo/kuota | API ditagih terpisah dari langganan chat. Isi saldo di akun API penyedia |
 | Daftar model online sangat panjang / ada model aneh | Itu isi `/v1/models` penyedia (termasuk embedding dll). Pakai kolom **Cari model** |
 | `Tidak bisa membuka port 8090` | Port dipakai program lain (mungkin `asisten.py` yang sudah jalan). Tutup yang lama, atau pakai `--port 8091` |
 | Daftar model kosong di web | Tidak ada `.gguf` di folder model, atau llama-server dijalankan tanpa `--models-dir`. Cek `ls ~/models` dan perintah llama-server |
