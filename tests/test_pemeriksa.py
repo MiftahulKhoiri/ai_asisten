@@ -359,5 +359,64 @@ class TestTampilan(unittest.TestCase):
         self.assertIn("model_c2", (self.WEB / "serahkan.js").read_text(encoding="utf-8"))
 
 
+class TestPerintahUjiTebakan(unittest.TestCase):
+    """Perencana model kecil sering mengosongkan perintah uji; Pemeriksa lalu menebaknya supaya
+    program tetap pernah dijalankan. Tebakan hanya CATATAN: gagal tidak dianggap bukti bug."""
+
+    def _periksa(self, isi, nama_rencana, uji=True, jalankan=None):
+        import tempfile
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        hasil = Path(tmp.name)
+        for n, s in isi.items():
+            (hasil / n).write_text(s)
+        spec = tim.rapikan_spec({"berkas": [{"nama": n} for n in nama_rencana],
+                                 "jalankan": jalankan or []}, "t")
+        gen = tim_tahap.pemeriksa_menjalankan(spec, {"uji": uji}, hasil, list(isi), [])
+        ev = []
+        try:
+            while True:
+                ev.append(next(gen))
+        except StopIteration as s:
+            return ev, s.value
+
+    def test_satu_berkas_py_tanpa_blok_main_tetap_dijalankan(self):
+        ev, bukti = self._periksa({"hitung.py": "print(4.0)\n"}, ["hitung.py"])
+        self.assertTrue(bukti["ok"])
+        self.assertEqual(bukti["jalan"], "lolos")
+        self.assertIn("4.0", bukti["keluaran"])
+        self.assertTrue(any(b.startswith("CATATAN lembar tugas tidak punya perintah uji") for b in bukti["baris"]))
+        self.assertIn("uji_mulai", jenis(ev))
+
+    def test_tebakan_gagal_hanya_catatan_bukan_bukti_bug(self):
+        ev, bukti = self._periksa({"hitung.py": "raise SystemExit(3)\n"}, ["hitung.py"])
+        self.assertTrue(bukti["ok"])                                  # tebakan keliru tidak menggagalkan
+        self.assertEqual(bukti["jalan"], "dilewati")
+        self.assertIsNone(bukti["keluaran"])
+        self.assertFalse(any(b.startswith("GAGAL") for b in bukti["baris"]))
+        self.assertTrue(any("tidak dihitung sebagai bukti bug" in b for b in bukti["baris"]))
+
+    def test_tidak_menebak_bila_uji_dimatikan_atau_ragu(self):
+        ev, bukti = self._periksa({"hitung.py": "print(1)\n"}, ["hitung.py"], uji=False)
+        self.assertEqual(bukti["jalan"], "dilewati")
+        self.assertNotIn("uji_mulai", jenis(ev))
+        ev, bukti = self._periksa({"a.py": "print(1)\n", "b.py": "print(2)\n"}, ["a.py", "b.py"])
+        self.assertEqual(bukti["jalan"], "dilewati")                  # dua berkas, tanpa titik masuk jelas
+        self.assertNotIn("uji_mulai", jenis(ev))
+
+    def test_perintah_dari_perencana_tetap_dipakai(self):
+        ev, bukti = self._periksa({"a.py": "print('dari a')\n", "b.py": "print('dari b')\n"},
+                                  ["a.py", "b.py"], jalankan=["python3", "b.py"])
+        self.assertEqual(bukti["jalan"], "lolos")
+        self.assertIn("dari b", bukti["keluaran"])
+        self.assertFalse(any("tebakan" in b for b in bukti["baris"]))
+
+    def test_main_py_dengan_blok_main_di_proyek_banyak_berkas_tertebak(self):
+        isi = {"main.py": "if __name__ == '__main__':\n    print('halo')\n", "lib.py": "x = 1\n"}
+        ev, bukti = self._periksa(isi, ["main.py", "lib.py"])
+        self.assertEqual(bukti["jalan"], "lolos")
+        self.assertIn("halo", bukti["keluaran"])
+
+
 if __name__ == "__main__":
     unittest.main()

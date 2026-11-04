@@ -129,6 +129,36 @@ def tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran, batas_berkas=
     return ditulis, masalah
 
 
+def tebak_perintah_rencana(spec, berkas):
+    """Perintah uji tebakan untuk lembar tugas yang perintah ujinya kosong: [] bila ragu.
+
+    Tepat satu berkas .py di rencana -> `python3 berkas` (tugas satu berkas tanpa blok __main__ juga
+    tertebak). Selain itu memakai tebak_perintah (titik masuk __main__ / main.js / index.js)."""
+    ada = {n for n, _ in berkas}
+    py = [b["nama"] for b in spec.get("berkas", []) if b["nama"].endswith(".py")
+          and "/" not in b["nama"] and b["nama"] in ada]
+    if len(py) == 1:
+        return ["python3", py[0]]
+    return tebak_perintah(berkas)
+
+
+def _uji_tebakan(spec, hasil_dir):
+    """Jalankan perintah tebakan (bila ada). Kembalian: (status_jalan, keluaran, baris).
+
+    Gagal = hanya CATATAN: statusnya tetap 'dilewati' supaya tidak dianggap bukti bug."""
+    cmd = tebak_perintah_rencana(spec, baca_proyek(hasil_dir, conf.MAKS_BACA))
+    if not cmd:
+        return "dilewati", None, []
+    yield {"t": "uji_mulai", "d": " ".join(cmd), "oleh": "Pemeriksa"}
+    status, jalan, keluaran = cek_jalan(hasil_dir, {"jalankan": cmd, "harapan": []}, True)
+    baris = ["CATATAN lembar tugas tidak punya perintah uji; memakai tebakan `%s`: %s" % (
+        " ".join(cmd), jalan[0])] + ["  " + b for b in jalan[1:]]
+    if status != "lolos":
+        return "dilewati", None, baris + ["CATATAN tebakan gagal tidak dihitung sebagai bukti bug "
+                                          "(perintahnya hanya tebakan)."]
+    return status, keluaran, baris
+
+
 def pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah):
     """Pemeriksa menjalankan hasil Pelaksana: berkas ada, sintaks benar, lalu uji jalan program
     (bila diizinkan di pengaturan). Kembalian: bukti {ok, baris, jalan, keluaran, harapan}.
@@ -146,6 +176,12 @@ def pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah):
         status_jalan, jalan, keluaran = cek_jalan(hasil_dir, spec, cfg["uji"])
         baris += jalan
         ok = status_jalan != "gagal"
+        if not spec["jalankan"] and cfg["uji"]:
+            # Perencana model kecil sering membiarkan perintah uji kosong. Tanpa ini program tidak
+            # pernah dijalankan sama sekali. Perintah tebakan hanya menambah FAKTA untuk Pemeriksa
+            # (CATATAN), tidak pernah membuat hasil dinyatakan gagal: program bisa butuh argumen.
+            status_jalan, keluaran, baris_tebak = yield from _uji_tebakan(spec, hasil_dir)
+            baris += baris_tebak
     if ok and keluaran is not None and spec["harapan"]:
         harapan, hilang = cocok_keluaran(keluaran, spec["harapan"])
         if harapan:
