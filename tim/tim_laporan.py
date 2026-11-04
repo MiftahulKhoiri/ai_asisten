@@ -67,9 +67,27 @@ def blok_fakta(status, spec, hasil_dir, meta, akhir):
         baris.append("**Keputusan Pemeriksa**: %s%s" % (
             "jadi" if nilai["ok"] else "perlu perbaikan",
             (" - " + nilai["ringkas"]) if nilai["ringkas"] else ""))
+        for pd in nilai.get("pendapat") or []:
+            baris.append("  - %s%s: %s%s" % (
+                pd["model"], " (sanggahan)" if pd.get("sanggahan") else "",
+                "jadi" if pd["ok"] else "perlu perbaikan",
+                {True: ", kutipan terbukti", False: ", kutipan TIDAK ditemukan"}.get(pd.get("kutipan"), "")))
+        if nilai.get("sengketa"):
+            baris.append("⚠ **Temuan yang disanggah** (belum tentu keliru, periksa sendiri):\n" + "\n".join(
+                "%d. %s" % (i, m) for i, m in enumerate(nilai["sengketa"], 1)))
+        if nilai["ok"] and nilai.get("lemah"):
+            baris.append("⚠ **Keputusan lemah**: " + nilai["lemah"])
+        if nilai["ok"] and jalan == "dilewati":
+            baris.append("⚠ **Perhatian**: program belum pernah dijalankan (uji jalan dimatikan atau "
+                         "tidak ada perintah uji); \"jadi\" hanya berdasarkan sintaks dan penilaian "
+                         "Pemeriksa. Coba jalankan sendiri.")
+        if not nilai["ok"] and nilai.get("kutipan") is False:
+            baris.append("⚠ Kutipan Pemeriksa tidak ditemukan di kode; temuan ini mungkin keliru.")
         if nilai["ok"] and gagal:    # keputusan tetap milik Pemeriksa, tapi pengguna harus tahu
             baris.append("⚠ **Perhatian**: Pemeriksa menyatakan jadi, padahal hasil menjalankan "
                          "program mencatat GAGAL. Periksa sendiri sebelum dipakai.")
+    if akhir.get("henti"):
+        baris.append("**Berhenti lebih awal**: " + akhir["henti"])
     if akhir.get("pulih"):
         baris.append("**Dipulihkan**: hasil putaran %d (terbaik dari semua putaran)" % akhir["pulih"])
     return "\n".join(baris)

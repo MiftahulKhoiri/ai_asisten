@@ -22,7 +22,16 @@ IDLE_MENIT = 20
 WARNA = sys.stdout.isatty()
 
 # Proses Agent berjalan di latar belakang, terlepas dari halaman web (lihat server_agent.py).
-AGENT_MAKS_EVENT = 20000      # event tertua dibuang bila buffer melebihi ini
+def _env_int(nama, bawaan, minimum):
+    try:
+        return max(minimum, int(os.environ.get(nama, bawaan)))
+    except ValueError:
+        return bawaan
+
+
+# Perangkat RAM kecil (mis. Raspberry Pi 1 GB): kecilkan lewat ASISTEN_AGENT_EVENT dan ASISTEN_MAKS_KONEKSI.
+AGENT_MAKS_EVENT = _env_int("ASISTEN_AGENT_EVENT", 20000, 500)   # event tertua dibuang bila buffer melebihi ini
+MAKS_KONEKSI = _env_int("ASISTEN_MAKS_KONEKSI", 32, 4)           # koneksi HTTP serentak (satu thread per koneksi)
 AGENT_BATCH = 4000            # event paling banyak per jawaban /api/agent/event
 AGENT_TUNGGU_MAKS = 25        # detik paling lama satu long-poll menunggu event baru
 
@@ -49,4 +58,4 @@ MAKS_BERKAS_PROMPT = 64_000      # byte satu berkas prompt yang mau dibaca
 MAKS_IMPOR_PROMPT = 256_000      # byte teks impor
 
 __all__ = ['PENGATURAN_FILE', 'PROMPT_DIR', 'MAKS_CATATAN_PROMPT', 'MAKS_BERKAS_PROMPT', 'MAKS_IMPOR_PROMPT', 'PROMPT_FILE', 'PROMPT_BAWAAN', 'MAKS_PROMPT', 'MAKS_NAMA_PROMPT', 'MAKS_ISI_PROMPT', 'UNGGAH', 'ID_PAKET', 'MAKS_UNGGAH_BYTE', 'MAKS_ZIP_TOTAL', 'MAKS_ZIP_ENTRI',
-           'MAKS_BERKAS_PAKET', 'UNGGAH_UMUR_JAM', 'BASE', 'WEB', 'RIWAYAT', 'TOKEN_FILE', 'MODELS_DIR', 'ID_RE', 'TOKEN', 'IDLE_MENIT', 'WARNA', 'AGENT_MAKS_EVENT', 'AGENT_BATCH', 'AGENT_TUNGGU_MAKS']
+           'MAKS_BERKAS_PAKET', 'UNGGAH_UMUR_JAM', 'BASE', 'WEB', 'RIWAYAT', 'TOKEN_FILE', 'MODELS_DIR', 'ID_RE', 'TOKEN', 'IDLE_MENIT', 'WARNA', 'AGENT_MAKS_EVENT', 'MAKS_KONEKSI', 'AGENT_BATCH', 'AGENT_TUNGGU_MAKS']

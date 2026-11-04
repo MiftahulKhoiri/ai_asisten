@@ -369,10 +369,11 @@ class TestPerbaiki(DasarJalur):
         """Regresi: lanjutan hanya menyalin 36 berkas pertama, padahal unggahan bisa sampai 100."""
         isi = {"f%03d.py" % i: "x = %d\n" % i for i in range(60)}
         d = self.bahan(isi)
-        self.pasang(LlamaPalsu("A", "B"), StreamCatat(periksa=[DIAG_BUG], jelaskan=["laporan"]))
+        # DIAG_BUG menyebut main.py yang tidak ada di proyek ini: Pemeriksa ditanya ulang sekali
+        self.pasang(LlamaPalsu("A", "B"), StreamCatat(periksa=[DIAG_BUG, DIAG_BUG], jelaskan=["laporan"]))
         ev1 = self.proses("cari bug", self.cfg(uji=False), d)
         awal = self.folder(ev1).name
-        self.pasang(LlamaPalsu("A", "B"), StreamCatat(periksa=[DIAG_BUG], jelaskan=["laporan"]))
+        self.pasang(LlamaPalsu("A", "B"), StreamCatat(periksa=[DIAG_BUG, DIAG_BUG], jelaskan=["laporan"]))
         ev2 = self.proses("cari bug lagi", self.cfg(uji=False), None, lanjut=awal)
         self.assertEqual(len(self.isi_hasil(ev2)), 60)
         diag = [e for e in ev2 if e["t"] == "diagnosa"][0]

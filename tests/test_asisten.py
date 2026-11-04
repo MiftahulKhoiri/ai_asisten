@@ -186,5 +186,58 @@ class TestServer(unittest.TestCase):
         self.assertEqual(self.req("GET", "/api/chat/xx")[0], 404)
 
 
+
+
+class TestServerTerbatas(unittest.TestCase):
+    """Batas koneksi serentak server web (penting untuk perangkat RAM kecil)."""
+
+    def test_koneksi_berlebih_dijawab_503_dan_slot_dilepas(self):
+        import socket
+        import threading
+        import time
+        from unittest import mock
+        from server import server_config, server_main
+
+        tahan, lepas = threading.Event(), threading.Event()
+
+        class Lambat(asisten.H):
+            def do_GET(self):          # menahan koneksi tetap terbuka, seperti long-poll
+                tahan.set()
+                lepas.wait(10)
+                self._json(200, {"ok": True})
+
+        with mock.patch.object(server_config, "MAKS_KONEKSI", 4):
+            srv = server_main.ServerTerbatas(("127.0.0.1", 0), Lambat)
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        port = srv.server_address[1]
+        socks = []
+        try:
+            for _ in range(4):            # memenuhi 4 slot
+                s = socket.create_connection(("127.0.0.1", port), timeout=5)
+                s.sendall(b"GET /api/status HTTP/1.1\r\nHost: x\r\n\r\n")
+                socks.append(s)
+            tahan.wait(5)
+            time.sleep(0.3)
+            lebih = socket.create_connection(("127.0.0.1", port), timeout=5)
+            lebih.sendall(b"GET /api/status HTTP/1.1\r\nHost: x\r\n\r\n")
+            self.assertTrue(lebih.recv(200).startswith(b"HTTP/1.1 503"))
+            lebih.close()
+            self.assertGreaterEqual(srv.ditolak, 1)
+            lepas.set()                    # koneksi lama selesai -> slot kembali
+            for s in socks:
+                s.recv(1000)
+                s.close()
+            time.sleep(0.5)
+            ok = socket.create_connection(("127.0.0.1", port), timeout=5)
+            ok.sendall(b"GET /api/status HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+            self.assertNotIn(b"503", ok.recv(200)[:20])
+            ok.close()
+        finally:
+            lepas.set()
+            srv.shutdown()
+            srv.server_close()
+
+
 if __name__ == "__main__":
     unittest.main()

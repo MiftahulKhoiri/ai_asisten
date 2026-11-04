@@ -62,7 +62,7 @@ function baru() {
 
 (async () => {
   // --- konfigurasi Agent dibaca dari penyimpanan yang sama dengan halaman Agent
-  assert.same(S.bacaCfg(konteks.window.localStorage), {mode: 2, model_p: 'A', model_e: 'B', model_c: 'A', maks: 3, bongkar: true, uji: false, prompt_peran: {}});
+  assert.same(S.bacaCfg(konteks.window.localStorage), {mode: 2, model_p: 'A', model_e: 'B', model_c: 'A', model_c2: '', maks: 3, bongkar: true, uji: false, prompt_peran: {}});
   assert.strictEqual(S.bacaCfg({getItem: () => null}), null, 'tanpa pengaturan: null');
   // prompt pilihan per peran dibawa sebagai id + cara pakai; peran kosong/rusak/tak dikenal dibuang
   assert.same(S.bacaCfg({getItem: () => JSON.stringify({mode: 2, p: 'A', e: 'B', prompt: {perencana: {ids: ['a', 5], mode: 'ganti'}, pelaksana: {ids: [], mode: 'ganti'},

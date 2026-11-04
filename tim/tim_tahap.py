@@ -8,14 +8,15 @@ from pathlib import Path
 
 from . import tim_config as conf
 from .tim_berkas import aman_nama, baca_json, baca_proyek, hash_proyek, tulis_berkas, urai_berkas
-from .tim_cek import (cek_jalan, cek_statis, cocok_keluaran, nilai_cadangan, rapikan_nilai,
-                      tebak_perintah)
+from .tim_cek import (cek_jalan, cek_statis, cocok_keluaran, gabung_masalah, nilai_cadangan,
+                      periksa_dasar, rapikan_nilai, tebak_perintah)
 from .tim_config import Batal
 from .tim_laporan import blok_fakta, blok_fakta_bug
 from .tim_llm import ambil_json, tanya
 from .tim_prompt import (
     pesan_chat,
     sistem_peran,
+    pesan_kutipan_tak_ada,
     pesan_minta_masalah,
     pesan_ulang_json,
     prompt_diagnosa,
@@ -24,6 +25,7 @@ from .tim_prompt import (
     prompt_periksa,
     prompt_rencana,
     prompt_tulis,
+    tambahan_sanggah,
 )
 from .tim_spec import rapikan_spec, spec_ke_md
 
@@ -157,7 +159,7 @@ def pemeriksa_menjalankan(spec, cfg, hasil_dir, ditulis, masalah):
             "harapan": harapan}
 
 
-def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran):
+def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran, mc2=None, pemuat=None):
     """Pemeriksa menentukan benar atau salah. Kembalian: nilai {ok, masalah, perbaikan, ...}.
 
     ok=True  -> hasil dinyatakan jadi.
@@ -167,7 +169,15 @@ def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran):
     terbaca sebagai JSON dua kali, keputusan memakai hasil menjalankan program; (3) menolak
     tanpa menyebut satu masalah pun setelah ditanya ulang: bila program lolos dijalankan,
     diterima; bila program gagal, penolakan tetap berlaku dan masalahnya diambil dari hasil
-    menjalankan (koreksi kosong tidak bisa dikirim ke Pelaksana)."""
+    menjalankan (koreksi kosong tidak bisa dikirim ke Pelaksana). Keputusan yang diterima dengan
+    cara (2)/(3) diberi tanda `lemah` supaya laporan akhir memperingatkan pengguna.
+
+    Temuan penolakan diverifikasi secara mekanis (kutipan harus ada di kode/keluaran); kutipan yang
+    tidak ditemukan ditanyakan ulang sekali, dan bila tetap tidak ada, koreksinya diberi catatan.
+
+    `mc2` (opsional) = model Pemeriksa kedua yang menilai TANPA melihat penilaian pertama. Bila
+    keduanya berbeda pendapat, yang menerima diminta memeriksa temuan yang menolak (satu ronde
+    sanggahan); lihat `_putuskan_dua`. Butuh `pemuat` untuk bergantian memuat model."""
     berkas = baca_proyek(hasil_dir, conf.MAKS_BACA)
     if not berkas:
         return {"ok": False, "dilihat": "", "masalah": ["Tidak ada berkas hasil untuk diperiksa."],
@@ -176,16 +186,103 @@ def tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran):
                              "=== FILE: nama === ... === END ==="}
     user = prompt_periksa(spec, bukti["baris"], berkas)
     pesan = pesan_chat(sistem_peran(ctx, "periksa"), user)
-    nilai = yield from _minta_nilai(mc, pesan, user, ctx, jejak, "periksa-%d" % putaran, bukti)
-    return nilai
+    a = yield from _minta_nilai(mc, pesan, user, ctx, jejak, "periksa-%d" % putaran, bukti, berkas)
+    if not mc2 or mc2 == mc or pemuat is None:
+        return a
+
+    # Pemeriksa kedua: penilaian independen (tidak melihat penilaian pertama)
+    yield {"t": "ringkas", "d": "Pemeriksa kedua (%s) menilai secara independen." % mc2}
+    yield from _giliran(pemuat, mc2, putaran)
+    b = yield from _minta_nilai(mc2, pesan_chat(sistem_peran(ctx, "periksa"), user), user, ctx, jejak,
+                                "periksa2-%d" % putaran, bukti, berkas)
+    if a["ok"] != b["ok"]:
+        # Berbeda pendapat: yang MENERIMA memeriksa langsung temuan yang MENOLAK (satu ronde)
+        menolak, penerima = (a, mc2) if not a["ok"] else (b, mc)
+        asal_menolak = mc if not a["ok"] else mc2
+        yield {"t": "ringkas", "d": "Pemeriksa berbeda pendapat (%s menolak, %s menerima); %s diminta "
+                                    "memeriksa temuan itu langsung." % (asal_menolak, penerima, penerima)}
+        if penerima != mc2:
+            yield from _giliran(pemuat, penerima, putaran)
+        sanggah = tambahan_sanggah(menolak, menolak.get("kutipan"))
+        c = yield from _minta_nilai(penerima, pesan_chat(sistem_peran(ctx, "periksa"), user + sanggah),
+                                    user + sanggah, ctx, jejak, "sanggah-%d" % putaran, bukti, berkas)
+    else:
+        c = penerima = None
+    return _putuskan_dua(a, mc, b, mc2, c, penerima if c is not None else None, bukti)
 
 
-def _minta_nilai(mc, pesan, user, ctx, jejak, kunci, bukti):
+def _giliran(pemuat, model, putaran):
+    """Beralih ke `model` untuk giliran Pemeriksa: bongkar yang tak terpakai (bila diatur), lalu muat."""
+    yield from pemuat.selesai_tahap(model)
+    yield event_tahap("periksa", model, putaran)
+    yield from pemuat.pakai(model)
+
+
+def _pendapat(model, n):
+    return {"model": model, "ok": bool(n["ok"]), "kutipan": n.get("kutipan"),
+            "ringkas": n.get("ringkas", "")}
+
+
+def _putuskan_dua(a, ma, b, mb, c, mc_c, bukti):
+    """Gabungkan penilaian dua Pemeriksa menjadi satu nilai. Fungsi murni (tanpa model/IO).
+
+    a, b : penilaian awal Pemeriksa 1 (model ma) dan 2 (model mb), saling independen.
+    c    : penilaian ulang dari yang MENERIMA setelah membaca temuan yang MENOLAK (None bila a, b sepakat);
+    mc_c : model yang memberi `c`.
+
+    Aturan:
+      - keduanya menerima              -> jadi.
+      - keduanya menolak               -> ditolak, masalah digabung tanpa pengulangan.
+      - berbeda, penerima berbalik     -> ditolak (sekarang sepakat), masalah digabung.
+      - berbeda, penerima bertahan     -> bila program GAGAL dijalankan/diperiksa sistem: ditolak memakai
+                                         temuan yang menolak (fakta mengalahkan opini). Selain itu: jadi,
+                                         ditandai `lemah`, temuan yang disanggah dicatat di `sengketa`.
+    Hasil memuat `pendapat` (ringkasan tiap Pemeriksa) untuk laporan."""
+    pend = [_pendapat(ma, a), _pendapat(mb, b)]
+    if c is not None:
+        pend.append(dict(_pendapat(mc_c, c), sanggahan=True))
+    if a["ok"] and b["ok"]:
+        n = dict(a, ringkas=("Dua Pemeriksa sepakat: jadi. " + (a.get("ringkas") or "")).strip())
+        n["lemah"] = a.get("lemah") or b.get("lemah") or ""
+        return dict(n, pendapat=pend)
+    if not a["ok"] and not b["ok"]:
+        return _tolak_gabungan(a, b, pend, "Dua Pemeriksa sepakat: perlu perbaikan.")
+    menolak = a if not a["ok"] else b
+    if c is not None and not c["ok"]:
+        return _tolak_gabungan(menolak, c, pend, "Pemeriksa kedua membenarkan temuan setelah memeriksa.")
+    if not bukti["ok"]:
+        n = dict(menolak, pendapat=pend, ringkas=(
+            "Pemeriksa berbeda pendapat; penolakan dipertahankan karena sistem mencatat kegagalan. "
+            + (menolak.get("ringkas") or "")).strip())
+        return n
+    sengketa = list(menolak.get("masalah") or [])
+    return {"ok": True, "masalah": [], "dilihat": "", "perbaikan": "", "pendapat": pend,
+            "sengketa": sengketa,
+            "lemah": "Dua Pemeriksa berbeda pendapat; diterima karena tidak ada kegagalan saat "
+                     "menjalankan/memeriksa program dan Pemeriksa yang menerima menyanggah temuan.",
+            "ringkas": "Diterima setelah sanggahan; temuan yang disanggah dicatat di laporan."}
+
+
+def _tolak_gabungan(x, y, pend, awal):
+    masalah = gabung_masalah(x.get("masalah"), y.get("masalah"))
+    perbaikan = " ".join(dict.fromkeys(p for p in (x.get("perbaikan"), y.get("perbaikan")) if p))[:600]
+    dilihat = x.get("dilihat") if x.get("kutipan") is not False and x.get("dilihat") else (
+        y.get("dilihat") or x.get("dilihat") or "")
+    kut = True if (x.get("kutipan") is True or y.get("kutipan") is True) else (
+        False if (x.get("kutipan") is False and y.get("kutipan") is False) else None)
+    return {"ok": False, "masalah": masalah, "dilihat": dilihat, "perbaikan": perbaikan,
+            "kutipan": kut, "pendapat": pend,
+            "ringkas": (awal + " " + (x.get("ringkas") or "")).strip()[:300]}
+
+
+def _minta_nilai(mc, pesan, user, ctx, jejak, kunci, bukti, berkas=None):
     """Minta penilaian JSON dari Pemeriksa; dipakai tahap Periksa dan tahap Diagnosa.
 
     JSON tidak terbaca -> ditanya ulang sekali, lalu keputusan memakai hasil menjalankan (`bukti`).
     Menolak tanpa masalah konkret -> ditanya ulang sekali; bila tetap kosong: diterima bila hasil
-    menjalankan baik, bila gagal masalahnya diambil dari hasil menjalankan."""
+    menjalankan baik, bila gagal masalahnya diambil dari hasil menjalankan.
+    Bila `berkas` diberikan, penolakan diverifikasi: kutipan yang tidak ada di kode/keluaran ditanya
+    ulang sekali; hasil verifikasi disimpan di nilai["kutipan"] (True/False/None)."""
     teks, _ = yield from tanya(mc, pesan, ctx, conf.TOKEN_PERIKSA, 0.1, True)
     jejak.simpan(kunci, user, teks)
     d = ambil_json(teks)
@@ -207,6 +304,8 @@ def _minta_nilai(mc, pesan, user, ctx, jejak, kunci, bukti):
         if not nilai["ok"] and not nilai["masalah"]:
             if bukti["ok"]:
                 nilai.update(ok=True, perbaikan="", dilihat="",
+                             lemah="Pemeriksa menolak tanpa menyebut masalah konkret; diterima karena "
+                                   "tidak ada kegagalan saat menjalankan/memeriksa program.",
                              ringkas=(nilai["ringkas"] + " (menolak tanpa menyebut masalah "
                                       "konkret; diterima)").strip())
             else:    # program gagal: penolakan tetap sah, masalahnya diambil dari hasil menjalankan
@@ -214,6 +313,23 @@ def _minta_nilai(mc, pesan, user, ctx, jejak, kunci, bukti):
                 nilai.update(masalah=gagal or ["Menjalankan program gagal."],
                              perbaikan=nilai["perbaikan"]
                              or "Perbaiki kesalahan yang tercatat di hasil menjalankan program.")
+    if berkas is not None and not nilai["ok"]:
+        tambahan = list(bukti.get("baris") or []) + [bukti.get("keluaran") or ""]
+        nilai["kutipan"] = periksa_dasar(nilai, berkas, tambahan)
+        if nilai["kutipan"] is False:
+            pesan += pesan_kutipan_tak_ada(teks)
+            teks, _ = yield from tanya(mc, pesan, ctx, conf.TOKEN_PERIKSA, 0.1, True)
+            jejak.simpan(kunci + "-kutipan", "(kutipan tidak ditemukan)", teks)
+            d3 = ambil_json(teks)
+            if d3 is not None:
+                ulang = rapikan_nilai(d3)
+                if ulang["ok"] and bukti["ok"]:
+                    ulang.update(lemah="Pemeriksa mencabut temuannya setelah kutipannya tidak ditemukan "
+                                       "di kode.")
+                    nilai = ulang
+                elif not ulang["ok"] and ulang["masalah"]:
+                    nilai = ulang
+                    nilai["kutipan"] = periksa_dasar(nilai, berkas, tambahan)
     return nilai
 
 
@@ -255,7 +371,7 @@ def tahap_diagnosa(tugas, cfg, hasil_dir, folder, mc, ctx, pemuat, jejak):
     bukti = yield from diagnosa_menjalankan(cfg, hasil_dir, berkas)
     user, dilihat, total = prompt_diagnosa(tugas, "\n".join(bukti["baris"]), berkas)
     pesan = pesan_chat(sistem_peran(ctx, "diagnosa"), user)
-    nilai = yield from _minta_nilai(mc, pesan, user, ctx, jejak, "diagnosa", bukti)
+    nilai = yield from _minta_nilai(mc, pesan, user, ctx, jejak, "diagnosa", bukti, berkas)
     if nilai["ok"] and not bukti["ok"]:
         gagal = [b[:300] for b in bukti["baris"] if b.startswith("GAGAL")][:5]
         nilai.update(ok=False, masalah=gagal,

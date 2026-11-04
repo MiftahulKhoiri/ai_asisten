@@ -120,7 +120,8 @@ def mulai_proses(tugas, cfg, lanjut=None, bahan=None, paket=None, chat_id=None, 
         mdl.sentuh()
         lg.log("CHAT", f"agent: {tugas[:100]}")
         lg.log("INFO", f"Agent {cfg['mode']} model: perencana={cfg['model_p']}, "
-                       f"pelaksana={cfg['model_e']}, pemeriksa={cfg['model_c']}, "
+                       f"pelaksana={cfg['model_e']}, pemeriksa={cfg['model_c']}"
+                       + (f", pemeriksa2={cfg['model_c2']}" if cfg.get("model_c2") else "") + ", "
                        f"maks {cfg['maks']} putaran, uji jalan "
                        + ("DIIZINKAN" if cfg["uji"] else "mati")
                        + (f", dari obrolan {chat_id}" if chat_id else "")

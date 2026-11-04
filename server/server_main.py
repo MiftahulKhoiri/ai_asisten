@@ -22,6 +22,41 @@ def keluar(*_):
     raise KeyboardInterrupt
 
 
+class ServerTerbatas(ThreadingHTTPServer):
+    """ThreadingHTTPServer dengan batas koneksi serentak (`conf.MAKS_KONEKSI`).
+
+    Satu koneksi = satu thread (± beberapa MB di perangkat RAM kecil). Tanpa batas, banyak koneksi
+    terbuka (tab yang lupa ditutup, long-poll, atau pemindai jaringan) bisa menghabiskan RAM.
+    Koneksi di atas batas langsung dijawab 503 dan ditutup; halaman web mencoba lagi sendiri."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self._slot = threading.BoundedSemaphore(conf.MAKS_KONEKSI)
+        self.ditolak = 0
+
+    def process_request(self, request, client_address):
+        if not self._slot.acquire(blocking=False):
+            self.ditolak += 1
+            try:
+                request.sendall(b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 2\r\n"
+                                b"Content-Length: 0\r\nConnection: close\r\n\r\n")
+            except OSError:
+                pass
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:         # thread gagal dibuat: slot jangan bocor
+            self._slot.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slot.release()
+
+
 def main():
     ap = argparse.ArgumentParser(description="AI Asisten: server web + log terminal.")
     ap.add_argument("--host", default="0.0.0.0", help="alamat bind (default 0.0.0.0)")
@@ -53,7 +88,7 @@ def main():
         models = None
         galat_llama = f"{type(e).__name__}: {e}"
     try:
-        httpd = ThreadingHTTPServer((a.host, a.port), web.H)
+        httpd = ServerTerbatas((a.host, a.port), web.H)
     except OSError as e:
         lg.log("ERR", f"Tidak bisa membuka port {a.port}: {e}")
         sys.exit(1)
@@ -102,4 +137,4 @@ def main():
         lg.log("OK", "Selesai")
 
 
-__all__ = ['keluar', 'main']
+__all__ = ['keluar', 'main', 'ServerTerbatas']

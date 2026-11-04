@@ -30,6 +30,7 @@ RENCANA = json.dumps({
     "langkah": ["tulis kode"], "kriteria": ["mencetak halo"],
     "jalankan": ["python3", "main.py"], "catatan": "", "tanya": ""})
 KODE_BAIK = "=== FILE: main.py ===\nprint('halo')\n=== END ===\n"
+KODE_BAIK2 = "=== FILE: main.py ===\nprint('halo')\nprint('lagi')\n=== END ===\n"   # beda dari KODE_BAIK
 KODE_RUSAK = "=== FILE: main.py ===\ndef x(:\n    pass\n=== END ===\n"
 NILAI_OK = json.dumps({"ok": True, "ringkas": "bagus", "masalah": [], "perbaikan": ""})
 NILAI_TOLAK = json.dumps({"ok": False, "ringkas": "kurang", "masalah": ["main.py:1 - salah"],
@@ -487,7 +488,7 @@ class TestAlur(DasarAgent):
         # Pemeriksa yang memutuskan: harapan Perencana terpenuhi tidak otomatis meloloskan
         llama = LlamaPalsu("A", "B")
         rencana = json.dumps(dict(json.loads(RENCANA), harapan=["halo"]))
-        s = StreamPalsu([rencana], [KODE_BAIK, KODE_BAIK], [NILAI_TOLAK, NILAI_OK])
+        s = StreamPalsu([rencana], [KODE_BAIK, KODE_BAIK2], [NILAI_TOLAK, NILAI_OK])
         self.pasang(llama, s)
         ev, _ = self.jalan(self.cfg())
         self.assertEqual([e["ok"] for e in ev if e["t"] == "nilai"], [False, True])
@@ -531,7 +532,7 @@ class TestAlur(DasarAgent):
     def test_penolakan_tanpa_masalah_lalu_konkret_dikirim_ke_pelaksana(self):
         llama = LlamaPalsu("A", "B")
         tolak_kosong = json.dumps({"ok": False, "ringkas": "kurang", "masalah": []})
-        s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_BAIK], [tolak_kosong, NILAI_TOLAK, NILAI_OK])
+        s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_BAIK2], [tolak_kosong, NILAI_TOLAK, NILAI_OK])
         self.pasang(llama, s)
         ev, _ = self.jalan(self.cfg())
         self.assertEqual([e["ok"] for e in ev if e["t"] == "nilai"], [False, True])
@@ -544,7 +545,7 @@ class TestAlur(DasarAgent):
         llama = LlamaPalsu("A", "B")
         tolak = json.dumps({"ok": False, "ringkas": "salah", "masalah": ["main.py:1 - hasil 108 salah"],
                             "dilihat": "108", "perbaikan": "ganti"})
-        s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_BAIK], [tolak, NILAI_OK])
+        s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_BAIK2], [tolak, NILAI_OK])
         self.pasang(llama, s)
         ev, _ = self.jalan(self.cfg())
         self.assertEqual([e["n"] for e in ev if e["t"] == "putaran"], [1, 2])
@@ -556,7 +557,8 @@ class TestAlur(DasarAgent):
         llama = LlamaPalsu("A", "B")
         tolak = json.dumps({"ok": False, "ringkas": "kurang", "masalah": ["main.py:1 - perlu diubah total"],
                             "dilihat": "print('halo')", "perbaikan": "ubah"})
-        s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_RUSAK], [tolak, tolak],
+        # putaran 2: kutipan tidak ada lagi di kode (KODE_RUSAK), jadi Pemeriksa ditanya ulang sekali
+        s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_RUSAK], [tolak, tolak, tolak],
                         jelaskan=["Semua sempurna tanpa masalah!"])
         self.pasang(llama, s)
         ev, _ = self.jalan(self.cfg(maks=2))
@@ -603,7 +605,7 @@ class TestAlur(DasarAgent):
         self.assertTrue(all("ts" in b for b in baris))
     def test_tiga_model_pemeriksa_menolak_lalu_menerima(self):
         llama = LlamaPalsu("A", "B", "C")
-        s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_BAIK], [NILAI_TOLAK, NILAI_OK])
+        s = StreamPalsu([RENCANA], [KODE_BAIK, KODE_BAIK2], [NILAI_TOLAK, NILAI_OK])
         self.pasang(llama, s)
         ev, _ = self.jalan(self.cfg(mode=3))
         self.assertEqual(ev[-1]["status"], "lolos")
@@ -633,7 +635,8 @@ class TestAlur(DasarAgent):
 
     def test_batas_putaran_tercapai(self):
         llama = LlamaPalsu("A", "B")
-        s = StreamPalsu([RENCANA], [KODE_RUSAK, KODE_RUSAK], [NILAI_TOLAK, NILAI_TOLAK])
+        rusak_lain = KODE_RUSAK.replace("def x(:", "def y(:")     # beda dari putaran 1: bukan "macet"
+        s = StreamPalsu([RENCANA], [KODE_RUSAK, rusak_lain], [NILAI_TOLAK, NILAI_TOLAK])
         self.pasang(llama, s)
         ev, _ = self.jalan(self.cfg(maks=2))
         self.assertEqual(ev[-1]["status"], "belum")

@@ -8,8 +8,8 @@ from datetime import datetime
 from pathlib import Path
 
 from . import tim_config as conf
-from .tim_berkas import baca_json, baca_proyek, masukkan_bahan, pulihkan, salin_proyek
-from .tim_cek import teks_koreksi
+from .tim_berkas import baca_json, baca_proyek, hash_proyek, masukkan_bahan, pulihkan, salin_proyek
+from .tim_cek import masalah_berulang, teks_koreksi
 from .tim_config import Batal
 from .tim_model import Pemuat
 from .tim_riwayat import AKTIF_RUN, tulis_meta
@@ -29,6 +29,18 @@ from .tim_tahap import (
 )
 
 
+PERINGATAN_MACET = ("\n\nPERINGATAN SISTEM: koreksi sebelumnya TIDAK membuahkan hasil (%s). Jangan "
+                    "mengulang pendekatan yang sama; ubah cara menyelesaikannya atau tulis ulang bagian "
+                    "yang bermasalah.")
+
+
+def _catatan_kutipan(rekam):
+    """Tambahan alasan henti: penolakan terakhir Pemeriksa tidak bisa dibuktikan ada di kode."""
+    nilai = (rekam[-1]["akhir"].get("nilai") or {}) if rekam else {}
+    return (" Kutipan Pemeriksa tidak ditemukan di kode, jadi temuannya mungkin keliru: periksa sendiri."
+            if nilai.get("kutipan") is False else "")
+
+
 def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak, koreksi_awal=""):
     """Putaran Pelaksana -> Pemeriksa -> koreksi. Kembalian: 'lolos' atau 'belum'.
     `akhir` (dict) diisi hasil pemeriksaan terakhir untuk penjelasan.
@@ -42,10 +54,17 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak, kore
     Bila akhirnya belum sempurna, hasil putaran terbaik dipulihkan supaya koreksi yang keliru
     tidak merusak hasil yang lebih baik.
 
+    Deteksi macet: Pelaksana menulis kode yang SAMA PERSIS dengan putaran lalu (Pemeriksa tidak
+    dipanggil lagi: penilaiannya pasti sama), atau Pemeriksa mengulang masalah yang sama. Kali pertama
+    koreksi diberi peringatan "ganti pendekatan"; kali kedua berturut-turut proses dihentikan lebih
+    awal (hemat waktu di perangkat lambat) dan alasannya dicatat di akhir["henti"].
+
     `koreksi_awal`: koreksi untuk putaran pertama (jalur perbaiki: temuan tahap Diagnosa)."""
     mp, me, mc, maks = cfg["model_p"], cfg["model_e"], cfg["model_c"], cfg["maks"]
+    mc2 = cfg.get("model_c2")
     koreksi = koreksi_awal
     rekam = []    # per putaran: skor, isi berkas, hasil pemeriksaan
+    sidik_lalu, masalah_lalu, macet, henti = None, [], 0, ""
     for putaran in range(1, maks + 1):
         meta["putaran"] = putaran
         tulis_meta(folder, meta)       # pemantau yang membuka halaman lagi melihat putaran terbaru
@@ -57,6 +76,22 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak, kore
         batas = conf.MAKS_BERKAS_TOTAL + len(meta.get("bahan") or [])   # berkas unggahan tidak dihitung
         ditulis, masalah = yield from tahap_tulis(spec, koreksi, hasil_dir, me, ctx, jejak, putaran,
                                                   batas)
+
+        # 1b. Kode sama persis dengan putaran lalu (yang ditolak): tidak ada yang baru untuk diperiksa
+        sidik = hash_proyek(hasil_dir)
+        if sidik_lalu is not None and sidik == sidik_lalu:
+            macet += 1
+            yield {"t": "ringkas", "d": "Pelaksana menulis kode yang sama persis dengan putaran sebelumnya "
+                                        "(macet %d)." % macet}
+            if macet >= 2:
+                henti = ("Dihentikan lebih awal di putaran %d: Pelaksana terus menulis kode yang sama "
+                         "walau sudah dikoreksi.%s" % (putaran, _catatan_kutipan(rekam)))
+                yield from pemuat.selesai_tahap(mp)
+                break
+            koreksi += PERINGATAN_MACET % "kode yang ditulis sama persis"
+            yield from pemuat.selesai_tahap(me)
+            continue
+        sidik_lalu = sidik
 
         # 2. Hasilnya langsung ke Pemeriksa
         yield from pemuat.selesai_tahap(mc)
@@ -72,7 +107,7 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak, kore
             raise Batal()
 
         # 2b. Pemeriksa menentukan benar atau salah
-        nilai = yield from tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran)
+        nilai = yield from tahap_periksa(spec, bukti, hasil_dir, mc, ctx, jejak, putaran, mc2, pemuat)
         akhir["nilai"] = nilai
         rekam.append({"skor": (2 if nilai["ok"] else 0) + (1 if bukti["ok"] else 0)
                               + (1 if bukti["harapan"] else 0),
@@ -85,7 +120,21 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak, kore
             yield from pemuat.selesai_tahap(mp)
             return "lolos"
         koreksi = teks_koreksi(bukti["baris"], nilai)
+        if masalah_berulang(nilai["masalah"], masalah_lalu):
+            macet += 1
+            yield {"t": "ringkas", "d": "Pemeriksa mengulang masalah yang sama (macet %d)." % macet}
+            if macet >= 2:
+                henti = ("Dihentikan lebih awal di putaran %d: masalah yang sama muncul terus walau "
+                         "sudah dikoreksi.%s" % (putaran, _catatan_kutipan(rekam)))
+            else:
+                koreksi += PERINGATAN_MACET % "masalah yang sama muncul lagi"
+        else:
+            macet = 0
+        masalah_lalu = nilai["masalah"]
         (folder / ("koreksi_%d.md" % putaran)).write_text(koreksi, encoding="utf-8")
+        if henti:
+            yield from pemuat.selesai_tahap(mp)
+            break
         yield from pemuat.selesai_tahap(me if putaran < maks else mp)
 
     terbaik = max(rekam, key=lambda r: (r["skor"], r["putaran"]))
@@ -97,6 +146,9 @@ def kerjakan(spec, cfg, hasil_dir, folder, meta, ctx, pemuat, akhir, jejak, kore
         yield {"t": "pulih", "putaran": terbaik["putaran"],
                "d": "Hasil putaran %d dipulihkan: lebih baik daripada putaran terakhir."
                     % terbaik["putaran"]}
+    if henti:
+        akhir["henti"] = henti
+        yield {"t": "ringkas", "d": henti}
     return "belum"
 
 
@@ -128,8 +180,9 @@ def _jalankan(tugas, cfg, ctx, lanjut=None, bahan=None):
     hasil_dir.mkdir(parents=True)
     meta = {"id": run_id, "tugas": tugas, "judul": " ".join(tugas.split())[:40],
             "status": "berjalan", "dibuat": datetime.now().isoformat(timespec="seconds"),
-            "model": {"perencana": cfg["model_p"], "pelaksana": cfg["model_e"],
-                      "pemeriksa": cfg["model_c"]},
+            "model": dict({"perencana": cfg["model_p"], "pelaksana": cfg["model_e"],
+                           "pemeriksa": cfg["model_c"]},
+                          **({"pemeriksa2": cfg["model_c2"]} if cfg.get("model_c2") else {})),
             "putaran": 0, "maks": cfg["maks"], "lanjut": None, "laporan": "", "spec": None,
             "bahan": [], "jalur": None, "prompt": {}}
     spec_lama = None

@@ -4,6 +4,7 @@
 //   mode kosong      kirim perintah, proses dipantau lewat long-poll
 //   mode putus       sama, tetapi jaringan putus dua kali di tengah pemantauan (harus lanjut sendiri)
 //   mode lampirkan   halaman dibuka saat proses sudah berjalan di server (tanpa mengirim apa pun)
+//   mode sidang      pengaturan tersimpan memakai Penantang (model K): Sidang Pemeriksa aktif
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -75,7 +76,8 @@ async function fetchPalsu(url, opt) {
       {id: 'A', nama: 'A', mb: 1100, koneksi: 'lokal', jenis: 'lokal', sumber: 'llama-server'},
       {id: 'B', nama: 'B', mb: 2300, koneksi: 'lokal', jenis: 'lokal', sumber: 'llama-server'},
       {id: 'k1::gpt-4o', nama: 'gpt-4o', koneksi: 'k1', jenis: 'online', sumber: 'OpenRouter'}];
-    return respon({models: MODE === 'campur' ? MODEL_CAMPUR : [{id: 'A', mb: 1100}, {id: 'B', mb: 2300}], chat_aktif: false,
+    const SEMUA = [{id: 'A', mb: 1100}, {id: 'B', mb: 2300}, {id: 'K', mb: 1800}];
+    return respon({models: MODE === 'campur' ? MODEL_CAMPUR : (MODE === 'sidang' ? SEMUA : SEMUA.slice(0, 2)), chat_aktif: false,
                    sibuk: false, proses});
   }
   if (url.startsWith('/api/agent/event?')) {
@@ -106,7 +108,8 @@ async function fetchPalsu(url, opt) {
 const galat = [];
 const konteks = {
   document, window: {isSecureContext: false}, navigator: {}, fetch: fetchPalsu,
-  localStorage: {getItem: k => (k === 'aa_token' ? 'tok' : null), setItem() {}},
+  localStorage: {getItem: k => (k === 'aa_token' ? 'tok'
+    : (k === 'ag_cfg' && MODE === 'sidang' ? JSON.stringify({mode: 2, p: 'A', e: 'B', k: 'K', ronde: 3}) : null)), setItem() {}},
   location: {search: '', pathname: '/agent.html'}, history: {replaceState() {}},
   URLSearchParams, TextDecoder, TextEncoder, console, confirm: () => true,
   setInterval: () => 0, clearInterval() {}, setTimeout, clearTimeout,
@@ -163,6 +166,12 @@ vm.createContext(konteks);
     alur_kolom: byId['relAlur'] && byId['relAlur'].style.gridTemplateColumns,
     saran_tampil: saranTampil, saran_teks: saranTeks,
     kartu_diag: semua.filter(e => /\bdiag\b/.test(e.className)).length,
+    kartu_sidang: semua.filter(e => /^kartu nilai sidang\b/.test(e.className)).map(teksPohon),
+    body: kirimBody.teks,
+    pilihan_k: (byId['selK'] ? byId['selK'].children : []).map(c => ({v: c.value, t: c._text})),
+    ronde_tersembunyi: byId['barisRonde'] && byId['barisRonde'].hidden,
+    ronde_nilai: byId['selRonde'] && byId['selRonde'].value,
+    mulai_nonaktif: byId['btnMulai'] && byId['btnMulai'].disabled,
     jalur_cek: ['otomatis', 'buat', 'perbaiki', 'cari_bug'].map(j => byId['jl_' + j] && byId['jl_' + j].attrs['aria-checked']),
   };
   console.log(JSON.stringify(hasil));

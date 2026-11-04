@@ -839,6 +839,7 @@ Aturan lain:
 - Rute: `GET /api/agent/prompt?peran=...`, `GET /api/agent/prompt/ekspor?peran=...&id=...`,
   `POST /api/agent/prompt` (tambah), `/ubah`, `/impor`, `/hapus` (semuanya dengan `peran` di badan permintaan).
 
+<<<<<<< Updated upstream
 ### Sidang Pemeriksa (dua model saling memeriksa)
 
 Satu Pemeriksa bermodel kecil bisa salah ke dua arah: **menyetujui** kode yang sebenarnya bermasalah, atau
@@ -868,6 +869,43 @@ di log, di `diagnosa.json`, dan di baris **Sidang Pemeriksa** pada laporan akhir
 `jejak/*-sidang-*.txt`. Biayanya: 1 panggilan model tambahan bila sepakat; tiap giliran lanjutan bisa
 menukar model di memori (nyalakan "Bongkar model tiap tahap" hanya bila RAM terbatas). Penantang harus
 model yang berbeda dari Pemeriksa; model Pelaksana boleh dipakai sebagai Penantang.
+=======
+### Pemeriksa kedua dan pembuktian temuan
+
+Satu Pemeriksa bermodel kecil bisa salah ke dua arah: **menyetujui** kode yang sebenarnya bermasalah, atau
+**menolak** dengan "masalah" karangan sehingga Pelaksana menulis ulang kode yang sudah benar. Ada empat
+pengaman, semuanya bekerja di tahap **Periksa** (dan pembuktian juga di tahap **Diagnosa**):
+
+1. **Pembuktian temuan (otomatis, tanpa model tambahan).** Kutipan `dilihat` dan nama berkas pada setiap
+   penolakan dicocokkan dengan isi kode dan keluaran program (huruf besar/kecil, spasi, dan nomor baris
+   diabaikan). Kutipan yang tidak ditemukan, atau semua masalah yang menyebut berkas yang tidak ada,
+   ditanyakan ulang **sekali**. Bila tetap tidak terbukti, penolakan tetap dikirim (Pemeriksa tetap penentu),
+   tetapi koreksinya diberi **CATATAN SISTEM** supaya Pelaksana memeriksa sendiri dan tidak mengubah kode yang
+   sudah benar, dan laporan akhir memberi peringatan.
+2. **Pemeriksa kedua (opsional).** Pilih model di bawah Pemeriksa (kosong = perilaku lama persis). Jawaban
+   untuk "apakah dua model saling berdiskusi itu relevan": relevan, **asal dibatasi dan berpijak pada bukti**,
+   karena dua model kecil yang berdiskusi bebas gampang saling mengiyakan. Jadi:
+   - Pemeriksa kedua menilai hasil yang sama **secara mandiri**, tanpa melihat penilaian pertama.
+   - Sepakat menerima → jadi. Sepakat menolak → masalah digabung tanpa pengulangan, dikirim ke Pelaksana.
+   - Berbeda pendapat → **satu ronde sanggahan**: yang menerima diminta memeriksa temuan yang menolak
+     langsung pada kode (disertai status pembuktian kutipannya) dan dilarang ikut setuju hanya karena
+     diminta. Bila ia berbalik, ditolak. Bila ia bertahan: program **gagal** dijalankan/diperiksa → ditolak
+     (fakta mengalahkan opini); selain itu → diterima dengan tanda **keputusan lemah**, dan temuan yang
+     disanggah dicantumkan di laporan agar kamu menilainya sendiri.
+   - Biayanya: 1 panggilan model tambahan bila sepakat, 2 bila berbeda pendapat; model bergantian dimuat
+     (nyalakan "Bongkar model tiap tahap" hanya bila RAM terbatas). Model kedua boleh model Pelaksana, tetapi
+     model ketiga yang berbeda lebih independen.
+3. **Deteksi macet.** Pelaksana menulis kode yang sama persis dengan putaran lalu (Pemeriksa tidak dipanggil
+   lagi karena penilaiannya pasti sama), atau Pemeriksa mengulang masalah yang sama. Kali pertama koreksi
+   diberi peringatan "ganti pendekatan"; kali kedua berturut-turut proses **berhenti lebih awal** dan
+   alasannya ditulis di laporan. Hasil putaran terbaik tetap dipulihkan.
+4. **Tanda keputusan lemah.** Laporan akhir memberi peringatan bila "jadi" hanya berdasarkan keputusan
+   cadangan (jawaban Pemeriksa tidak terbaca, atau menolak tanpa masalah konkret), bila Pemeriksa berbeda
+   pendapat, atau bila program **belum pernah dijalankan** (uji jalan dimatikan atau tidak ada perintah uji).
+
+Jejak tiap penilaian ada di `jejak/` (`periksa-N`, `periksa2-N`, `sanggah-N`, serta `-kutipan` untuk tanya
+ulang kutipan). Aturan keputusan dua Pemeriksa ada di `tim_tahap._putuskan_dua` (fungsi murni, mudah diuji).
+>>>>>>> Stashed changes
 
 ### Alur menyesuaikan jenis tugas
 
@@ -910,7 +948,11 @@ Pilihan di halaman Agent:
 - **2 model**: Model 1 = Perencana + Pemeriksa + Penjelas, Model 2 = Pelaksana.
 - **3 model**: tiap peran punya model sendiri (model yang sama boleh dipakai untuk dua peran).
   Minimal harus ada 2 model yang berbeda.
+<<<<<<< Updated upstream
 - **Penantang (opsional)** dan **Giliran sidang** (1-3): lihat [Sidang Pemeriksa](#sidang-pemeriksa-dua-model-saling-memeriksa).
+=======
+- **Pemeriksa kedua (opsional)**: lihat [Pemeriksa kedua dan pembuktian temuan](#pemeriksa-kedua-dan-pembuktian-temuan).
+>>>>>>> Stashed changes
 - **Maksimal putaran koreksi** (1-10): berapa kali Pelaksana boleh mengulang.
 - **Bongkar model tiap tahap**: hemat RAM; model yang dipakai tahap berikutnya tidak dibongkar.
 - **Izinkan Pemeriksa menjalankan program hasil**: izin ada di pengaturan ini (mati secara bawaan).
@@ -980,6 +1022,13 @@ Proses yang sedang berjalan tidak bisa dihapus (dilewati oleh Hapus semua). Hany
 Keamanan: program buatan model dijalankan **hanya bila kamu menyalakan izinnya di pengaturan**
 (mati secara bawaan; menyalakannya berarti kamu mempercayai model dan tugasnya), tanpa shell, di folder `hasil/`, dengan batas waktu
 (`ASISTEN_AGENT_UJI_DTK`). Perintah uji dibatasi pada `python3`/`node` + berkas dari lembar tugas.
+Program uji juga **dikurung** (`tim/tim_kotak.py`): environment bersih (kunci API dan variabel server tidak terbawa;
+`HOME` mengarah ke folder sementara yang dihapus), batas memori (`ASISTEN_UJI_RAM_MB`), waktu CPU, ukuran berkas yang
+ditulis, jumlah berkas terbuka dan proses baru, **jaringan diputus** bila sistem mendukung `unshare -rn`, dan keluaran
+hanya dibaca bagian akhirnya (RAM server aman walau program mencetak tanpa henti). Ini pengurungan dasar, bukan sandbox
+penuh: program masih bisa membaca berkas milikmu lewat jalur absolut (mis. `~/.token`), jadi tetap nyalakan izin uji jalan
+hanya untuk tugas yang kamu percaya. Catatan isolasi ikut dikirim ke Pemeriksa, supaya kegagalan akibat jaringan terputus
+tidak dianggap bug program.
 Nama berkas dari model divalidasi (tanpa `..`, tanpa titik di depan, ekstensi yang dikenal).
 Tetap periksa kodenya bila ragu.
 
@@ -998,16 +1047,25 @@ berkas yang relevan:
 |---|---|
 | teks prompt Perencana/Pelaksana/Pemeriksa/Penjelas, susunan isi prompt, pembagian perilaku/format keluaran, perakitan prompt pilihan pengguna (`rakit_sistem`, `sistem_peran`) | `tim/tim_prompt.py` |
 | batas token, batas waktu uji, folder kerja, batas berkas, validasi pengaturan dari web | `tim/tim_config.py` |
-| alur putaran (Pelaksana menulis -> Pemeriksa menjalankan + menentukan), pemulihan hasil terbaik, pemakaian ulang diagnosa | `tim/tim_alur.py` |
+| alur putaran (Pelaksana menulis -> Pemeriksa menjalankan + menentukan), deteksi macet, pemulihan hasil terbaik, pemakaian ulang diagnosa | `tim/tim_alur.py` |
 | pilihan jalur (buat / perbaiki / cari bug) dan aturan kata kuncinya | `tim/tim_jalur.py` |
+<<<<<<< Updated upstream
 | tiap tahap model (Diagnosa, Perencana, Pelaksana menulis, Pemeriksa menjalankan + menentukan, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
 | alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian, pembuktian lokasi/kutipan terhadap kode | `tim/tim_cek.py` |
+=======
+| tiap tahap model (Diagnosa, Perencana, Pelaksana menulis, Pemeriksa menjalankan + menentukan, Pemeriksa kedua + sanggahan, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
+| alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian, pembuktian lokasi/kutipan terhadap kode, kemiripan masalah | `tim/tim_cek.py` |
+>>>>>>> Stashed changes
 | cara membaca keluaran Pelaksana (`=== FILE: ===`), nama berkas aman | `tim/tim_berkas.py` |
 | lembar tugas: perintah uji yang diizinkan, harapan keluaran | `tim/tim_spec.py` |
 | muat/bongkar model di llama-server | `tim/tim_model.py` |
 | aliran jawaban model, pengambilan JSON | `tim/tim_llm.py` |
 | bagian fakta pada laporan akhir | `tim/tim_laporan.py` |
+<<<<<<< Updated upstream
 | Sidang Pemeriksa: prompt Penantang, giliran, dan aturan keputusan saat tidak sepakat | `tim/tim_sidang.py` |
+=======
+| kotak uji jalan: environment bersih, batas RAM/CPU/proses/berkas, jaringan diputus, keluaran dibatasi | `tim/tim_kotak.py` |
+>>>>>>> Stashed changes
 | riwayat proses (daftar, baca, hapus) | `tim/tim_riwayat.py` |
 
 Dari luar cukup `import tim` (`tim.jalankan`, `tim.daftar_run`, ...). Konstanta pengaturan
@@ -1105,6 +1163,11 @@ Agar permanen, tambahkan baris `export NAMA=nilai` di `~/.bashrc`.
 | `ASISTEN_AGENT_DIR` | `~/agent_kerja` | folder kerja halaman Agent (satu subfolder per proses) |
 | `ASISTEN_AGENT_TOKENS` | `3000` | batas token tahap Pelaksana (menulis kode) |
 | `ASISTEN_AGENT_UJI_DTK` | `20` | batas waktu uji jalan program hasil Agent, dalam detik |
+| `ASISTEN_UJI_RAM_MB` | `512` | batas memori program uji jalan, dalam MB (0 = tanpa batas; tidak berlaku untuk `node`) |
+| `ASISTEN_UJI_JARINGAN` | `putus` | `boleh` bila program uji memang perlu internet; bawaan: jaringan diputus (butuh `unshare -rn`) |
+| `ASISTEN_UJI_KELUARAN_KB` | `200` | keluaran program uji yang dibaca kembali (bagian akhirnya), dalam KB |
+| `ASISTEN_AGENT_EVENT` | `20000` | jumlah event Agent yang disimpan di RAM server; kecilkan (mis. `3000`) di perangkat RAM 1 GB |
+| `ASISTEN_MAKS_KONEKSI` | `32` | koneksi HTTP serentak ke server web; di atas itu dijawab 503 |
 | `ASISTEN_UNGGAH_MB` | `10` | ukuran maksimum satu unggahan (zip), dalam MB |
 | `ASISTEN_PROMPT_DIR` | `prompt/` di folder proyek | folder berkas prompt untuk skill Tanpa (satu prompt satu berkas `.json`) |
 
@@ -1227,7 +1290,12 @@ pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek b
 Agent: urutan muat/bongkar model, putaran koreksi, Pemeriksa yang menjalankan dan menentukan, keamanan nama berkas, dan
 endpoint `/api/agent`, dan log langsung di halaman Agent (`tests/test_tim.py` + `tests/agent_smoke.js`,
 memakai llama-server dan model palsu; tes `agent_smoke.js` butuh `node`),
+<<<<<<< Updated upstream
 Sidang Pemeriksa dua model, termasuk aturan keputusan dan tampilannya di halaman Agent (`tests/test_sidang.py`).
+=======
+penguatan Pemeriksa: pembuktian kutipan, Pemeriksa kedua + sanggahan, deteksi macet, tanda keputusan lemah (`tests/test_pemeriksa.py`),
+kotak uji jalan: environment bersih, batas memori/berkas/waktu, jaringan diputus (`tests/test_kotak.py`; tes jaringan dilewati bila `unshare -rn` tidak tersedia),
+>>>>>>> Stashed changes
 rotasi `aksi.log` (`tests/test_aksilog.py`), pengaturan koneksi dan API key (`tests/test_koneksi.py` dengan server model palsu, termasuk lokal + online sekaligus,
 yang meminta kunci, mengalihkan, dan berpura-pura router atau bukan; `tests/koneksi_smoke.js` butuh `node`), serta `start.sh`,
 `llama_server.sh`, dan `deploy/pasang-layanan.sh` (`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).

@@ -33,6 +33,7 @@ Variabel lingkungan (opsional):
   ASISTEN_AGENT_DIR      folder kerja agent
   ASISTEN_AGENT_TOKENS   batas token tulis kode per tahap (bawaan 3000)
   ASISTEN_AGENT_UJI_DTK  batas waktu uji jalan program (bawaan 20 detik)
+  ASISTEN_UJI_RAM_MB, ASISTEN_UJI_JARINGAN, ASISTEN_UJI_KELUARAN_KB   kotak uji (lihat tim_kotak.py)
 
 Susunan paket (tiap berkas satu tanggung jawab; lihat docstring masing-masing):
   tim_config   konstanta, batas, folder kerja, validasi pengaturan dari web
@@ -41,9 +42,11 @@ Susunan paket (tiap berkas satu tanggung jawab; lihat docstring masing-masing):
   tim_llm      aliran jawaban model dan pengambilan JSON
   tim_berkas   nama berkas aman, tulis/baca proyek, penguraian keluaran Pelaksana
   tim_spec     lembar tugas dari Perencana
-  tim_cek      alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian
+  tim_kotak    kotak uji jalan: environment bersih, batas sumber daya, jaringan diputus
+  tim_cek      alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian, pembuktian kutipan
   tim_laporan  bagian fakta laporan akhir
   tim_tahap    tahap kerja model: Diagnosa, Pelaksana menulis, Pemeriksa menjalankan + menentukan
+               (opsional: Pemeriksa kedua + satu ronde sanggahan bila berbeda pendapat)
   tim_riwayat  riwayat proses: daftar, baca, hapus
   tim_jalur    jalur kerja (buat / perbaiki / cari_bug) dan pemilihannya dari isi tugas
   tim_alur     orkestrator dan pintu masuk jalankan()
@@ -111,7 +114,12 @@ from .tim_cek import (
     cek_jalan,
     cek_statis,
     cocok_keluaran,
+    gabung_masalah,
+    kutipan_ditemukan,
+    masalah_berulang,
+    mirip,
     nilai_cadangan,
+    periksa_dasar,
     perintah_uji,
     rapikan_nilai,
     teks_koreksi,

@@ -53,6 +53,10 @@ def catat_event(ev):
         log("INFO", "Agent diagnosa: " + ("tidak ada bug nyata" if ev.get("ok")
                                           else f"{len(ev.get('masalah') or [])} temuan")
             + (" (dipakai ulang)" if ev.get("dipakai_ulang") else ""))
+    elif t == "sidang":
+        log("INFO", "Agent sidang %s: %s" % (ev.get("tahap"), "sepakat" if ev.get("sepakat") else
+                                             "tidak sepakat" if ev.get("sepakat") is False else "Penantang tak terbaca")
+            + " -> " + ("jadi" if ev.get("ok") else "perlu perbaikan"))
     elif t == "bahan":
         log("INFO", f"Agent: {len(ev.get('nama') or [])} berkas unggahan masuk folder kerja"
             + (f", {len(ev['dilewati'])} dilewati" if ev.get("dilewati") else ""))

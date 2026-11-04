@@ -4,7 +4,7 @@
   let TOKEN = localStorage.getItem('aa_token') || '';
   let layar = '', sibuk = false, models = [], statusSrv = null, daftarSig = '';
   let lanjutId = null, lanjutJudul = '', awalTanya = null;
-  const cfg = {mode: 2, p: '', e: '', c: '', maks: 3, bongkar: true, uji: true, prompt: {}};
+  const cfg = {mode: 2, p: '', e: '', c: '', c2: '', maks: 3, bongkar: true, uji: true, prompt: {}};
 
   /* ---------- util ---------- */
   function el(tag, kelas, teks) {
@@ -230,6 +230,7 @@
     cfg.maks = Math.max(1, Math.min(10, parseInt(cfg.maks, 10) || 3));
     cfg.bongkar = cfg.bongkar !== false; cfg.izinUji = cfg.izinUji === true;   // izin harus sengaja dinyalakan
     if (!JALUR_ADA.includes(cfg.jalur)) cfg.jalur = 'otomatis';
+    cfg.c2 = typeof cfg.c2 === 'string' ? cfg.c2 : '';
     cfg.prompt = rapikanPrompt(cfg.prompt);
   }
   /* prompt pilihan per peran: {peran: {ids: [id prompt], mode: 'tambah'|'ganti'}} (isinya disimpan di server) */
@@ -269,14 +270,16 @@
     if (!ada(cfg.e)) cfg.e = models[models.length - 1].id;                  // terbesar: menulis kode
     if (!ada(cfg.c)) cfg.c = models[Math.floor(models.length / 2)].id;
     if (cfg.p === cfg.e && models.length > 1) cfg.e = models.find(m => m.id !== cfg.p).id;
+    if (cfg.c2 && !ada(cfg.c2)) cfg.c2 = '';                                  // Pemeriksa kedua (opsional)
   }
   /* nama yang ditampilkan: nama asli model + penanda Online (kunci "koneksi::nama" tidak ditampilkan) */
   function namaTampil(id) {
     const m = models.find(x => x.id === id);
     return m ? (m.nama || m.id) + (m.jenis === 'online' ? ' ☁' : '') : (id || '');
   }
-  function isiPilihan(sel, nilai) {
+  function isiPilihan(sel, nilai, tanpa) {   // `tanpa`: teks pilihan kosong di paling atas (untuk pilihan opsional)
     sel.innerHTML = '';
+    if (tanpa) { const o0 = document.createElement('option'); o0.value = ''; o0.textContent = tanpa; sel.appendChild(o0); }
     const sumber = new Set(models.map(m => m.koneksi || 'lokal'));
     const grup = {};
     for (const m of models) {
@@ -295,7 +298,7 @@
       }
       induk.appendChild(o);
     }
-    if (models.some(m => m.id === nilai)) sel.value = nilai;
+    if (models.some(m => m.id === nilai)) sel.value = nilai; else if (tanpa) sel.value = '';
   }
   function renderSetup(paksaDaftar) {
     for (const b of document.querySelectorAll('#segMode button')) {
@@ -316,6 +319,7 @@
     if (paksaDaftar || sig !== daftarSig) {   // jangan bangun ulang pilihan saat polling (menutup menu di HP)
       daftarSig = sig;
       isiPilihan($('selP'), cfg.p); isiPilihan($('selE'), cfg.e); isiPilihan($('selC'), cfg.c);
+      isiPilihan($('selC2'), cfg.c2, '— tanpa Pemeriksa kedua —');
     }
     $('inpMaks').value = cfg.maks;
     $('cbBongkar').checked = cfg.bongkar; $('cbUji').checked = cfg.izinUji;
@@ -365,6 +369,7 @@
   $('selP').onchange = e => { cfg.p = e.target.value; simpanCfg(); cekSetup(); };
   $('selE').onchange = e => { cfg.e = e.target.value; simpanCfg(); cekSetup(); };
   $('selC').onchange = e => { cfg.c = e.target.value; simpanCfg(); cekSetup(); };
+  $('selC2').onchange = e => { cfg.c2 = e.target.value; simpanCfg(); cekSetup(); };
   $('btnKurang').onclick = () => ubahMaks(cfg.maks - 1);
   $('btnTambah').onclick = () => ubahMaks(cfg.maks + 1);
   $('inpMaks').addEventListener('change', e => ubahMaks(e.target.value));
@@ -458,6 +463,7 @@
     const baris = [['rencana', '🧭', 'Perencana', model[0], 'menyusun lembar tugas, lalu menjelaskan hasil'],
       ['tulis', '✏️', 'Pelaksana', model[1], 'menulis program'],
       ['periksa', '🔎', 'Pemeriksa', model[2], 'menjalankan program, menentukan benar/salah, memberi koreksi']];
+    if (cfg.c2 && cfg.c2 !== model[2]) baris.push(['periksa', '⚖️', 'Pemeriksa kedua', cfg.c2, 'menilai terpisah; bila berbeda pendapat ada ronde sanggahan']);
     const k = el('div', 'kartu tim');
     k.appendChild(el('b', 'jdl', 'Tim siap · maks ' + cfg.maks + ' putaran'));
     for (const [kunci, ik, nama, mdl, tugas] of baris) {
@@ -733,7 +739,7 @@
     let sesi;
     try {
       const body = {teks, lanjut: lanjutId, mode: cfg.mode, model_p: cfg.p, model_e: cfg.e,
-        model_c: cfg.mode === 3 ? cfg.c : cfg.p, maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.izinUji, jalur: cfg.jalur,
+        model_c: cfg.mode === 3 ? cfg.c : cfg.p, model_c2: cfg.c2 || '', maks: cfg.maks, bongkar: cfg.bongkar, uji: cfg.izinUji, jalur: cfg.jalur,
         unggahan: unggah ? unggah.paket() : null, prompt_peran: promptPeranBody()};
       sesi = (await apij('/api/agent/jalankan', {method: 'POST', body})).sesi;
       if (unggah) unggah.lepas();       // berkas sudah disalin ke folder kerja di server
@@ -912,6 +918,8 @@
         tutupKartu(st, ev.ok ? 'ok' : 'ditolak', ev.ok ? 'OK' : 'perlu perbaikan'); kartuNilai(ev);
         catatLog(ev.ok ? '✔' : '✖', 'Pemeriksa: ' + (ev.ok ? 'dinyatakan jadi' : 'perlu perbaikan') + (ev.ringkas ? ' - ' + ev.ringkas : ''), ev.ok ? 'ok' : 'izin');
         for (const m of (ev.masalah || []).slice(0, 3)) catatLog('', m.slice(0, 160), 'sub');
+        for (const p of (ev.pendapat || [])) catatLog('', namaTampil(p.model) + (p.sanggahan ? ' (sanggahan)' : '') + ': ' + (p.ok ? 'jadi' : 'perlu perbaikan') + (p.kutipan === false ? ' · kutipan tidak ditemukan' : ''), 'sub');
+        if (ev.lemah) catatLog('⚠', 'Keputusan lemah: ' + ev.lemah.slice(0, 160), 'izin');
         break;
       case 'token':     // penjelasan akhir dari Perencana
         mulaiMenulis(st); tambahKeluaran(ev.d);

@@ -449,6 +449,13 @@ PESAN_MINTA_MASALAH = (
     "ada bug nyata, jawab ok=true dengan \"masalah\"=[]."
 )
 
+PESAN_KUTIPAN_TAK_ADA = (
+    "Sistem memeriksa temuanmu: kutipan \"dilihat\" atau berkas yang kamu sebut TIDAK ditemukan di "
+    "kode maupun di keluaran program di atas. Balas ulang HANYA dengan objek JSON: bila bug itu nyata, "
+    "kutip PERSIS satu baris dari kode/keluaran di \"dilihat\" dan sebut berkas yang benar-benar ada "
+    "di \"masalah\"; bila ternyata tidak ada bug nyata, jawab ok=true dengan \"masalah\"=[]."
+)
+
 
 # ---------------------------------------------------------------------------
 # Penyusun pesan chat
@@ -469,6 +476,31 @@ def pesan_minta_masalah(jawaban_sebelumnya: str) -> List[Dict[str, str]]:
     """Tambahan pesan: Pemeriksa menolak tapi tidak menyebut masalah konkret, minta ulang."""
     return [{"role": "assistant", "content": (jawaban_sebelumnya or "")[:1500]},
             {"role": "user", "content": PESAN_MINTA_MASALAH}]
+
+
+def pesan_kutipan_tak_ada(jawaban_sebelumnya: str) -> List[Dict[str, str]]:
+    """Tambahan pesan: kutipan/berkas yang disebut Pemeriksa tidak ada di kode, minta ulang."""
+    return [{"role": "assistant", "content": (jawaban_sebelumnya or "")[:1500]},
+            {"role": "user", "content": PESAN_KUTIPAN_TAK_ADA}]
+
+
+def tambahan_sanggah(nilai_lain: Dict[str, Any], kutipan_terbukti: Optional[bool]) -> str:
+    """Tambahan isi prompt untuk ronde sanggahan: Pemeriksa yang tadinya menerima diminta menilai
+    ulang temuan Pemeriksa lain. Ia harus memeriksa temuan itu langsung pada kode, bukan ikut-ikutan."""
+    status = {True: "kutipannya DITEMUKAN di kode/keluaran (dicek sistem)",
+              False: "kutipannya TIDAK ditemukan di kode/keluaran (dicek sistem), temuan ini mungkin keliru",
+              None: "sistem tidak bisa mencocokkan kutipannya"}[kutipan_terbukti]
+    masalah = "\n".join("- " + m for m in (nilai_lain.get("masalah") or [])) or "- (tidak disebut)"
+    return (
+        "\n\nSANGGAHAN: PEMERIKSA LAIN menolak hasil ini dan menemukan:\n" + masalah
+        + "\nKutipan: " + (nilai_lain.get("dilihat") or "(kosong)")
+        + "\nPerbaikan yang diusulkan: " + (nilai_lain.get("perbaikan") or "(kosong)")
+        + "\nStatus: " + status + ".\n"
+        "Tugasmu: periksa temuan itu LANGSUNG pada kode dan keluaran di atas. Bila temuannya benar dan "
+        "nyata, jawab ok=false dengan masalah, \"dilihat\", dan \"perbaikan\" milikmu sendiri. Bila "
+        "temuannya keliru, jawab ok=true dan jelaskan di \"ringkas\" kenapa keliru. Jangan ikut setuju "
+        "hanya karena Pemeriksa lain sudah memutuskan."
+    )
 
 
 # ---------------------------------------------------------------------------

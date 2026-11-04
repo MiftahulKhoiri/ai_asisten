@@ -35,7 +35,7 @@
       const x = c.prompt && c.prompt[p];
       if (x && Array.isArray(x.ids) && x.ids.length) pp[p] = {ids: x.ids.filter(i => typeof i === 'string'), mode: x.mode === 'ganti' ? 'ganti' : 'tambah'};
     }
-    return {mode, model_p: c.p, model_e: c.e, model_c: mode === 3 ? c.c : c.p, maks: c.maks || 3,
+    return {mode, model_p: c.p, model_e: c.e, model_c: mode === 3 ? c.c : c.p, model_c2: typeof c.c2 === 'string' ? c.c2 : '', maks: c.maks || 3,
       bongkar: c.bongkar !== false, uji: c.izinUji === true, prompt_peran: pp};
   }
 

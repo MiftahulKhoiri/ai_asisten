@@ -3,17 +3,18 @@
 
 :root{
   --panel2:#20242c;--bayang:0 8px 28px rgba(0,0,0,.38);--r:16px;
-  --r-rencana:#6aa8ff;--r-tulis:#f0b45a;--r-periksa:#4cc38a;--r-jelaskan:#b794f6;
+  --r-rencana:#6aa8ff;--r-tulis:#f0b45a;--r-periksa:#4cc38a;--r-jelaskan:#b794f6;--r-sidang:#e5738a;
 }
 @media (prefers-color-scheme:light){
   :root{--panel2:#f3f5f9;--bayang:0 8px 28px rgba(20,30,60,.14);
-    --r-rencana:#2563eb;--r-tulis:#b7791f;--r-periksa:#15803d;--r-jelaskan:#7c3aed}
+    --r-rencana:#2563eb;--r-tulis:#b7791f;--r-periksa:#15803d;--r-jelaskan:#7c3aed;--r-sidang:#be3455}
 }
 .r-rencana{--rc:var(--r-rencana)}
 .r-tulis{--rc:var(--r-tulis)}
 .r-periksa{--rc:var(--r-periksa)}
 .r-diagnosa{--rc:var(--r-periksa)}
 .r-jelaskan{--rc:var(--r-jelaskan)}
+.r-sidang{--rc:var(--r-sidang)}
 
 /* ---------- prompt pilihan tiap peran (tombol "+ prompt") ---------- */
 .pp{margin-top:8px}
@@ -314,3 +315,12 @@ details.berkas .rg small{margin-left:6px;color:var(--redup);font-family:system-u
 #saranBar .btn{padding:5px 12px;font-size:13px;border-radius:999px}
 #alur .lk.diagnosa .bl{border-radius:6px}
 .kartu.nilai.diag .baris{font-weight:600}
+
+/* Sidang Pemeriksa (Penantang) */
+.agent select.mini{width:auto;min-width:64px;flex:none;padding:9px 32px 9px 12px}
+.baris-set[hidden]{display:none}
+.kartu.sidang{border-left:3px solid var(--r-sidang)}
+.kartu.sidang .baris{font-weight:600}
+.kartu.sidang .giliran{margin:6px 0 0;padding:6px 8px;border-radius:10px;background:var(--panel2);font-size:13px;line-height:1.4}
+.kartu.sidang .giliran b{font-weight:600}
+.kartu.sidang .giliran small{display:block;color:var(--redup)}

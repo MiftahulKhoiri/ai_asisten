@@ -14,6 +14,7 @@ import agen  # noqa: F401 - memastikan folder proyek ada di sys.path untuk `src.
 from src.util import _ekor_teks, _run
 
 from . import tim_config as conf
+from .tim_kotak import jalankan_terkurung, ringkas_isolasi
 
 
 def cek_statis(hasil_dir, spec, ekstra=()):
@@ -74,23 +75,25 @@ def cek_jalan(hasil_dir, spec, boleh):
 
     Dijalankan oleh Pemeriksa. Izin ada di pengaturan (`boleh`, dikirim dari web): proses Agent
     bisa berjalan lama di latar belakang, jadi tidak ada lagi pertanyaan di tengah jalan.
-    Program buatan model dijalankan tanpa shell, di folder hasil/, tanpa input keyboard, dan
-    dengan batas waktu."""
+    Program buatan model dijalankan tanpa shell, di folder hasil/, tanpa input keyboard, dengan
+    batas waktu, environment bersih, batas memori/CPU/proses, dan jaringan diputus bila bisa
+    (lihat tim_kotak.py)."""
     if not spec.get("jalankan"):
         return "dilewati", ["Uji jalan dilewati: lembar tugas tidak punya perintah uji."], None
     if not boleh:
         return "dilewati", ["Uji jalan dilewati: belum diizinkan di pengaturan."], None
     cmd = perintah_uji(spec)
     tampil = " ".join(spec["jalankan"])
-    kode, out = _run(cmd, timeout=conf.UJI_DETIK, cwd=str(hasil_dir),
-                     env={"PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"})
+    kode, out = jalankan_terkurung(cmd, str(hasil_dir), conf.UJI_DETIK)
     penuh = out or ""
     ringkas = _ekor_teks(penuh or "(tanpa keluaran)", 1500)
+    # Catatan untuk Pemeriksa: kegagalan akibat pengurungan (mis. akses jaringan) bukan bug program.
+    catatan = "CATATAN isolasi uji jalan: " + ringkas_isolasi(cmd) + "."
     if kode is None:
-        return "gagal", ["GAGAL uji jalan `%s`: %s" % (tampil, ringkas)], penuh
+        return "gagal", ["GAGAL uji jalan `%s`: %s" % (tampil, ringkas), catatan], penuh
     if kode != 0:
-        return "gagal", ["GAGAL uji jalan `%s` (exit code %s):" % (tampil, kode), ringkas], penuh
-    return "lolos", ["OK uji jalan `%s` (exit code 0):" % tampil, ringkas], penuh
+        return "gagal", ["GAGAL uji jalan `%s` (exit code %s):" % (tampil, kode), ringkas, catatan], penuh
+    return "lolos", ["OK uji jalan `%s` (exit code 0):" % tampil, ringkas, catatan], penuh
 
 
 def tebak_perintah(berkas):
@@ -169,6 +172,8 @@ def nilai_cadangan(bukti):
     mengikuti hasil menjalankan program (`bukti`), dan ini dicatat jelas di 'ringkas'."""
     if bukti["ok"]:
         return {"ok": True, "masalah": [], "dilihat": "", "perbaikan": "",
+                "lemah": "Pemeriksa tidak memberi penilaian yang terbaca; diterima hanya karena "
+                         "tidak ada kesalahan saat menjalankan/memeriksa program.",
                 "ringkas": "Pemeriksa tidak memberi penilaian yang terbaca; keputusan memakai "
                            "hasil menjalankan program (tanpa kesalahan)."}
     gagal = [b[:300] for b in bukti["baris"] if b.startswith("GAGAL")][:5]
@@ -191,5 +196,101 @@ def teks_koreksi(cek_baris, nilai):
             s += "\nKutipan: " + nilai["dilihat"]
         if nilai["perbaikan"]:
             s += "\nPerbaikan: " + nilai["perbaikan"]
+        if nilai.get("kutipan") is False:
+            s += ("\nCATATAN SISTEM: kutipan/berkas yang disebut Pemeriksa TIDAK ditemukan di kode atau "
+                  "keluaran program, jadi temuan ini mungkin keliru. Periksa sendiri; bila kodenya "
+                  "sudah benar, jangan diubah.")
         bagian.append(s)
     return "\n\n".join(bagian) or "Perbaiki hasil sebelumnya agar memenuhi semua kriteria."
+
+
+# ---------------------------------------------------------------------------
+# Verifikasi mekanis temuan Pemeriksa (tidak menilai benar/salah, hanya memastikan temuannya
+# menunjuk sesuatu yang memang ada)
+# ---------------------------------------------------------------------------
+_NOMOR_AWAL = re.compile(r"^\s*\d{1,5}\s*[:|)]\s?")
+_NOMOR_DALAM = re.compile(r"(?:(?<=\s)|^)\d{1,5}:\s")
+_BERKAS_BARIS = re.compile(r"^\s*[\w./-]+\.\w{1,5}\s*:\s*\d+\s*[-–:]?\s*")
+
+
+def _lurus(t):
+    return " ".join(str(t or "").split()).lower()
+
+
+def kutipan_ditemukan(kutipan, berkas, tambahan=()):
+    """Apakah kutipan Pemeriksa (`dilihat`) benar-benar ada di isi berkas atau di teks tambahan
+    (hasil/keluaran menjalankan program)? Kembalian True / False; None bila tidak ada kutipan yang
+    bisa dicek (kosong atau terlalu pendek). Spasi dan huruf besar/kecil diabaikan, awalan nomor baris
+    ("12: ") dan "berkas:baris -" dibuang, "..." memisahkan beberapa potongan yang semuanya harus ada."""
+    k = str(kutipan or "").strip().strip("`'\"")
+    if not k:
+        return None
+    korpus = _lurus("\n".join(isi for _, isi in berkas) + "\n" + "\n".join(str(t) for t in tambahan if t))
+    varian = {k, _NOMOR_DALAM.sub("", k)}
+    pernah_dinilai = False
+    for v in varian:
+        bagian = []
+        for b in re.split(r"\n|\s\.{3}\s|…", v):
+            b = _lurus(_BERKAS_BARIS.sub("", _NOMOR_AWAL.sub("", b)))
+            if len(b) >= 4:
+                bagian.append(b)
+        if not bagian:
+            continue
+        pernah_dinilai = True
+        if all(b in korpus for b in bagian):
+            return True
+    return False if pernah_dinilai else None
+
+
+def masalah_tanpa_berkas(masalah, nama_berkas):
+    """Masalah ("berkas:baris - uraian") yang menyebut berkas yang TIDAK ada di proyek."""
+    ada = {n for n in nama_berkas} | {n.rsplit("/", 1)[-1] for n in nama_berkas}
+    hasil = []
+    for m in masalah or []:
+        mm = re.match(r"\s*([\w./-]+\.\w{1,5})\s*:", str(m))
+        if mm and mm.group(1) not in ada and mm.group(1).rsplit("/", 1)[-1] not in ada:
+            hasil.append(m)
+    return hasil
+
+
+def periksa_dasar(nilai, berkas, tambahan=()):
+    """Verifikasi temuan penolakan: True = kutipan terbukti ada, False = kutipan tidak ada atau SEMUA
+    masalah menyebut berkas yang tidak ada, None = tidak ada yang bisa dicek."""
+    if nilai.get("ok"):
+        return None
+    kut = kutipan_ditemukan(nilai.get("dilihat"), berkas, tambahan)
+    masalah = nilai.get("masalah") or []
+    tanpa = masalah_tanpa_berkas(masalah, [n for n, _ in berkas])
+    if masalah and len(tanpa) == len(masalah):
+        return False
+    return kut
+
+
+def _kata(t):
+    return set(re.findall(r"[a-z0-9_]{3,}", str(t).lower()))
+
+
+def mirip(a, b, batas=0.6):
+    """Dua uraian masalah dianggap sama bila kata-katanya (Jaccard) cukup beririsan."""
+    ka, kb = _kata(a), _kata(b)
+    if not ka or not kb:
+        return False
+    return len(ka & kb) / len(ka | kb) >= batas
+
+
+def gabung_masalah(*daftar, maks=8):
+    """Gabungan beberapa daftar masalah tanpa pengulangan (yang mirip dianggap sama)."""
+    hasil = []
+    for d in daftar:
+        for m in d or []:
+            if not any(mirip(m, x) for x in hasil):
+                hasil.append(m)
+    return hasil[:maks]
+
+
+def masalah_berulang(baru, lama):
+    """True bila sebagian besar masalah `baru` sudah ada di `lama` (koreksi tidak membuahkan hasil)."""
+    if not baru or not lama:
+        return False
+    sama = sum(1 for m in baru if any(mirip(m, x) for x in lama))
+    return sama * 2 >= len(baru)

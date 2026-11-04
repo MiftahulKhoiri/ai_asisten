@@ -118,13 +118,19 @@ def siapkan_cfg(b, tersedia):
             return None, "Model tidak dikenal: %s" % (n,)
     if len({mp, me, mc}) < 2:
         return None, "Pilih minimal 2 model yang berbeda."
+    mc2 = b.get("model_c2") or None          # Pemeriksa kedua (opsional): penilai independen
+    if mc2 is not None:
+        if mc2 not in tersedia:
+            return None, "Model tidak dikenal: %s" % (mc2,)
+        if mc2 == mc:
+            mc2 = None                      # sama dengan Pemeriksa pertama: tidak ada gunanya
     try:
         maks = int(b.get("maks") or LANGKAH_BAWAAN)
     except (TypeError, ValueError):
         maks = LANGKAH_BAWAAN
     maks = max(LANGKAH_MIN, min(LANGKAH_MAKS, maks))
     jalur = b.get("jalur") if b.get("jalur") in JALUR_PILIHAN else "otomatis"
-    return {"mode": mode, "model_p": mp, "model_e": me, "model_c": mc, "maks": maks,
+    return {"mode": mode, "model_p": mp, "model_e": me, "model_c": mc, "model_c2": mc2, "maks": maks,
             "bongkar": bool(b.get("bongkar", True)), "uji": b.get("uji") is True,
             "jalur": jalur, "prompt_peran": rapikan_prompt_peran(b.get("prompt_peran"))}, ""
 
