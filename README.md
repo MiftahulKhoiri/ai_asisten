@@ -159,7 +159,7 @@ sesudahnya **seluruh log llama-server** mengalir di sana. Ctrl+C menghentikannya
 | Opsi | Arti |
 |---|---|
 | `--port N` | port yang didengarkan (bawaan 8080) |
-| `--host ALAMAT` | `127.0.0.1` (bawaan, hanya Pi ini) atau `0.0.0.0` (bisa diakses perangkat lain; disarankan bersama `--api-key`) |
+| `--host ALAMAT` | `127.0.0.1` (bawaan, hanya Pi ini) atau `0.0.0.0` (bisa diakses perangkat lain; disarankan bersama `--api-key`, lihat [Cara 4](#cara-4-llama-server-di-pc-terpisah---host-0000)) |
 | `--models-dir DIR` | folder `.gguf` (bawaan `~/models`) |
 | `--ctx N` | ukuran konteks (bawaan 8192) |
 | `--api-key KUNCI` | llama-server hanya melayani permintaan yang membawa kunci ini. Kunci diteruskan lewat variabel `LLAMA_API_KEY`, bukan argumen, jadi tidak tampil di daftar proses |
@@ -231,7 +231,7 @@ python3 asisten.py
 ```
 
 Alamat llama-server bawaannya `http://127.0.0.1:8080`. Bila servernya di port/perangkat lain,
-isi dari web ([Koneksi model](#koneksi-model-alamat-dan-api-key)); tidak perlu menjalankan ulang asisten.
+isi dari web ([Koneksi model](#koneksi-model-lokal-dan-online-sekaligus)); tidak perlu menjalankan ulang asisten.
 
 Terminal menampilkan alamat seperti ini:
 
@@ -298,6 +298,8 @@ Skrip memasang dua layanan systemd tingkat-pengguna (tanpa sudo): `llama-server`
 Pengaturan tambahan (misalnya `ASISTEN_LOG_MAKS_KB` atau `ASISTEN_TOOLS`) ditaruh di
 `~/.config/ai_asisten.env`, satu baris `NAMA=nilai`, lalu `systemctl --user restart ai-asisten`.
 
+Layanan `llama-server` bawaan hanya mendengarkan `127.0.0.1`. Bila model dijalankan di PC lain, lihat [Cara 4](#cara-4-llama-server-di-pc-terpisah---host-0000).
+
 Catatan: jalur proyek, llama-server, dan folder model tidak boleh mengandung spasi; pasang ulang
 bila jalurnya berubah. Jangan menjalankan `start.sh` bersamaan dengan layanan (port bentrok):
 hentikan layanan dulu.
@@ -321,6 +323,119 @@ sudo apt install -y tmux
 tmux new -s ai        # lalu jalankan kedua perintah di jendela terpisah (Ctrl+b lalu %)
 # lepas dengan Ctrl+b lalu d, kembali dengan: tmux attach -t ai
 ```
+
+### Cara 4: llama-server di PC terpisah (`--host 0.0.0.0`)
+
+Cocok bila server web berjalan di perangkat kecil (misalnya Pi atau VPS dengan RAM 1 GB) dan model
+dijalankan di PC lain yang RAM-nya lebih besar (misalnya 8 GB). Pembagian tugasnya:
+
+| Perangkat | Menjalankan | Kebutuhan |
+|---|---|---|
+| **Server web** (RAM 1 GB cukup) | `python3 asisten.py` saja, tanpa llama.cpp dan tanpa model | sekitar 30 MB RAM saat diam; Python 3 |
+| **PC model** (RAM 8 GB) | `./llama_server.sh --host 0.0.0.0 ...` | llama.cpp, folder `.gguf`, RAM sebesar model terbesar yang dipakai |
+
+Karena model dimuat satu per satu, biarkan **Bongkar model tiap tahap** menyala di halaman Agent
+supaya RAM 8 GB di PC model tidak penuh. Server web tidak ikut menanggung beban model.
+
+**A. Di PC model**
+
+1. Pasang llama.cpp dan taruh `.gguf` di satu folder (langkah [2](#2-pasang-llamacpp-llama-server) dan
+   [3](#3-unduh-model-gguf)). Skrip `llama_server.sh` ada di folder proyek; salin folder proyek ke PC ini
+   (atau cukup berkas `llama_server.sh`).
+2. Nyalakan dengan `--host 0.0.0.0` supaya bisa dijangkau perangkat lain. Tanpa opsi ini llama-server
+   hanya mendengarkan `127.0.0.1` (PC itu sendiri) dan perangkat lain **pasti ditolak**.
+   Pasang juga API key, karena siapa pun di jaringan yang sama bisa memakai server tanpa kunci:
+
+   ```bash
+   cd ~/ai_asisten
+   ./llama_server.sh --host 0.0.0.0 --api-key GANTI-DENGAN-KUNCI-PANJANG
+   ```
+
+   Bentuk lain yang setara:
+
+   ```bash
+   # lewat variabel lingkungan
+   LLAMA_HOST=0.0.0.0 LLAMA_API_KEY=GANTI-DENGAN-KUNCI-PANJANG ./llama_server.sh
+
+   # tanpa skrip
+   LLAMA_API_KEY=GANTI-DENGAN-KUNCI-PANJANG ~/llama.cpp/build/bin/llama-server \
+     --models-dir ~/models --host 0.0.0.0 --port 8080 -c 8192 --jinja
+   ```
+
+   Skrip menolak jalan bila port sudah dipakai, dan memperingatkan bila `0.0.0.0` dipakai tanpa
+   `--api-key`. Setelah siap, ia mencetak
+   `OK  ISI ALAMAT INI di web (Pengaturan koneksi): http://192.168.x.x:8080`. **Catat alamat itu.**
+   Bila alamatnya tidak tampil atau salah, lihat IP PC dengan `hostname -I` (Linux) atau `ipconfig` (Windows).
+3. Buka port di firewall PC model, hanya untuk jaringan rumah/kantor:
+
+   ```bash
+   sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp    # sesuaikan subnet-mu
+   ```
+
+   Di Windows: Windows Defender Firewall → Inbound Rules → New Rule → Port → TCP 8080 → Allow
+   (cukup profil *Private*), atau dari PowerShell administrator:
+   `netsh advfirewall firewall add rule name="llama-server" dir=in action=allow protocol=TCP localport=8080`.
+   Di Windows, jalankan llama-server langsung: `llama-server.exe --models-dir C:\models --host 0.0.0.0 --port 8080 -c 8192 --jinja`.
+4. Biarkan tetap hidup walau terminal ditutup: jalankan di `tmux` (lihat [Cara 3](#cara-3-dua-terminal-disarankan-bila-ingin-melihat-log-llama-server)),
+   atau pasang sebagai layanan di PC Linux itu. Unit bawaan `deploy/llama-server.service.in` memakai
+   `--host 127.0.0.1`, jadi **jangan** dipakai apa adanya untuk skenario ini. Buat unit sendiri,
+   misalnya `~/.config/systemd/user/llama-server.service`:
+
+   ```ini
+   [Unit]
+   Description=llama-server (PC model)
+   After=network-online.target
+
+   [Service]
+   Type=simple
+   EnvironmentFile=%h/.config/llama-server.env
+   ExecStart=/home/NAMAMU/llama.cpp/build/bin/llama-server --models-dir /home/NAMAMU/models --host 0.0.0.0 --port 8080 -c 8192 --jinja
+   Restart=on-failure
+   RestartSec=5
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+   Isi `~/.config/llama-server.env` dengan satu baris `LLAMA_API_KEY=kuncimu` (batasi aksesnya:
+   `chmod 600 ~/.config/llama-server.env`), lalu:
+   `systemctl --user daemon-reload && systemctl --user enable --now llama-server && sudo loginctl enable-linger $USER`.
+
+**B. Di server web (RAM 1 GB)**
+
+1. Cek dulu bahwa PC model bisa dijangkau dari server web (ganti IP dan kunci):
+
+   ```bash
+   curl -H "Authorization: Bearer KUNCI" http://192.168.1.50:8080/v1/models
+   ```
+
+   Hasil yang benar adalah JSON berisi daftar model. Bila gagal, lihat
+   [Koneksi ke llama-server di PC lain gagal](#koneksi-ke-llama-server-di-pc-lain-gagal) di bagian
+   Pemecahan masalah.
+2. Nyalakan **hanya** server web, tanpa llama-server lokal:
+
+   ```bash
+   cd ~/ai_asisten
+   python3 asisten.py                 # atau: ./start.sh --tanpa-llama
+   ```
+
+   Jangan memakai `./deploy/pasang-layanan.sh` di perangkat ini: skrip itu memasang dan menyalakan
+   llama-server lokal juga, yang di sini tidak ada atau tidak dibutuhkan.
+3. Buka web → **Atur koneksi** → ubah koneksi utama: isi **Alamat** `http://192.168.1.50:8080`, pilih jenis
+   **llama-server**, dan isi **API key** sama dengan kunci di PC model → **Uji koneksi** → **Simpan**. Alamat dan kunci tersimpan di
+   server web, jadi cukup diisi sekali.
+4. Samakan konteksnya: bila PC model dijalankan dengan `--ctx 16384`, jalankan server web dengan
+   `ASISTEN_CTX=16384 python3 asisten.py` (bawaan keduanya 8192).
+
+Catatan untuk skenario dua perangkat:
+
+- Ukuran model (MB) di daftar model **tidak tampil**, karena server web tidak bisa melihat folder
+  `.gguf` di PC lain. Ini normal dan tidak memengaruhi fungsi apa pun.
+- Alamat PC model dapat berubah bila router membagi IP secara dinamis (DHCP). Beri PC itu IP tetap
+  (di router: *DHCP reservation*), atau pakai nama host (misalnya `http://pc-model.local:8080`).
+- Lalu lintas ke llama-server memakai `http` biasa, jadi hanya aman di jaringan yang kamu percaya.
+  Jangan membuka port 8080 ke internet. Bila server web dan PC model berada di jaringan berbeda,
+  hubungkan lewat VPN (misalnya Tailscale atau WireGuard) dan pakai alamat VPN-nya.
 
 ### Koneksi model (lokal dan online sekaligus)
 
@@ -724,6 +839,36 @@ Aturan lain:
 - Rute: `GET /api/agent/prompt?peran=...`, `GET /api/agent/prompt/ekspor?peran=...&id=...`,
   `POST /api/agent/prompt` (tambah), `/ubah`, `/impor`, `/hapus` (semuanya dengan `peran` di badan permintaan).
 
+### Sidang Pemeriksa (dua model saling memeriksa)
+
+Satu Pemeriksa bermodel kecil bisa salah ke dua arah: **menyetujui** kode yang sebenarnya bermasalah, atau
+**menolak** dengan "masalah" karangan sehingga Pelaksana menulis ulang kode yang sudah benar. Karena itu
+tersedia model kedua, **Penantang** (pilihan di bawah Pemeriksa; kosong = tanpa sidang, perilaku lama
+persis). Jawaban "relevan atau tidak": relevan, **asal dibatasi dan berpijak pada bukti**, karena dua model
+kecil yang berdiskusi bebas gampang saling mengiyakan dan memakan waktu.
+
+Jalannya sidang (berlaku di tahap **Periksa** dan **Diagnosa**):
+
+1. Pemeriksa menilai seperti biasa.
+2. Penantang menilai hasil **yang sama secara mandiri**, tanpa melihat penilaian Pemeriksa (supaya tidak
+   ikut-ikutan). Keputusan sama → **sepakat**, selesai.
+3. Keputusan beda → Pemeriksa membaca penilaian Penantang lalu menjawab (mempertahankan atau mengubah
+   pendapat), Penantang menimbang jawabannya, dan seterusnya sampai **Giliran sidang** (1-3) habis.
+4. Masih beda → aturan tetap, bukan suara terbanyak:
+   - masalah yang menunjuk **berkas atau baris yang tidak ada** dianggap tuduhan karangan dan dibuang;
+   - program gagal dijalankan → perlu perbaikan;
+   - pihak penolak tidak punya masalah yang tersisa → diterima;
+   - pihak penolak **berbukti kuat** (lokasi valid *dan* kutipan "dilihat" benar-benar ada di kode/hasil
+     menjalankan) → perlu perbaikan;
+   - selain itu keputusan tetap pada **Pemeriksa** (penentu menurut rancangan tim).
+
+Sidang **dilewati** bila penolakan Pemeriksa sudah ditopang fakta (program gagal dijalankan): tidak ada yang
+perlu dibantah. Hasilnya tampil sebagai kartu **Sidang** (siapa menilai apa, putusan, dan alasannya), tercatat
+di log, di `diagnosa.json`, dan di baris **Sidang Pemeriksa** pada laporan akhir. Jejak tiap giliran ada di
+`jejak/*-sidang-*.txt`. Biayanya: 1 panggilan model tambahan bila sepakat; tiap giliran lanjutan bisa
+menukar model di memori (nyalakan "Bongkar model tiap tahap" hanya bila RAM terbatas). Penantang harus
+model yang berbeda dari Pemeriksa; model Pelaksana boleh dipakai sebagai Penantang.
+
 ### Alur menyesuaikan jenis tugas
 
 Urutan tahap tidak selalu sama. Ada tiga **jalur**; pilih di bar **Otomatis / Buat / Perbaiki / Cari bug**
@@ -765,6 +910,7 @@ Pilihan di halaman Agent:
 - **2 model**: Model 1 = Perencana + Pemeriksa + Penjelas, Model 2 = Pelaksana.
 - **3 model**: tiap peran punya model sendiri (model yang sama boleh dipakai untuk dua peran).
   Minimal harus ada 2 model yang berbeda.
+- **Penantang (opsional)** dan **Giliran sidang** (1-3): lihat [Sidang Pemeriksa](#sidang-pemeriksa-dua-model-saling-memeriksa).
 - **Maksimal putaran koreksi** (1-10): berapa kali Pelaksana boleh mengulang.
 - **Bongkar model tiap tahap**: hemat RAM; model yang dipakai tahap berikutnya tidak dibongkar.
 - **Izinkan Pemeriksa menjalankan program hasil**: izin ada di pengaturan ini (mati secara bawaan).
@@ -855,12 +1001,13 @@ berkas yang relevan:
 | alur putaran (Pelaksana menulis -> Pemeriksa menjalankan + menentukan), pemulihan hasil terbaik, pemakaian ulang diagnosa | `tim/tim_alur.py` |
 | pilihan jalur (buat / perbaiki / cari bug) dan aturan kata kuncinya | `tim/tim_jalur.py` |
 | tiap tahap model (Diagnosa, Perencana, Pelaksana menulis, Pemeriksa menjalankan + menentukan, Penjelas) dan jejak diagnosis | `tim/tim_tahap.py` |
-| alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian | `tim/tim_cek.py` |
+| alat Pemeriksa: cek berkas/sintaks, uji jalan, perapian penilaian, pembuktian lokasi/kutipan terhadap kode | `tim/tim_cek.py` |
 | cara membaca keluaran Pelaksana (`=== FILE: ===`), nama berkas aman | `tim/tim_berkas.py` |
 | lembar tugas: perintah uji yang diizinkan, harapan keluaran | `tim/tim_spec.py` |
 | muat/bongkar model di llama-server | `tim/tim_model.py` |
 | aliran jawaban model, pengambilan JSON | `tim/tim_llm.py` |
 | bagian fakta pada laporan akhir | `tim/tim_laporan.py` |
+| Sidang Pemeriksa: prompt Penantang, giliran, dan aturan keputusan saat tidak sepakat | `tim/tim_sidang.py` |
 | riwayat proses (daftar, baca, hapus) | `tim/tim_riwayat.py` |
 
 Dari luar cukup `import tim` (`tim.jalankan`, `tim.daftar_run`, ...). Konstanta pengaturan
@@ -1079,7 +1226,8 @@ kunci generasi, batas token, dan perlindungan setelah tool web (`tests/test_bata
 pemeriksaan tampilan web chat dan Agent (`tests/test_web.py`; sintaks JS dicek bila `node` terpasang),
 Agent: urutan muat/bongkar model, putaran koreksi, Pemeriksa yang menjalankan dan menentukan, keamanan nama berkas, dan
 endpoint `/api/agent`, dan log langsung di halaman Agent (`tests/test_tim.py` + `tests/agent_smoke.js`,
-memakai llama-server dan model palsu; tes `agent_smoke.js` butuh `node`).
+memakai llama-server dan model palsu; tes `agent_smoke.js` butuh `node`),
+Sidang Pemeriksa dua model, termasuk aturan keputusan dan tampilannya di halaman Agent (`tests/test_sidang.py`).
 rotasi `aksi.log` (`tests/test_aksilog.py`), pengaturan koneksi dan API key (`tests/test_koneksi.py` dengan server model palsu, termasuk lokal + online sekaligus,
 yang meminta kunci, mengalihkan, dan berpura-pura router atau bukan; `tests/koneksi_smoke.js` butuh `node`), serta `start.sh`,
 `llama_server.sh`, dan `deploy/pasang-layanan.sh` (`tests/test_skrip.py`, memakai llama-server dan systemctl palsu; butuh `bash`).
@@ -1098,9 +1246,10 @@ Setiap push ke GitHub menjalankan pengujian yang sama lewat GitHub Actions
 | Model online tidak muncul padahal API key sudah diisi | Biasanya alamat server belum diisi atau salah (key saja tidak cukup), atau lupa menekan **Simpan** setelah **Uji koneksi**. Lihat kartu koneksi di **Atur koneksi** (`✔ N model` atau `⚠ alasan`) dan [Mendaftarkan model online](#mendaftarkan-model-online-langkah-demi-langkah). Setelah mengganti berkas, jalankan ulang `asisten.py` dan muat ulang halaman |
 | Model online terhubung tetapi chat gagal soal saldo/kuota | API ditagih terpisah dari langganan chat. Isi saldo di akun API penyedia |
 | Daftar model online sangat panjang / ada model aneh | Itu isi `/v1/models` penyedia (termasuk embedding dll). Pakai kolom **Cari model** |
+| Server model ada di PC/perangkat lain dan koneksinya gagal (timeout, ditolak, 401, 404, daftar model kosong) | Ikuti langkah di [Koneksi ke llama-server di PC lain gagal](#koneksi-ke-llama-server-di-pc-lain-gagal), setelah menjalankan llama-server dengan `--host 0.0.0.0` ([Cara 4](#cara-4-llama-server-di-pc-terpisah---host-0000)) |
 | `Tidak bisa membuka port 8090` | Port dipakai program lain (mungkin `asisten.py` yang sudah jalan). Tutup yang lama, atau pakai `--port 8091` |
 | Daftar model kosong di web | Tidak ada `.gguf` di folder model, atau llama-server dijalankan tanpa `--models-dir`. Cek `ls ~/models` dan perintah llama-server |
-| Ukuran model tidak tampil | `ASISTEN_MODELS_DIR` tidak sama dengan folder `--models-dir` |
+| Ukuran model tidak tampil | `ASISTEN_MODELS_DIR` tidak sama dengan folder `--models-dir`. Bila llama-server ada di PC lain, ini normal: server web tidak bisa melihat foldernya |
 | `Model tidak ditemukan di llama-server` | Nama model tidak ada di `/v1/models`. Muat ulang halaman web, periksa nama file `.gguf` |
 | `llama-server gagal memuat model` | RAM tidak cukup, file model rusak/terpotong, atau model tidak didukung versi llama.cpp. Lihat log di terminal llama-server, coba model lebih kecil, unduh ulang dengan `wget -c` |
 | `Model belum siap setelah 5 menit` | Model terlalu besar untuk perangkat, atau kartu SD/disk lambat. Coba model lebih kecil |
@@ -1117,6 +1266,52 @@ Setiap push ke GitHub menjalankan pengujian yang sama lewat GitHub Actions
 | `ai-asisten` menyala tetapi daftar model kosong saat baru boot | Normal bila llama-server belum siap: asisten tidak lagi berhenti, cukup tekan **Muat ulang daftar model** beberapa detik kemudian |
 | `aksi.log` terlalu besar | Diputar otomatis pada 1 MB. Ubah batasnya dengan `ASISTEN_LOG_MAKS_KB` (0 = tanpa rotasi) |
 | Suhu CPU atau status throttling tidak tampil | Suhu dibaca dari `/sys/class/thermal/thermal_zone0/temp` (tidak ada di semua perangkat). Status throttling butuh `vcgencmd`, yang hanya ada di Raspberry Pi |
+
+### Koneksi ke llama-server di PC lain gagal
+
+Untuk skenario [Cara 4](#cara-4-llama-server-di-pc-terpisah---host-0000) (server web dan PC model terpisah).
+Periksa berurutan; berhenti di langkah pertama yang gagal.
+
+**Langkah diagnosa**
+
+1. **Di PC model**, apakah llama-server hidup dan mendengarkan semua alamat?
+
+   ```bash
+   curl -H "Authorization: Bearer KUNCI" http://127.0.0.1:8080/v1/models    # tanpa -H bila tanpa API key
+   ss -ltn | grep 8080          # Linux; Windows: netstat -an | findstr 8080
+   ```
+
+   Kolom alamat harus `0.0.0.0:8080` (atau `*:8080`). Kalau `127.0.0.1:8080`, server belum dinyalakan
+   dengan `--host 0.0.0.0`.
+2. **Dari server web**, apakah PC model terjangkau?
+
+   ```bash
+   ping -c 3 192.168.1.50
+   curl -v --max-time 5 -H "Authorization: Bearer KUNCI" http://192.168.1.50:8080/v1/models
+   ```
+3. **Di web**: **Atur koneksi** → **Uji koneksi**. Pesannya sama dengan hasil `curl` di langkah 2.
+
+**Gejala dan solusi**
+
+| Gejala | Penyebab umum dan solusi |
+|---|---|
+| `curl`: `Connection refused`, atau **Uji koneksi** "tidak bisa terhubung" | Alamat terjangkau tetapi tidak ada yang mendengarkan di port itu. Server belum jalan, port salah, atau llama-server masih di `127.0.0.1`. Nyalakan ulang dengan `./llama_server.sh --host 0.0.0.0`, lalu cek `ss -ltn \| grep 8080` di PC model |
+| `curl`: lama lalu `Connection timed out`, `ping` juga gagal atau `No route to host` | Paket tidak sampai. Penyebab terbanyak: **firewall** PC model memblokir port (buka sesuai langkah A.3 di Cara 4), IP salah (cek ulang dengan `hostname -I` / `ipconfig` di PC model), atau kedua perangkat beda jaringan/subnet. Router dengan "AP isolation" / "guest network" juga memblokir antar-perangkat |
+| `ping` berhasil tetapi `curl` timeout | Ping lolos, port 8080 yang diblokir firewall. Buka port TCP 8080 (`sudo ufw allow from 192.168.1.0/24 to any port 8080 proto tcp`, atau aturan Inbound di Windows). Di Windows pastikan jaringannya berprofil *Private*, bukan *Public* |
+| **401** / "ditolak" | API key di web berbeda dengan `--api-key` / `LLAMA_API_KEY` di PC model, atau kolom API key kosong. Isi ulang di **Atur koneksi** (tanpa spasi atau baris baru di ujung kunci), **Uji koneksi**, **Simpan** |
+| **404** / "alamat salah" | Alamat tidak menunjuk ke llama-server. Isi `http://IP:PORT` saja (tanpa `/v1/models` atau garis miring tambahan), pastikan `http` (bukan `https`) dan portnya sama dengan yang dicetak `llama_server.sh` |
+| Awalnya berhasil, lalu mendadak gagal | Alamat PC model berubah (DHCP), PC tidur/mati, atau llama-server berhenti saat terminalnya ditutup. Cek IP baru, nyalakan ulang di `tmux` atau layanan systemd (Cara 4, langkah A.4), dan beri PC itu IP tetap |
+| Web terhubung, daftar model **kosong** | Folder yang dipakai `--models-dir` di **PC model** tidak berisi `.gguf` (folder di server web tidak dipakai sama sekali). Cek `ls ~/models` di PC model dan `./llama_server.sh` yang mencetak jumlah `.gguf` saat start |
+| Model gagal dimuat, atau llama-server mati mendadak saat pindah model | RAM 8 GB di PC model tidak cukup. Nyalakan **Bongkar model tiap tahap selesai** di halaman Agent, pakai model berkuantisasi lebih kecil (mis. Q4_K_M), turunkan `--ctx`, atau tutup program lain di PC itu. Lihat log di terminal llama-server (kata kunci `out of memory` / `failed to allocate`) |
+| `llama-server berhenti saat dinyalakan`, galat `unknown argument` / `invalid argument` | Versi llama.cpp di PC model tidak mengenal salah satu opsi (mis. `--jinja` atau `--models-dir` pada versi lama). Perbarui llama.cpp (`git pull` lalu bangun ulang), atau cek `llama-server --help` |
+| `address already in use` / `port 8080 sudah dipakai` | Ada llama-server lama atau program lain di port itu. Hentikan yang lama (`pkill llama-server`), atau pakai `--port 8081` dan ubah alamatnya di web |
+| Peringatan `0.0.0.0 tanpa --api-key` | Server terbuka untuk semua perangkat di jaringan. Tambahkan `--api-key`, lalu isi kunci yang sama di web |
+| Respons sangat lambat, atau galat waktu habis saat model besar dimuat | Pemuatan pertama dari disk lambat (HDD, SD, atau RAM nyaris penuh). Tunggu hingga model siap (batasnya 5 menit), atau pakai model yang lebih kecil |
+| Model tampil, tetapi isi jawaban terpotong / riwayat terasa dilupakan | `ASISTEN_CTX` di server web tidak sama dengan `--ctx` di PC model. Samakan keduanya |
+
+Bila semuanya tampak benar tetapi tetap gagal, jalankan `./llama_server.sh --log llama.log` di PC model
+(atau baca terminalnya), ulangi **Uji koneksi** dari web, lalu lihat apakah permintaan muncul di log.
+Bila tidak ada permintaan yang masuk sama sekali, masalahnya ada di jaringan atau firewall, bukan di llama-server.
 
 ## Batasan
 
