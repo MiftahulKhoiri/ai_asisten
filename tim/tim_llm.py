@@ -15,10 +15,10 @@ def _stream(model, pesan, batal, token, suhu=0.2, json_mode=False):
     s, asli = agen.sambungan_model(model)
     body = {"model": asli, "messages": pesan, "temperature": suhu, "max_tokens": token,
             "stream": True}
-    if s["jenis"] != "online":   # parameter khusus llama-server; penyedia ketat menolaknya
-        body["chat_template_kwargs"] = {"enable_thinking": False}
+    body["chat_template_kwargs"] = {"enable_thinking": False}     # khusus llama-server
     if json_mode:
         body["response_format"] = {"type": "json_object"}
+    body = agen.saring_body(body, s)     # buang yang ditolak penyedia online / Anthropic
     req = urllib.request.Request(
         agen.llama_url("/v1/chat/completions", s["url"], s["v1"]), data=json.dumps(body).encode(),
         headers=agen.llama_kepala(kunci=s["key"]))

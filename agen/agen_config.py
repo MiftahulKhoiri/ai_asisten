@@ -6,6 +6,7 @@ sehingga mengubah `agen.GERBANG = ...` atau `agen.CTX_MAKS = ...` langsung berla
 import os
 import re
 import sys
+import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent    # folder proyek (berisi asisten.py, src/, agen/)
@@ -71,6 +72,46 @@ def sambungan_model(kunci):
     """Kunci model -> (data koneksi, nama model asli untuk dikirim ke server itu)."""
     cid, nama = pecah_model(kunci)
     return sambungan(cid), nama
+
+
+def adalah_anthropic(url):
+    """True bila alamat dasar koneksi adalah API Anthropic (Claude)."""
+    try:
+        h = (urllib.parse.urlsplit(url or "").hostname or "").lower()
+    except ValueError:
+        return False
+    return h == "api.anthropic.com"
+
+
+def saring_body(body, s):
+    """Buang parameter yang ditolak server tujuan. `s` = data koneksi.
+    - penyedia online: tanpa chat_template_kwargs (khusus llama.cpp)
+    - Anthropic (Claude): tanpa temperature/top_p dan response_format json_object, yang ditolak (HTTP 400)
+      oleh jalur kompatibel OpenAI pada model Claude terbaru."""
+    b = dict(body)
+    if s["jenis"] == "online":
+        b.pop("chat_template_kwargs", None)
+    if adalah_anthropic(s["url"]):
+        b.pop("temperature", None)
+        b.pop("top_p", None)
+        rf = b.get("response_format")
+        if isinstance(rf, dict) and rf.get("type") in ("json_object", "text"):
+            b.pop("response_format")
+    return b
+
+
+def jalur_daftar_model(path, s):
+    """Jalur untuk mengambil daftar model. Anthropic membatasi 20 model per halaman, jadi minta lebih banyak."""
+    if path == "/v1/models" and adalah_anthropic(s["url"]):
+        return path + "?limit=1000"
+    return path
+
+
+def kepala_daftar_model(s):
+    """Header tambahan untuk daftar model: Anthropic memakai x-api-key + anthropic-version di jalur aslinya."""
+    if adalah_anthropic(s["url"]) and s["key"]:
+        return {"x-api-key": s["key"], "anthropic-version": "2023-06-01"}
+    return {}
 # Kunci API (penyedia online, atau llama-server yang dinyalakan dengan --api-key). Dikirim hanya
 # sebagai header Authorization; tidak pernah dicatat di log atau dikirim ke browser.
 LLAMA_KEY = os.environ.get("LLAMA_API_KEY", "").strip()
@@ -131,4 +172,4 @@ PESAN_TOOL_TERPOTONG = ("ERROR: panggilan tool terpotong karena batas token jawa
 KRITIK_MIN = 80   # draf lebih pendek dari ini (sapaan, jawaban singkat) tidak diperiksa ulang
 
 
-__all__ = ['ROOT', 'LLAMA_URL', 'LLAMA_V1', 'pecah_alamat', 'LLAMA_NAMA', 'KONEKSI_UTAMA', 'PEMISAH_MODEL', 'LLAMA_EXTRA', 'nama_otomatis', 'sambungan', 'pecah_model', 'kunci_model', 'sambungan_model', 'LLAMA_KEY', 'LLAMA_JENIS', 'LOG_AKSI', 'MAX_OUTPUT', 'MAX_STEPS', 'RINGKAS_AMBANG', 'RINGKAS_SISA_GILIRAN', 'RINGKAS_MAKS_KARAKTER', 'GERBANG', '_env_int', 'CTX_MAKS', 'MAX_TOKENS', 'CATATAN_TERPOTONG', 'PESAN_TOOL_TERPOTONG', 'KRITIK_MIN']
+__all__ = ['ROOT', 'LLAMA_URL', 'LLAMA_V1', 'pecah_alamat', 'LLAMA_NAMA', 'KONEKSI_UTAMA', 'PEMISAH_MODEL', 'LLAMA_EXTRA', 'nama_otomatis', 'sambungan', 'pecah_model', 'kunci_model', 'sambungan_model', 'adalah_anthropic', 'saring_body', 'jalur_daftar_model', 'kepala_daftar_model', 'LLAMA_KEY', 'LLAMA_JENIS', 'LOG_AKSI', 'MAX_OUTPUT', 'MAX_STEPS', 'RINGKAS_AMBANG', 'RINGKAS_SISA_GILIRAN', 'RINGKAS_MAKS_KARAKTER', 'GERBANG', '_env_int', 'CTX_MAKS', 'MAX_TOKENS', 'CATATAN_TERPOTONG', 'PESAN_TOOL_TERPOTONG', 'KRITIK_MIN']

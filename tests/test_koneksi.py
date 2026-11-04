@@ -22,6 +22,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import agen  # noqa: E402
+from agen import agen_config as acfg  # noqa: E402
+_ASLI_ANTHROPIC = acfg.adalah_anthropic
 import asisten  # noqa: E402
 import tim  # noqa: E402
 from server import server_koneksi as kon  # noqa: E402
@@ -37,7 +39,7 @@ class Palsu:
 
     def __init__(self, kunci=None, router=True, ids=("m1", "m2"), alihkan_ke=None, balas=None):
         self.kunci, self.router, self.ids, self.alihkan_ke, self.balas = kunci, router, ids, alihkan_ke, balas
-        self.catatan = []
+        self.catatan, self.kepala = [], []
         induk = self
 
         class H(BaseHTTPRequestHandler):
@@ -57,6 +59,7 @@ class Palsu:
                 isi = self.rfile.read(n).decode() if n else ""
                 auth = self.headers.get("Authorization", "")
                 induk.catatan.append((self.command, self.path, auth, isi))
+                induk.kepala.append({k.lower(): v for k, v in self.headers.items()})
                 if induk.alihkan_ke:
                     self.send_response(302)
                     self.send_header("Location", induk.alihkan_ke + self.path)
@@ -67,7 +70,7 @@ class Palsu:
                     return self._kirim(401, {"error": "kunci salah"})
                 if induk.balas is not None:
                     return self._kirim(*induk.balas)
-                if self.path.endswith("/models") and self.command == "GET":
+                if self.path.split("?")[0].endswith("/models") and self.command == "GET":
                     data = [{"id": i, **({"status": {"value": "unloaded"}} if induk.router else {})}
                             for i in induk.ids]
                     return self._kirim(200, {"data": data})
@@ -90,7 +93,7 @@ class Palsu:
         self.httpd.server_close()
 
     def yang(self, path):
-        return [c for c in self.catatan if c[1].endswith(path)]
+        return [c for c in self.catatan if c[1].split("?")[0].endswith(path)]
 
 
 class Dasar(unittest.TestCase):
@@ -836,6 +839,101 @@ class TestMultiRute(TestRute):
         d = json.loads(isi)
         self.assertTrue(d["ok"], d)
 
+
+
+# ---------------------------------------------------------------- Anthropic (Claude)
+class TestAnthropic(Dasar):
+    """Jalur kompatibel OpenAI milik Anthropic menolak temperature < 1 dan response_format json_object pada
+    model Claude terbaru, dan daftar model aslinya butuh x-api-key. Server palsu berpura-pura jadi Anthropic."""
+
+    def setUp(self):
+        super().setUp()
+        p = mock.patch.object(acfg, "adalah_anthropic", lambda url: bool(url) and "127.0.0.1" in url)
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_adalah_anthropic_hanya_host_resmi(self):
+        f = _ASLI_ANTHROPIC          # fungsi asli (di setUp sudah diganti agar server palsu dianggap Anthropic)
+        for ya in ("https://api.anthropic.com", "https://api.anthropic.com/v1", "https://API.Anthropic.com"):
+            self.assertTrue(f(ya), ya)
+        for tidak in ("", None, "http://127.0.0.1:8080", "https://api.anthropic.com.evil.example",
+                      "https://evil.example/api.anthropic.com", "https://anthropic.com", "https://api.openai.com"):
+            self.assertFalse(f(tidak), tidak)
+
+    def test_saring_body(self):
+        asli = {"model": "m", "temperature": 0.3, "top_p": 0.9, "max_tokens": 5, "stream": True,
+                "messages": [], "chat_template_kwargs": {"enable_thinking": False},
+                "response_format": {"type": "json_object"}}
+        anth = {"url": "http://127.0.0.1:1", "jenis": "online"}
+        b = acfg.saring_body(asli, anth)
+        self.assertEqual(sorted(b), ["max_tokens", "messages", "model", "stream"])
+        self.assertIn("temperature", asli)                                   # body asli tidak diubah
+        js = dict(asli, response_format={"type": "json_schema", "json_schema": {}})
+        self.assertIn("response_format", acfg.saring_body(js, anth))         # json_schema boleh
+
+    def test_saring_body_penyedia_lain_dan_lokal_tidak_berubah_selain_param_llama(self):
+        with mock.patch.object(acfg, "adalah_anthropic", lambda url: False):
+            asli = {"temperature": 0.3, "chat_template_kwargs": {"x": 1}, "response_format": {"type": "json_object"}}
+            on = acfg.saring_body(asli, {"url": "https://api.openai.com", "jenis": "online"})
+            self.assertEqual(sorted(on), ["response_format", "temperature"])
+            lo = acfg.saring_body(asli, {"url": "http://127.0.0.1:8080", "jenis": "llama"})
+            self.assertEqual(sorted(lo), ["chat_template_kwargs", "response_format", "temperature"])
+
+    def test_daftar_model_memakai_x_api_key_dan_limit(self):
+        p = self.palsu(kunci=KUNCI, router=False, ids=("claude-a", "claude-b"))
+        kode, d = kon.koneksi_uji({"alamat": p.alamat + "/v1", "key": KUNCI, "jenis": "online"})
+        self.assertTrue(d["ok"], d)
+        c = p.yang("/models")[0]
+        self.assertTrue(c[1].endswith("?limit=1000"), c[1])
+        self.assertEqual(p.kepala[0]["x-api-key"], KUNCI)
+        self.assertEqual(p.kepala[0]["anthropic-version"], "2023-06-01")
+        self.assertEqual(p.kepala[0]["authorization"], "Bearer " + KUNCI)
+
+    def test_daftar_model_koneksi_tersimpan(self):
+        p = self.palsu(kunci=KUNCI, router=False, ids=("claude-a", "claude-b"))
+        lokal = self.palsu(ids=("a",))
+        kon.koneksi_terapkan(lokal.alamat, "", "llama")
+        cid = kon.koneksi_simpan({"id": "baru", "nama": "Claude", "alamat": p.alamat + "/v1", "key": KUNCI, "jenis": "online"})[1]["id"]
+        h = mdl.daftar_model()
+        self.assertEqual([m["nama"] for m in h], ["a", "claude-a", "claude-b"])
+        self.assertTrue(p.kepala[-1].get("x-api-key"))
+        self.assertNotIn("x-api-key", lokal.kepala[-1])          # kunci tidak bocor ke server lain
+        self.assertTrue(cid)
+
+    def test_chat_tanpa_temperature_dan_param_llama(self):
+        p = self.palsu(kunci=KUNCI, router=False, ids=("claude-a",))
+        lokal = self.palsu(ids=("a",))
+        kon.koneksi_terapkan(lokal.alamat, "", "llama")
+        cid = kon.koneksi_simpan({"id": "baru", "alamat": p.alamat + "/v1", "key": KUNCI, "jenis": "online"})[1]["id"]
+        list(agen.stream_chat(cid + "::claude-a", [{"role": "user", "content": "hai"}], threading.Event()))
+        body = json.loads(p.yang("/chat/completions")[0][3])
+        self.assertEqual(sorted(body), ["max_tokens", "messages", "model", "stream"])
+        self.assertEqual(body["model"], "claude-a")
+        # permintaan chat biasa tidak membawa x-api-key (jalur kompatibel OpenAI memakai Authorization)
+        self.assertNotIn("x-api-key", p.kepala[-1])
+
+    def test_agent_tanpa_temperature_dan_json_object(self):
+        p = self.palsu(kunci=KUNCI, router=False, ids=("claude-a",))
+        lokal = self.palsu(ids=("a",))
+        kon.koneksi_terapkan(lokal.alamat, "", "llama")
+        cid = kon.koneksi_simpan({"id": "baru", "alamat": p.alamat + "/v1", "key": KUNCI, "jenis": "online"})[1]["id"]
+        list(tim_llm._stream(cid + "::claude-a", [{"role": "user", "content": "x"}], threading.Event(), 100, json_mode=True))
+        body = json.loads(p.yang("/chat/completions")[0][3])
+        self.assertEqual(sorted(body), ["max_tokens", "messages", "model", "stream"])
+
+    def test_permintaan_biasa_ringkasan_tanpa_temperature(self):
+        p = self.palsu(kunci=KUNCI, router=False, ids=("claude-a",), balas=None)
+        lokal = self.palsu(ids=("a",))
+        kon.koneksi_terapkan(lokal.alamat, "", "llama")
+        cid = kon.koneksi_simpan({"id": "baru", "alamat": p.alamat + "/v1", "key": KUNCI, "jenis": "online"})[1]["id"]
+        try:
+            agen.llama("/v1/chat/completions", {"model": cid + "::claude-a", "temperature": 0.2, "max_tokens": 9, "stream": False,
+                                                "messages": [], "chat_template_kwargs": {}})
+        except Exception:  # noqa: BLE001  - jawaban palsu bukan JSON biasa; yang dicek isi permintaannya
+            pass
+        body = json.loads(p.yang("/chat/completions")[0][3])
+        self.assertNotIn("temperature", body)
+        self.assertNotIn("chat_template_kwargs", body)
 
 
 # ---------------------------------------------------------------- aplikasi tetap hidup tanpa llama-server

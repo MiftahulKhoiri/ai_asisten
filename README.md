@@ -375,6 +375,14 @@ dengan model lokal bernama sama; nama itu tidak tampil di layar dan server memak
 | llama-server satu model (`-m`) | model itu saja, dipakai langsung (tidak ada muat/bongkar) |
 | Penyedia online | semua yang dilaporkan penyedia, **termasuk model non-chat** (embedding, gambar, dll). Daftar yang panjang mendapat kolom **Cari model**. Model dipakai langsung, tanpa muat/bongkar. Penyedia yang tidak punya `/v1/models` menghasilkan daftar kosong |
 
+**Claude langsung dari Anthropic.** Isi alamat `https://api.anthropic.com/v1`, jenis **Penyedia online**, dan API key dari
+Claude Console. Asisten menyesuaikan diri untuk alamat ini: tidak mengirim `temperature`, `top_p`, dan JSON mode (ditolak
+jalur kompatibel OpenAI milik Anthropic pada model Claude terbaru), dan daftar modelnya diambil lewat jalur asli Anthropic
+(header `x-api-key` dan `anthropic-version`, sampai 1000 model). `x-api-key` hanya dikirim ke `api.anthropic.com` untuk
+daftar model, tidak ke koneksi lain. Anthropic menyebut jalur kompatibel OpenAI ini untuk uji coba, bukan pemakaian jangka
+panjang: pikiran model (thinking) tidak ikut, dan `tool_choice` `required` tidak didukung. API key yang tidak terikat workspace
+perlu header `anthropic-workspace-id` yang belum didukung di sini.
+
 Catatan untuk penyedia online: pemakaian token dikenai biaya di akun penyedia; kualitas pemanggilan tool
 tergantung modelnya; `ASISTEN_CTX` (bawaan 8192) menentukan seberapa banyak riwayat dikirim, naikkan
 bila model yang dipakai berkonteks panjang. Penyedia yang menolak `max_tokens` (sebagian model baru

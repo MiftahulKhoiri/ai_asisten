@@ -50,15 +50,14 @@ def llama(path, data=None, timeout=300, koneksi=None):
     (None = koneksi utama)."""
     if koneksi is None and isinstance(data, dict) and isinstance(data.get("model"), str):
         s, asli = cfg.sambungan_model(data["model"])
-        data = dict(data, model=asli)
-        if s["jenis"] == "online":
-            data.pop("chat_template_kwargs", None)
+        data = cfg.saring_body(dict(data, model=asli), s)
     else:
         s = cfg.sambungan(koneksi)
+    kepala = cfg.kepala_daftar_model(s) if data is None and path == "/v1/models" else None
     req = urllib.request.Request(
-        llama_url(path, s["url"], s["v1"]),
+        llama_url(cfg.jalur_daftar_model(path, s) if data is None else path, s["url"], s["v1"]),
         data=json.dumps(data).encode() if data is not None else None,
-        headers=llama_kepala(kunci=s["key"]),
+        headers=llama_kepala(kepala, kunci=s["key"]),
         method="POST" if data is not None else "GET")
     with llama_buka(req, timeout, s["key"]) as r:
         return json.loads(r.read().decode())
@@ -70,7 +69,10 @@ def llama_uji(dasar, v1, kunci, timeout=10):
     h = {"Content-Type": "application/json"}
     if kunci:
         h["Authorization"] = "Bearer " + kunci
-    req = urllib.request.Request(llama_url("/v1/models", dasar, v1), headers=h)
+    s = {"url": dasar, "key": kunci or ""}
+    h.update(cfg.kepala_daftar_model(s))
+    path = cfg.jalur_daftar_model("/v1/models", s)
+    req = urllib.request.Request(llama_url(path, dasar, v1), headers=h)
     with _OPENER_AMAN.open(req, timeout=timeout) as r:
         return json.loads(r.read(4_000_000).decode("utf-8", "replace"))
 
@@ -80,11 +82,11 @@ def stream_chat(model, pesan, batal, tools=None):
     s, asli = cfg.sambungan_model(model)
     body = {"model": asli, "messages": pesan, "temperature": 0.3,
             "max_tokens": cfg.MAX_TOKENS, "stream": True}
-    if s["jenis"] != "online":   # parameter khusus llama-server; penyedia ketat menolaknya
-        body["chat_template_kwargs"] = {"enable_thinking": False}
+    body["chat_template_kwargs"] = {"enable_thinking": False}     # khusus llama-server
     if tools:
         body["tools"] = tools
         body["tool_choice"] = "auto"
+    body = cfg.saring_body(body, s)    # buang yang ditolak penyedia online / Anthropic
     req = urllib.request.Request(
         llama_url("/v1/chat/completions", s["url"], s["v1"]), data=json.dumps(body).encode(),
         headers=llama_kepala(kunci=s["key"]))
