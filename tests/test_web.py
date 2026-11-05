@@ -180,9 +180,52 @@ class TestDasbor(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node tidak terpasang")
-        for nama in ("dasbor.js", "agent.js", "index.js"):
+        for nama in ("dasbor.js", "agent.js", "index.js", "hidup.js"):
             r = subprocess.run([node, "--check", str(WEB / nama)], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, nama + ": " + r.stderr)
+
+
+class TestHidup(unittest.TestCase):
+    """Lapisan tampilan "hidup" (hidup.css/hidup.js) untuk Sesi AI Asisten dan Sesi Agent."""
+
+    def test_terpasang_di_chat_dan_agent(self):
+        for nama in ("index.html", "agent.html"):
+            html = (WEB / nama).read_text(encoding="utf-8")
+            self.assertIn('<link rel="stylesheet" href="hidup.css">', html, nama)
+            self.assertIn('<script src="hidup.js"></script>', html, nama)
+
+    def test_dilayani_server(self):
+        from server import server_http
+        S = server_http.STATIS
+        self.assertEqual(S["/hidup.css"][0], "hidup.css")
+        self.assertEqual(S["/hidup.js"][0], "hidup.js")
+        for p in ("/hidup.css", "/hidup.js"):
+            self.assertTrue((WEB / S[p][0]).is_file(), p)
+
+    def test_id_yang_dipakai_ada(self):
+        js = (WEB / "hidup.js").read_text(encoding="utf-8")
+        chat = (WEB / "index.html").read_text(encoding="utf-8")
+        agent = (WEB / "agent.html").read_text(encoding="utf-8")
+        for i in ("pesan", "input", "bawah"):
+            self.assertIn("getElementById('%s')" % i, js, i)
+            self.assertIn('id="%s"' % i, chat, i)
+            self.assertIn('id="%s"' % i, agent, i)
+        self.assertIn('id="layar_chat"', chat)
+        self.assertIn('id="isiPesan"', agent)
+
+    def test_gerak_hormati_pengurangan_gerak(self):
+        css = (WEB / "hidup.css").read_text(encoding="utf-8")
+        self.assertIn("prefers-reduced-motion:reduce", css)
+        blok = css[css.index("prefers-reduced-motion:reduce"):]
+        for kelas in (".sb-chip", ".sb-ik", "details.tahap", "#btnKirim.merah", ".lencana.menunggu::before"):
+            self.assertIn(kelas, blok, kelas)
+
+    def test_hanya_dua_halaman_sesi_terkena(self):
+        # semua aturan dibatasi ke body.halaman-chat / body.agent / kelas milik sendiri, bukan ke dasbor
+        css = (WEB / "hidup.css").read_text(encoding="utf-8")
+        for dasbor in (WEB / "dasbor.html",):
+            self.assertNotIn("hidup.", dasbor.read_text(encoding="utf-8"))
+        self.assertNotRegex(css, r"(?m)^(?:body|html|header|button|\*)\s*[{,]")
 
 
 if __name__ == "__main__":

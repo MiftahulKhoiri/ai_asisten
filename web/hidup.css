@@ -1,0 +1,145 @@
+/* hidup.css - lapisan "terasa hidup" untuk Sesi AI Asisten (body.halaman-chat) dan Sesi Agent (body.agent).
+   Hanya menambah: animasi masuk, avatar, status, layar sambutan, tombol "ke bawah", dan kilau kecil.
+   Semua gerak dimatikan bila perangkat meminta pengurangan gerak (lihat blok paling bawah). */
+
+body.halaman-chat{--warna:#5b9cff}
+body.agent{--warna:#b794f6}
+@media (prefers-color-scheme:light){
+  body.halaman-chat{--warna:#2563eb}
+  body.agent{--warna:#7c3aed}
+}
+
+/* ---------- header: garis cahaya + titik status ---------- */
+:is(body.halaman-chat,body.agent) header::after{content:"";position:absolute;left:8%;right:8%;bottom:-1px;height:2px;border-radius:2px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--warna),transparent);opacity:.75}
+body.halaman-chat .judul small:not(:empty)::before{content:"";display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;vertical-align:1px;
+  background:var(--ok);box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent);animation:hidupDenyut 2.4s ease-out infinite}
+body.halaman-chat .judul b,body.agent .judul b{background:linear-gradient(90deg,var(--teks),color-mix(in srgb,var(--warna) 70%,var(--teks)));-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent}
+
+/* ---------- latar layar percakapan ---------- */
+body.halaman-chat #layar_chat,body.agent #isiPesan{position:relative;
+  background:radial-gradient(70% 38% at 50% 0%,color-mix(in srgb,var(--warna) 11%,transparent),transparent 72%)}
+
+/* ---------- pesan: masuk halus, avatar, gelembung ---------- */
+:is(body.halaman-chat,body.agent) #pesan>*{animation:hidupMasuk .3s cubic-bezier(.2,.8,.2,1) both}
+:is(body.halaman-chat,body.agent) #pesan>.p:not(.user){position:relative;padding-left:36px}
+:is(body.halaman-chat,body.agent) #pesan>.p:not(.user)::before{content:"\2726";position:absolute;left:0;top:1px;width:28px;height:28px;display:grid;place-items:center;
+  border-radius:50%;font-size:13px;line-height:1;color:#fff;
+  background:linear-gradient(135deg,var(--warna),color-mix(in srgb,var(--warna) 40%,#e879a8));
+  box-shadow:0 3px 10px color-mix(in srgb,var(--warna) 38%,transparent)}
+body.halaman-chat #pesan>.p.berpikir::before{animation:hidupBintang 2.6s ease-in-out infinite}
+body.halaman-chat .p .gel{border-radius:4px 16px 16px 16px;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+body.halaman-chat .p.user .gel{border-radius:16px 16px 4px 16px;
+  background:linear-gradient(135deg,color-mix(in srgb,var(--aksen) 24%,var(--user)),var(--user));
+  box-shadow:0 3px 12px color-mix(in srgb,var(--aksen) 18%,transparent)}
+body.halaman-chat .info{padding:0 4px}
+
+/* ---------- kartu tool (chat): garis status di kiri + denyut saat berjalan ---------- */
+body.halaman-chat details.tool{border-radius:12px;border-left:3px solid var(--garis);transition:border-color .25s ease,box-shadow .25s ease}
+body.halaman-chat details.tool:has(.lencana.ok){border-left-color:var(--ok)}
+body.halaman-chat details.tool:has(.lencana.gagal){border-left-color:var(--bahaya)}
+body.halaman-chat details.tool:has(.lencana.ditolak){border-left-color:var(--izin)}
+body.halaman-chat details.tool:has(.lencana.menunggu){border-left-color:var(--aksen);animation:hidupMasuk .3s cubic-bezier(.2,.8,.2,1) both,hidupNapas 2s ease-in-out infinite}
+.lencana.menunggu::before{content:"";display:inline-block;width:6px;height:6px;margin-right:5px;border-radius:50%;vertical-align:1px;background:currentColor;animation:denyut 1.1s ease-in-out infinite}
+body.halaman-chat details.tool summary{transition:opacity .15s ease}
+body.halaman-chat details.tool summary:active{opacity:.7}
+body.halaman-chat .konf{border-left:3px solid var(--izin);border-radius:12px;animation:hidupMasuk .3s cubic-bezier(.2,.8,.2,1) both,hidupNapasIzin 2.2s ease-in-out .3s infinite}
+
+/* ---------- kotak ketik ---------- */
+body.halaman-chat #bawah{gap:8px}
+body.halaman-chat #input{border-radius:22px;padding:10px 16px;transition:border-color .15s ease,box-shadow .15s ease}
+body.halaman-chat #input:focus{outline:none;border-color:var(--aksen);box-shadow:0 0 0 3px color-mix(in srgb,var(--aksen) 24%,transparent)}
+body.halaman-chat #btnKirim{border-radius:999px;padding:10px 20px;font-weight:600;
+  background:linear-gradient(135deg,var(--aksen),color-mix(in srgb,var(--aksen) 62%,#8b5cf6));
+  box-shadow:0 4px 14px color-mix(in srgb,var(--aksen) 32%,transparent)}
+body.halaman-chat #btnKirim.merah{background:var(--bahaya);box-shadow:0 4px 14px color-mix(in srgb,var(--bahaya) 34%,transparent);animation:hidupNapasMerah 1.6s ease-in-out infinite}
+body.agent #btnKirim{background:linear-gradient(135deg,var(--warna),color-mix(in srgb,var(--warna) 55%,#5b9cff));box-shadow:0 4px 14px color-mix(in srgb,var(--warna) 34%,transparent)}
+body.agent #btnKirim.merah{background:var(--bahaya);box-shadow:0 4px 14px color-mix(in srgb,var(--bahaya) 34%,transparent)}
+body.agent .btn.besar:not(:disabled){background:linear-gradient(135deg,var(--warna),color-mix(in srgb,var(--warna) 55%,#5b9cff));box-shadow:0 6px 18px color-mix(in srgb,var(--warna) 28%,transparent)}
+
+/* ---------- layar sambutan (isi #pesan yang masih kosong) ---------- */
+.sambut{width:100%;max-width:520px;margin:auto;padding:18px 6px;text-align:center}
+.sambut[hidden]{display:none}
+.sambut.kompak{margin:4px auto 0;padding:6px 2px 10px}
+.sambut.kompak .sb-saran{margin-top:0}
+.sambut .sb-ik{position:relative;width:64px;height:64px;margin:0 auto 14px;display:grid;place-items:center;border-radius:22px;font-size:28px;color:#fff;
+  background:linear-gradient(145deg,var(--warna),color-mix(in srgb,var(--warna) 40%,#e879a8));
+  box-shadow:0 10px 30px color-mix(in srgb,var(--warna) 40%,transparent);animation:hidupMelayang 4s ease-in-out infinite}
+.sambut .sb-ik::after{content:"";position:absolute;inset:-7px;border-radius:27px;border:1.5px solid var(--warna);opacity:.4;animation:hidupRiak 2.8s ease-out infinite}
+.sambut h3{margin:0 0 6px;font-size:21px;letter-spacing:-.01em}
+.sambut p{margin:0 auto;max-width:30em;font-size:14px;color:var(--redup)}
+.sb-saran{display:flex;flex-direction:column;gap:8px;margin-top:18px}
+.sb-label{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--redup)}
+.sb-chip{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:11px 38px 11px 14px;text-align:left;font-size:14px;line-height:1.35;
+  color:var(--teks);background:var(--panel);border:1px solid var(--garis);border-radius:14px;
+  transition:transform .12s ease,border-color .15s ease,background .15s ease;animation:hidupMasuk .4s cubic-bezier(.2,.8,.2,1) both}
+.sb-chip:nth-child(3){animation-delay:.06s}.sb-chip:nth-child(4){animation-delay:.12s}.sb-chip:nth-child(5){animation-delay:.18s}
+.sb-chip .e{flex:none;width:30px;height:30px;display:grid;place-items:center;border-radius:10px;font-size:15px;background:color-mix(in srgb,var(--warna) 15%,transparent)}
+.sb-chip .t{min-width:0;overflow-wrap:anywhere}
+.sb-chip::after{content:"\2197";position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--redup);transition:color .15s ease,transform .15s ease}
+.sb-chip:active{transform:scale(.98);border-color:var(--warna)}
+@media (hover:hover){.sb-chip:hover{border-color:color-mix(in srgb,var(--warna) 60%,var(--garis));background:color-mix(in srgb,var(--warna) 7%,var(--panel))}
+  .sb-chip:hover::after{color:var(--warna);transform:translateY(-50%) translate(2px,-2px)}}
+
+/* ---------- tombol "ke bawah" ---------- */
+.ke-bawah{position:absolute;left:50%;bottom:14px;z-index:12;display:flex;align-items:center;gap:6px;padding:7px 14px 7px 12px;font-size:13px;font-weight:500;
+  color:var(--teks);background:var(--panel);border:1px solid var(--garis);border-radius:999px;box-shadow:0 6px 20px rgba(0,0,0,.28);
+  opacity:0;pointer-events:none;transform:translate(-50%,10px) scale(.94);transition:opacity .2s ease,transform .2s ease}
+.ke-bawah.tampil{opacity:1;pointer-events:auto;transform:translate(-50%,0) scale(1)}
+.ke-bawah:active{transform:translate(-50%,0) scale(.96)}
+.ke-bawah svg{flex:none;color:var(--warna)}
+
+/* ---------- Agent: alur tahap lebih bergerak ---------- */
+body.agent #alur{background:linear-gradient(180deg,color-mix(in srgb,var(--warna) 7%,var(--panel)),var(--panel))}
+body.agent #alur .lk.selesai .bl{font-size:0}
+body.agent #alur .lk.selesai .bl::after{content:"\2713";font-size:13px;line-height:1;animation:hidupPop .35s cubic-bezier(.2,1.5,.4,1) both}
+body.agent #alur .lk.aktif::before{background:linear-gradient(90deg,var(--ok),var(--rc),var(--ok));background-size:200% 100%;animation:hidupGaris 1.8s linear infinite}
+body.agent #alur .lk.aktif .nm{background:linear-gradient(90deg,var(--teks),var(--rc),var(--teks));background-size:200% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:hidupGaris 2.4s linear infinite}
+
+/* kartu tahap yang sedang berjalan bernapas dengan warna perannya */
+body.agent details.tahap{transition:box-shadow .25s ease}
+body.agent details.tahap:has(.lencana.menunggu){animation:hidupMasuk .3s cubic-bezier(.2,.8,.2,1) both,hidupNapasPeran 2.2s ease-in-out infinite}
+body.agent .kartu{transition:border-color .2s ease}
+
+/* hasil akhir muncul dengan "pop" */
+body.agent .hasil,body.agent .laporan{animation:hidupPop .5s cubic-bezier(.2,1.3,.4,1) both}
+body.agent .hasil.lolos,body.agent .laporan.lolos{background:linear-gradient(135deg,color-mix(in srgb,var(--ok) 11%,var(--panel)),var(--panel))}
+body.agent .hasil.belum,body.agent .hasil.butuh_info,body.agent .hasil.batal,body.agent .laporan.belum,body.agent .laporan.batal{background:linear-gradient(135deg,color-mix(in srgb,var(--izin) 10%,var(--panel)),var(--panel))}
+body.agent .hasil.error,body.agent .laporan.error{background:linear-gradient(135deg,color-mix(in srgb,var(--bahaya) 10%,var(--panel)),var(--panel))}
+body.agent .hasil.lolos .hs-ik{animation:hidupCincin 1.4s ease-out .2s 2}
+
+/* ---------- Agent: layar pengaturan ---------- */
+body.agent .hero-ik{animation:hidupMelayang 4.5s ease-in-out infinite}
+body.agent .tengah>.kartu-set{animation:hidupMasuk .45s cubic-bezier(.2,.8,.2,1) both}
+body.agent .tengah>.kartu-set:nth-of-type(2){animation-delay:.05s}
+body.agent .tengah>.kartu-set:nth-of-type(3){animation-delay:.1s}
+body.agent .tengah>.kartu-set:nth-of-type(4){animation-delay:.15s}
+body.agent .peran{transition:box-shadow .2s ease,border-color .2s ease,transform .15s ease}
+body.agent .peran:focus-within{box-shadow:0 0 0 3px color-mix(in srgb,var(--rc) 20%,transparent)}
+body.agent .peran .rk{transition:transform .2s ease}
+body.agent .peran:focus-within .rk{transform:scale(1.08) rotate(-4deg)}
+body.agent .baris-run .model:active{transform:scale(.99)}
+
+/* ---------- gerak ---------- */
+@keyframes hidupMasuk{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes hidupPop{0%{opacity:0;transform:scale(.88)}100%{opacity:1;transform:none}}
+@keyframes hidupMelayang{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes hidupRiak{0%{transform:scale(.92);opacity:.5}100%{transform:scale(1.28);opacity:0}}
+@keyframes hidupDenyut{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}70%,100%{box-shadow:0 0 0 7px color-mix(in srgb,var(--ok) 0%,transparent)}}
+@keyframes hidupBintang{0%,100%{transform:rotate(0) scale(1)}50%{transform:rotate(90deg) scale(1.12)}}
+@keyframes hidupNapas{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--aksen) 0%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--aksen) 18%,transparent)}}
+@keyframes hidupNapasIzin{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--izin) 0%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--izin) 22%,transparent)}}
+@keyframes hidupNapasMerah{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+@keyframes hidupNapasPeran{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--rc,var(--aksen)) 0%,transparent)}50%{box-shadow:0 0 0 4px color-mix(in srgb,var(--rc,var(--aksen)) 22%,transparent)}}
+@keyframes hidupGaris{0%{background-position:0 0}100%{background-position:-200% 0}}
+@keyframes hidupCincin{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--ok) 55%,transparent)}100%{box-shadow:0 0 0 14px color-mix(in srgb,var(--ok) 0%,transparent)}}
+
+@media (prefers-reduced-motion:reduce){
+  :is(body.halaman-chat,body.agent) #pesan>*,.sb-chip,.sambut .sb-ik,.sambut .sb-ik::after,body.agent .hero-ik,body.agent .tengah>.kartu-set,
+  body.halaman-chat .judul small:not(:empty)::before,body.halaman-chat #pesan>.p.berpikir::before,body.halaman-chat details.tool,
+  body.halaman-chat .konf,body.halaman-chat #btnKirim.merah,.lencana.menunggu::before,body.agent details.tahap,
+  body.agent .hasil,body.agent .laporan,body.agent .hasil .hs-ik,body.agent #alur .lk.aktif::before,body.agent #alur .lk.aktif .nm,
+  body.agent #alur .lk.selesai .bl::after{animation:none!important}
+  body.agent #alur .lk.aktif .nm{background:none;color:var(--teks);-webkit-text-fill-color:currentColor}
+  .ke-bawah,.sb-chip{transition:none}
+}

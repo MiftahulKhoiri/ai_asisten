@@ -1283,6 +1283,7 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `src/tool_lain.py` | kalkulator dan waktu (tempat termudah untuk tool baru) |
 | `tim/` | paket Agent, dipecah per tanggung jawab (lihat tabel "Mengubah perilaku Agent"); dipakai lewat `import tim` |
 | `web/dasbor.html`, `dasbor.css`, `dasbor.js` | dasbor (halaman awal `/`) |
+| `web/hidup.css`, `hidup.js` | lapisan tampilan "hidup" untuk Sesi AI Asisten dan Sesi Agent: animasi pesan masuk, avatar, titik status, layar sambutan berisi contoh, tombol "Terbaru", alur tahap Agent yang bergerak; semua gerak mati bila perangkat meminta pengurangan gerak |
 | `web/index.html`, `index.css`, `index.js` | tampilan chat (`/chat`) |
 | `web/agent.html`, `agent.css`, `agent.js` | tampilan Agent (tombol **Agent** di chat) |
 | `llama_server.sh` | menyalakan llama-server di terminal sendiri: banner alamat/port, log lengkap, opsi `--port --host --models-dir --ctx --api-key` |
