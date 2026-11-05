@@ -180,7 +180,7 @@ class TestDasbor(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node tidak terpasang")
-        for nama in ("dasbor.js", "agent.js", "index.js", "hidup.js"):
+        for nama in ("dasbor.js", "agent.js", "index.js", "hidup.js", "robot.js"):
             r = subprocess.run([node, "--check", str(WEB / nama)], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, nama + ": " + r.stderr)
 
@@ -217,7 +217,7 @@ class TestHidup(unittest.TestCase):
         css = (WEB / "hidup.css").read_text(encoding="utf-8")
         self.assertIn("prefers-reduced-motion:reduce", css)
         blok = css[css.index("prefers-reduced-motion:reduce"):]
-        for kelas in (".sb-chip", ".sb-ik", "details.tahap", "#btnKirim.merah", ".lencana.menunggu::before"):
+        for kelas in (".sb-chip", "details.tahap", "#btnKirim.merah", ".lencana.menunggu::before"):
             self.assertIn(kelas, blok, kelas)
 
     def test_hanya_dua_halaman_sesi_terkena(self):
@@ -226,6 +226,50 @@ class TestHidup(unittest.TestCase):
         for dasbor in (WEB / "dasbor.html",):
             self.assertNotIn("hidup.", dasbor.read_text(encoding="utf-8"))
         self.assertNotRegex(css, r"(?m)^(?:body|html|header|button|\*)\s*[{,]")
+
+
+
+class TestRobot(unittest.TestCase):
+    """Maskot Robi (robot.css/robot.js/robot.svg): terpasang di dasbor, chat, dan agent; bergerak tetapi hormati pengurangan gerak."""
+
+    def test_terpasang_di_tiga_halaman(self):
+        for nama in ("dasbor.html", "index.html", "agent.html"):
+            html = (WEB / nama).read_text(encoding="utf-8")
+            self.assertIn('href="robot.css"', html, nama)
+            self.assertIn('<script src="robot.js"></script>', html, nama)
+            self.assertIn('href="robot.svg"', html, nama)
+
+    def test_robot_js_dimuat_sebelum_hidup_js(self):
+        for nama in ("index.html", "agent.html"):
+            html = (WEB / nama).read_text(encoding="utf-8")
+            self.assertLess(html.index("robot.js"), html.index("hidup.js"), nama)
+
+    def test_rute_server(self):
+        from server import server_http
+        S = server_http.STATIS
+        for p, tipe in (("/robot.css", "text/css"), ("/robot.js", "javascript"), ("/robot.svg", "image/svg+xml")):
+            self.assertTrue((WEB / S[p][0]).is_file(), p)
+            self.assertIn(tipe, S[p][1], p)
+
+    def test_penempatan(self):
+        dasbor = (WEB / "dasbor.html").read_text(encoding="utf-8")
+        self.assertIn('data-robot="kepala"', dasbor)          # logo kecil di header
+        self.assertRegex(dasbor, r'class="robot r-dasbor" data-robot')
+        self.assertRegex((WEB / "agent.html").read_text(encoding="utf-8"), r'class="robot r-hero" data-robot')
+        self.assertIn("'robot r-besar'", (WEB / "hidup.js").read_text(encoding="utf-8"))
+
+    def test_gerak_dan_pengurangan_gerak(self):
+        css = (WEB / "robot.css").read_text(encoding="utf-8")
+        for kunci in ("rbMelayang", "rbKedip", "rbLambai", "rbBerpikir"):
+            self.assertIn("@keyframes " + kunci, css)
+        blok = css[css.index("prefers-reduced-motion:reduce"):]
+        for kelas in (".r-badan", ".r-lengan", ".r-mata", ".r-mulut"):
+            self.assertIn(kelas, blok, kelas)
+
+    def test_svg_statis_valid(self):
+        import xml.dom.minidom as md
+        md.parse(str(WEB / "robot.svg"))
+
 
 
 if __name__ == "__main__":

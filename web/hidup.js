@@ -30,8 +30,9 @@
   function buatSambut() {
     var s = el('div', 'sambut'); s.id = 'sambut';
     if (!agent) {      /* di Agent kartu "Tim siap" sudah menyapa; cukup contoh tugas */
-      var ik = el('div', 'sb-ik', '✦'); ik.setAttribute('aria-hidden', 'true');
+      var ik = el('span', 'robot r-besar'); ik.setAttribute('data-robot', '');
       s.appendChild(ik);
+      if (window.Robot) window.Robot.pasang(ik);
       s.appendChild(el('h3', '', 'Halo, ada yang bisa dibantu?'));
       s.appendChild(el('p', '', 'Ketik pertanyaan atau perintah di bawah, atau ketuk salah satu contoh ini.'));
     } else {

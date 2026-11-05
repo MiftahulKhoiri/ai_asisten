@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#111317">
 <title>AI Agent</title>
+<link rel="icon" type="image/svg+xml" href="robot.svg">
 <link rel="stylesheet" href="index.css">
+<link rel="stylesheet" href="robot.css">
 <link rel="stylesheet" href="agent.css">
 <link rel="stylesheet" href="unggah.css">
 <link rel="stylesheet" href="koneksi.css">
@@ -38,7 +40,7 @@
   <section class="layar" id="layar_setup" hidden>
     <div class="tengah">
       <div class="hero">
-        <div class="hero-ik" aria-hidden="true">&#129309;</div>
+        <span class="robot r-hero" data-robot title="Ketuk Robi untuk menyapa"></span>
         <h2>Agent tim model</h2>
         <p class="redup">Beberapa model lokal bekerja bergiliran: satu menyusun tugas, satu menulis program, satu memeriksa. Tiap model dimuat saat gilirannya dan dibongkar saat selesai.</p>
       </div>
@@ -175,6 +177,7 @@
 <script src="prompt_peran.js"></script>
 <script src="koneksi.js"></script>
 <script src="agent.js"></script>
+<script src="robot.js"></script>
 <script src="hidup.js"></script>
 </body>
 </html>

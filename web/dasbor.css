@@ -121,3 +121,10 @@ body.dasbor{
   .sesi:hover{transform:none}
   [data-st="kerja"] .titik-st,[data-st="muat"] .titik-st{animation:none}
 }
+
+/* ---------- maskot Robi ---------- */
+.hero-robot{display:flex;align-items:center;gap:14px}
+.hero-robot .hero-teks{min-width:0}
+.robot.r-dasbor{flex:none;width:88px;height:98px}
+.logo .robot{display:block}
+@media (max-width:360px){.robot.r-dasbor{width:72px;height:80px}}

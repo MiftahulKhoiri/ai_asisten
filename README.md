@@ -1284,6 +1284,7 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `tim/` | paket Agent, dipecah per tanggung jawab (lihat tabel "Mengubah perilaku Agent"); dipakai lewat `import tim` |
 | `web/dasbor.html`, `dasbor.css`, `dasbor.js` | dasbor (halaman awal `/`) |
 | `web/hidup.css`, `hidup.js` | lapisan tampilan "hidup" untuk Sesi AI Asisten dan Sesi Agent: animasi pesan masuk, avatar, titik status, layar sambutan berisi contoh, tombol "Terbaru", alur tahap Agent yang bergerak; semua gerak mati bila perangkat meminta pengurangan gerak |
+| `web/robot.css`, `robot.js`, `robot.svg` | maskot Robi (robot putih bermata cyan): melayang, berkedip, mengayun, matanya mengikuti jari/kursor, melambai saat diketuk; dipakai di logo dasbor, sapaan dasbor, layar kosong Chat, layar pengaturan Agent, avatar jawaban, dan favicon. Tanpa gambar bitmap: seluruhnya SVG + CSS |
 | `web/index.html`, `index.css`, `index.js` | tampilan chat (`/chat`) |
 | `web/agent.html`, `agent.css`, `agent.js` | tampilan Agent (tombol **Agent** di chat) |
 | `llama_server.sh` | menyalakan llama-server di terminal sendiri: banner alamat/port, log lengkap, opsi `--port --host --models-dir --ctx --api-key` |
