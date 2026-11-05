@@ -4,6 +4,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -316,6 +317,66 @@ class TestPutusanDua(unittest.TestCase):
         n = f(self.NO, "C", self.OK, "D", self.OK, "D", self.BAIK)
         self.assertEqual([(p["model"], p["ok"], p.get("sanggahan", False)) for p in n["pendapat"]],
                          [("C", False, False), ("D", True, False), ("D", True, True)])
+
+
+class TestSaranSiaSia(unittest.TestCase):
+    """Kasus log nyata (Qwen3 1.7B/2B): `=== END ===` nyasar di baris 4, tetapi Pemeriksa menunjuk baris
+    `return ...` (baris 2) dan menyuruh 'ubah menjadi' kode yang sama. Pelaksana jadi macet."""
+    BERKAS = [("hitung.py", "def rata_rata(angka):\n    return sum(angka) / len(angka) if angka else 0\n\n"
+                            "rata_rata([2, 4, 6]) === END ===\n")]
+    SIA = "Ubah baris 4 menjadi: `return sum(angka) / len(angka) if angka else 0`"
+
+    def test_deteksi_saran_sama_dengan_kode(self):
+        self.assertTrue(tim_cek.perbaikan_sia_sia(self.SIA, self.BERKAS))
+
+    def test_saran_yang_mengubah_kode_tidak_dianggap_sia_sia(self):
+        self.assertFalse(tim_cek.perbaikan_sia_sia("Hapus `=== END ===` di baris 4", self.BERKAS))
+        self.assertFalse(tim_cek.perbaikan_sia_sia("Ubah menjadi `return sum(angka) / max(1, len(angka))`",
+                                                   self.BERKAS))
+        self.assertFalse(tim_cek.perbaikan_sia_sia("", self.BERKAS))
+        self.assertFalse(tim_cek.perbaikan_sia_sia("tanpa kutipan kode", self.BERKAS))
+
+    def test_galat_sintaks_menyertakan_isi_baris(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            (Path(d) / "hitung.py").write_text(self.BERKAS[0][1], encoding="utf-8")
+            ok, baris = tim_cek.cek_statis(d, {"berkas": [{"nama": "hitung.py"}]})
+        self.assertFalse(ok)
+        self.assertIn("sintaks Python salah di baris 4", baris[0])
+        self.assertIn("isi baris 4: `rata_rata([2, 4, 6]) === END ===`", baris[0])
+
+    def _nilai(self, jawaban, bukti):
+        def palsu_tanya(*a, **k):
+            return jawaban, None
+            yield    # menjadikannya generator
+
+        class Jejak:
+            def simpan(self, *a, **k):
+                pass
+
+        with mock.patch.object(tim_tahap, "tanya", palsu_tanya):
+            g = tim_tahap._minta_nilai("M", [], "u", None, Jejak(), "periksa-1", bukti, self.BERKAS)
+            try:
+                while True:
+                    next(g)
+            except StopIteration as e:
+                return e.value
+
+    JAWABAN = json.dumps({"ok": False, "ringkas": "gagal", "masalah": ["Baris 4: sintaks Python salah"],
+                          "dilihat": "return sum(angka) / len(angka) if angka else 0",
+                          "perbaikan": "Ubah baris 4 menjadi: `return sum(angka) / len(angka) if angka else 0`"})
+
+    def test_saran_sia_sia_diganti_fakta_sistem_bila_program_gagal(self):
+        bukti = {"ok": False, "baris": ["GAGAL hitung.py: sintaks Python salah di baris 4: invalid syntax"]}
+        n = self._nilai(self.JAWABAN, bukti)
+        self.assertFalse(n["ok"])
+        self.assertIn("jangan diikuti", n["perbaikan"])
+        self.assertIn("sintaks Python salah di baris 4", n["perbaikan"])
+
+    def test_saran_tidak_diganti_bila_program_tidak_gagal(self):
+        bukti = {"ok": True, "baris": ["OK hitung.py: sintaks baik"]}
+        n = self._nilai(self.JAWABAN, bukti)
+        self.assertIn("Ubah baris 4 menjadi", n["perbaikan"])
 
 
 class TestLaporan(DasarAgent):

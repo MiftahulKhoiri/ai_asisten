@@ -17,6 +17,16 @@ from . import tim_config as conf
 from .tim_kotak import jalankan_terkurung, ringkas_isolasi
 
 
+def _baris_ke(isi, nomor, maks=120):
+    """Isi baris ke-`nomor` (mulai 1) yang sudah dirapikan; "" bila tidak ada. Pagar ` diganti ' agar
+    tidak bentrok dengan pembungkus `...` di pesan."""
+    try:
+        baris = isi.splitlines()[int(nomor) - 1]
+    except (TypeError, ValueError, IndexError):
+        return ""
+    return baris.strip().replace("`", "'")[:maks]
+
+
 def cek_statis(hasil_dir, spec, ekstra=()):
     """Kembalian: (ok, baris). Berkas diminta ada, tidak kosong, dan sintaksnya benar.
     `ekstra`: nama berkas lain yang ditulis Pelaksana (ikut diperiksa sintaksnya)."""
@@ -39,6 +49,9 @@ def cek_statis(hasil_dir, spec, ekstra=()):
                 ast.parse(isi, filename=nama)
             except SyntaxError as e:
                 galat = "sintaks Python salah di baris %s: %s" % (e.lineno, e.msg)
+                rusak = _baris_ke(isi, e.lineno)
+                if rusak:    # Pemeriksa model kecil sering salah menunjuk baris; beri isi barisnya
+                    galat += " | isi baris %s: `%s`" % (e.lineno, rusak)
             except ValueError as e:
                 galat = "berkas Python tidak valid: %s" % e
         elif ext == ".json":
@@ -264,6 +277,18 @@ def periksa_dasar(nilai, berkas, tambahan=()):
     if masalah and len(tanpa) == len(masalah):
         return False
     return kut
+
+
+_KUTIP_KODE = re.compile(r"`([^`\n]{8,})`")
+
+
+def perbaikan_sia_sia(perbaikan, berkas):
+    """True bila saran `perbaikan` meminta kode yang SUDAH persis ada di berkas (isi `berkas`: [(nama, isi)]).
+    Contoh nyata: kode salah di baris 4, Pemeriksa menyuruh 'ubah baris 4 menjadi `return ...`' padahal
+    itu isi baris 2. Saran begini tidak mengubah apa pun dan membuat Pelaksana menulis ulang kode yang sama."""
+    baris_ada = {b.strip() for _, isi in berkas for b in isi.splitlines() if len(b.strip()) >= 8}
+    snippet = [s.strip() for s in _KUTIP_KODE.findall(str(perbaikan or ""))]
+    return bool(snippet) and all(s in baris_ada for s in snippet)
 
 
 def _kata(t):

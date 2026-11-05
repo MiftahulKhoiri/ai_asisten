@@ -9,7 +9,7 @@ from pathlib import Path
 from . import tim_config as conf
 from .tim_berkas import aman_nama, baca_json, baca_proyek, hash_proyek, tulis_berkas, urai_berkas
 from .tim_cek import (cek_jalan, cek_statis, cocok_keluaran, gabung_masalah, nilai_cadangan,
-                      periksa_dasar, rapikan_nilai, tebak_perintah)
+                      periksa_dasar, perbaikan_sia_sia, rapikan_nilai, tebak_perintah)
 from .tim_config import Batal
 from .tim_laporan import blok_fakta, blok_fakta_bug
 from .tim_llm import ambil_json, tanya
@@ -369,6 +369,13 @@ def _minta_nilai(mc, pesan, user, ctx, jejak, kunci, bukti, berkas=None):
                 elif not ulang["ok"] and ulang["masalah"]:
                     nilai = ulang
                     nilai["kutipan"] = periksa_dasar(nilai, berkas, tambahan)
+    if berkas is not None and not nilai["ok"] and not bukti["ok"] and perbaikan_sia_sia(nilai["perbaikan"], berkas):
+        # Program GAGAL menurut sistem, tetapi saran Pemeriksa menyuruh menulis kode yang sudah persis ada:
+        # tidak akan mengubah apa pun. Ganti dengan fakta dari sistem (masalah Pemeriksa tetap dilampirkan).
+        gagal = [b[:300] for b in bukti["baris"] if b.startswith("GAGAL")][:3] or ["Menjalankan program gagal."]
+        nilai["perbaikan"] = ("Saran Pemeriksa sebelumnya sama dengan kode yang sudah ada, jadi jangan diikuti. "
+                              "Perbaiki kesalahan yang dicatat sistem: " + " ; ".join(gagal))[:600]
+        nilai["ringkas"] = (nilai["ringkas"] + " (saran diganti: sama dengan kode yang sudah ada)").strip()[:300]
     return nilai
 
 

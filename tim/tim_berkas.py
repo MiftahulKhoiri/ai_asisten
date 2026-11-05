@@ -105,7 +105,8 @@ _HEAD = re.compile(
 
 
 _END = re.compile(
-    r"^[ \t]*[=#*-]{2,}[ \t]*(?:END|SELESAI)(?:[ \t]+(?:FILE|BERKAS))?[ \t]*[=#*-]*[ \t]*$",
+    r"^[ \t]*[=#*-]{2,}[ \t]*(?:END|SELESAI)(?:[ \t]+(?:FILE|BERKAS))?[ \t]*[=#*-]*[ \t]*$"
+    r"|[ \t]={3,}[ \t]*(?:END|SELESAI)(?:[ \t]+(?:FILE|BERKAS))?[ \t]*=*[ \t]*$",   # penanda menempel di ujung baris kode
     re.M | re.I)
 
 

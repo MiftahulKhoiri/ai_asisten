@@ -1003,6 +1003,33 @@ permintaan menjadi bagian kecil (1-3 berkas). Bila berkas sering terpotong, naik
 (sama seperti halaman chat) dan menolak berjalan selama sesi chat masih memuat model: tekan
 **Selesai** di chat dulu.
 
+### Hasil uji model Perencana
+
+Uji agent nyata di Raspberry Pi 5 (16 GB), 5 November 2026. Tugasnya sama untuk semua model: buat
+`hitung.py` berisi fungsi `rata_rata` lalu panggil `rata_rata([2, 4, 6])`, hasil yang diharapkan `4.0`.
+Hanya Perencana yang diganti-ganti; Pelaksana `Qwen3_1.7B.Q4_K_M`, Pemeriksa `Qwen3.8-2B-Uncensored-Q4_K_M`,
+maksimal 3 putaran, uji jalan program aktif. Satu tugas dan satu kali jalan per model, jadi ini
+gambaran kasar, bukan peringkat.
+
+| Perencana | Hasil | Waktu total | Kecepatan menyusun rencana | Catatan |
+|---|---|---|---|---|
+| Qwen3.5-4B-Instruct Q4_K_M | lolos, putaran 1 | 255 dtk | 3,1 tok/dtk | rencana tepat |
+| empero-ai-Qwen3.8-2B-Distill q8_0 | lolos, putaran 1 | 193 dtk | 4,9 tok/dtk | rencana tepat |
+| Llama-3.2-3B-Instruct Q4_K_M | lolos, putaran 1 | 248 dtk | 3,5 tok/dtk | rencana tepat |
+| Qwen2.5-Coder-7B-Instruct Q4_K_M | lolos, putaran 1 | 437 dtk | 2,1 tok/dtk | rencana tepat, paling lambat |
+| Qwen3_1.7B Q4_K_M | lolos, putaran 1 | 169 dtk | 5,8 tok/dtk | menambah berkas `output.txt` dan argumen `2 4 6` yang tidak diminta |
+| Qwen3.8-2B-Uncensored Q4_K_M | belum (3 putaran) | 332 dtk | 7,1 tok/dtk | rencana salah tugas (`main.py`, `6 + 7`, harapan `8.0`) |
+
+Yang bisa dipetik:
+
+- Model besar tidak otomatis lebih baik: Qwen2.5-Coder 7B tepat tetapi hampir dua kali lebih lambat dari
+  Qwen3.5-4B, sedangkan Qwen3 1.7B paling cepat tetapi rencananya menyimpang dari permintaan.
+- Perencana yang tidak setia pada tugas tidak bisa ditolong oleh Pelaksana dan Pemeriksa, jadi
+  Qwen3.8-2B-Uncensored sebaiknya tidak dipakai sebagai Perencana.
+- Uji pertama Qwen2.5-Coder 7B sempat gagal bukan karena rencananya, melainkan karena Pelaksana menulis
+  `=== END ===` menempel di baris kode terakhir. Parser kini mengenali penanda itu, galat sintaks
+  menyertakan isi barisnya, dan saran Pemeriksa yang sama dengan kode lama diganti dengan fakta dari sistem.
+
 ### Mengubah perilaku Agent
 
 Kode Agent ada di folder `tim/`, satu berkas satu tanggung jawab, jadi perbaikan cukup menyentuh

@@ -188,6 +188,22 @@ class TestUrai(unittest.TestCase):
     def test_tanpa_berkas(self):
         self.assertEqual(tim.urai_berkas("maaf saya tidak bisa"), [])
 
+    def test_end_menempel_di_baris_kode(self):
+        # kasus log nyata (Qwen3 1.7B): '=== END ===' ditulis di ujung baris kode terakhir
+        teks = "=== FILE: hitung.py ===\ndef f():\n    return 1\n\nf() === END ===\n"
+        hasil = tim.urai_berkas(teks, ["hitung.py"])
+        self.assertEqual(hasil, [("hitung.py", "def f():\n    return 1\n\nf()\n", True)])
+        import ast
+        ast.parse(hasil[0][1])
+
+    def test_end_menempel_dua_berkas(self):
+        teks = "=== FILE: a.py ===\nx = 1 === END ===\n=== FILE: b.py ===\ny = 2 === END ==="
+        self.assertEqual(tim.urai_berkas(teks), [("a.py", "x = 1\n", True), ("b.py", "y = 2\n", True)])
+
+    def test_komentar_dobel_pagar_tidak_dianggap_end(self):
+        teks = "=== FILE: a.py ===\nx = 1  ## end of file\nprint(x)\n=== END ===\n"
+        self.assertEqual(tim.urai_berkas(teks)[0][1], "x = 1  ## end of file\nprint(x)\n")
+
     def test_pagar_nyasar_di_akhir_dibuang(self):
         # kasus log nyata: kode ditutup dengan ``` kosong sehingga sintaks Python salah
         teks = ('=== FILE: main.py ===\n"""Doc."""\nprint(1)\n```\n\n```\n=== END ===')
