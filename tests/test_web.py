@@ -28,6 +28,8 @@ class TestWeb(unittest.TestCase):
     def test_berkas_yang_dirujuk_ada(self):
         html = (WEB / "index.html").read_text(encoding="utf-8")
         for ref in re.findall(r'(?:href|src)="([^"]+)"', html):
+            if ref == "/":       # tautan ke dasbor (rute server, bukan berkas)
+                continue
             self.assertTrue((WEB / ref).is_file(), ref)
 
     def test_sintaks_js(self):
@@ -59,6 +61,8 @@ class TestWebAgent(unittest.TestCase):
         refs = re.findall(r'(?:href|src)="([^"]+)"', html)
         self.assertIn("agent.js", refs)
         for ref in refs:
+            if ref == "/":       # tautan ke dasbor (rute server, bukan berkas)
+                continue
             self.assertTrue((WEB / ref).is_file(), ref)
 
     def test_tombol_agent_di_halaman_chat(self):
@@ -116,6 +120,69 @@ class TestLayarMulai(unittest.TestCase):
             self.skipTest("node tidak terpasang")
         r = subprocess.run([node, "--check", str(WEB / "index.js")], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class TestDasbor(unittest.TestCase):
+    """Halaman awal: dua tombol besar (Sesi Agent, Sesi AI Asisten) dan navigasi kembali dari tiap sesi."""
+
+    def test_dasbor_punya_dua_tombol_sesi(self):
+        html = (WEB / "dasbor.html").read_text(encoding="utf-8")
+        self.assertIn("Sesi Agent", html)
+        self.assertIn("Sesi AI Asisten", html)
+        self.assertRegex(html, r'id="kartuAgent"[^>]*href="agent\.html"')
+        self.assertRegex(html, r'id="kartuChat"[^>]*href="chat"')
+
+    def test_id_di_js_ada_di_html(self):
+        js = (WEB / "dasbor.js").read_text(encoding="utf-8")
+        html = (WEB / "dasbor.html").read_text(encoding="utf-8")
+        dipakai = set(re.findall(r"\$\('([A-Za-z0-9_]+)'\)", js))
+        ada = set(re.findall(r'id="([^"]+)"', html))
+        self.assertGreater(len(dipakai), 10)
+        self.assertEqual(sorted(dipakai - ada), [])
+
+    def test_berkas_yang_dirujuk_ada(self):
+        html = (WEB / "dasbor.html").read_text(encoding="utf-8")
+        for ref in re.findall(r'(?:href|src)="([^"]+)"', html):
+            if ref in ("chat", "agent.html"):
+                continue
+            self.assertTrue((WEB / ref).is_file(), ref)
+
+    def test_rute_server(self):
+        from server import server_http
+        S = server_http.STATIS
+        self.assertEqual(S["/"][0], "dasbor.html")          # halaman pertama = dasbor
+        self.assertEqual(S["/chat"][0], "index.html")
+        self.assertEqual(S["/index.html"][0], "index.html")
+        self.assertEqual(S["/agent"][0], "agent.html")
+        for p in ("/dasbor", "/dasbor.html", "/dasbor.css", "/dasbor.js"):
+            self.assertTrue((WEB / S[p][0]).is_file(), p)
+
+    def test_chat_dan_agent_punya_tombol_kembali_ke_dasbor(self):
+        chat = (WEB / "index.html").read_text(encoding="utf-8")
+        agent = (WEB / "agent.html").read_text(encoding="utf-8")
+        self.assertRegex(chat, r'id="btnDasbor"[^>]*href="/"')
+        self.assertRegex(agent, r'id="btnChat"[^>]*href="/"')
+
+    def test_agent_punya_tombol_selesai(self):
+        html = (WEB / "agent.html").read_text(encoding="utf-8")
+        js = (WEB / "agent.js").read_text(encoding="utf-8")
+        self.assertIn('id="btnSelesai"', html)
+        self.assertIn("$('btnSelesai').onclick", js)
+        self.assertIn("$('btnSelesai').hidden = (nama !== 'kerja')", js)
+        self.assertIn("/api/stop", js)
+
+    def test_kelas_body_chat_tidak_bentrok_dengan_item_riwayat(self):
+        # `.chat` sudah dipakai item daftar riwayat (display:flex + padding); body tidak boleh memakainya
+        html = (WEB / "index.html").read_text(encoding="utf-8")
+        self.assertNotRegex(html, r'<body[^>]*class="[^"]*(?<![\w-])chat(?![\w-])')
+
+    def test_sintaks_js(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node tidak terpasang")
+        for nama in ("dasbor.js", "agent.js", "index.js"):
+            r = subprocess.run([node, "--check", str(WEB / nama)], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, nama + ": " + r.stderr)
 
 
 if __name__ == "__main__":

@@ -324,3 +324,14 @@ details.berkas .rg small{margin-left:6px;color:var(--redup);font-family:system-u
 .kartu.sidang .giliran{margin:6px 0 0;padding:6px 8px;border-radius:10px;background:var(--panel2);font-size:13px;line-height:1.4}
 .kartu.sidang .giliran b{font-weight:600}
 .kartu.sidang .giliran small{display:block;color:var(--redup)}
+
+/* ---------- header: tombol Dasbor, Pengaturan, dan Selesai ---------- */
+.agent header{gap:6px}
+.agent .ikon.selesai{border-color:color-mix(in srgb,var(--aksen) 55%,var(--garis));color:var(--aksen);font-weight:600}
+.agent .ikon.selesai:active{background:color-mix(in srgb,var(--aksen) 14%,var(--panel2))}
+#btnPengaturan .ik{font-size:16px;line-height:1;vertical-align:-1px}
+@media (max-width:430px){
+  #btnPengaturan .tx{display:none}
+  .agent .ikon{padding:6px 11px}
+  .agent header .judul b{font-size:15px}
+}

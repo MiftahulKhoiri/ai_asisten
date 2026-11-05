@@ -597,7 +597,12 @@ perlu header `anthropic-workspace-id` yang belum didukung di sini.
 
 ## Alur sesi
 
-1. Buka halaman web, lalu tiga langkah: **pilih skill** (boleh lebih dari satu), **pilih model**
+0. Alamat utama (`/`) membuka **dasbor**: dua tombol besar, **Sesi Agent** dan **Sesi AI Asisten**, ditambah
+   kondisi sistem (server model, model termuat, Agent, mode AUTO) dan beberapa proses Agent terbaru.
+   Kartu menunjukkan status langsung: sesi chat yang sedang berjalan ("Lanjutkan sesi") atau Agent yang
+   sedang bekerja ("Lihat proses"). Dari dalam sesi, tombol **Dasbor** membawa kembali ke sini tanpa
+   mengakhiri apa pun.
+1. Pilih **Sesi AI Asisten** (`/chat`), lalu tiga langkah: **pilih skill** (boleh lebih dari satu), **pilih model**
    (daftarnya tersembunyi di balik tombol **Pilih model**; ketuk untuk membuka, lalu ketuk satu model
    untuk menandainya dan daftar menutup lagi), dan tekan **Mulai sesi**. Model baru dimuat setelah Mulai ditekan, jadi
    salah ketuk tidak langsung memuat model besar. Pilihan model diingat; bila hanya ada satu
@@ -710,6 +715,12 @@ Halaman yang butuh JavaScript (mis. harga emas dinamis) bisa terbaca kosong.
 
 ## Fitur web
 
+- **Dasbor** (`/`): halaman awal dengan tombol Sesi Agent dan Sesi AI Asisten, kondisi sistem, dan proses
+  Agent terbaru (ketuk satu untuk membukanya). Bila token belum tersimpan, dasbor meminta token lebih dulu;
+  tombol **Ganti token** di bagian bawah menghapusnya dari browser ini.
+- Tombol **Dasbor** ada di header chat dan Agent. Di Agent ada juga tombol **Selesai**: mengakhiri sesi
+  dan kembali ke dasbor; bila proses masih berjalan, ditanya dulu apakah dihentikan. Untuk keluar **tanpa**
+  menghentikan proses, pakai **Dasbor** (proses tetap berjalan di server dan bisa dilihat lagi dari dasbor).
 - Riwayat obrolan tersimpan di `riwayat/` dan bisa dibuka lagi (tombol menu). Tiap obrolan
   menampilkan jumlah pesan dan cuplikan jawaban terakhir; ada kolom **cari** dan tombol
   **Hapus semua obrolan** (obrolan yang sedang dibuka tetap disimpan).
@@ -784,7 +795,7 @@ Hal yang perlu diketahui:
 
 ## Agent (tim beberapa model)
 
-Tombol **Agent** di pojok atas halaman chat membuka `agent.html`. Di sana beberapa model
+Tombol **Sesi Agent** di dasbor (atau **Agent** di pojok atas halaman chat) membuka `agent.html`. Di sana beberapa model
 lokal bekerja bergiliran untuk **membuat program**; tiap model dimuat saat gilirannya dan
 dibongkar saat selesai (bila "Bongkar model tiap tahap" aktif).
 
@@ -1271,7 +1282,8 @@ di alamat itu dan tidak menyalakan yang lokal.
 | `src/aksilog.py` | penulisan `aksi.log` dengan rotasi |
 | `src/tool_lain.py` | kalkulator dan waktu (tempat termudah untuk tool baru) |
 | `tim/` | paket Agent, dipecah per tanggung jawab (lihat tabel "Mengubah perilaku Agent"); dipakai lewat `import tim` |
-| `web/index.html`, `index.css`, `index.js` | tampilan chat |
+| `web/dasbor.html`, `dasbor.css`, `dasbor.js` | dasbor (halaman awal `/`) |
+| `web/index.html`, `index.css`, `index.js` | tampilan chat (`/chat`) |
 | `web/agent.html`, `agent.css`, `agent.js` | tampilan Agent (tombol **Agent** di chat) |
 | `llama_server.sh` | menyalakan llama-server di terminal sendiri: banner alamat/port, log lengkap, opsi `--port --host --models-dir --ctx --api-key` |
 | `start.sh` | jalan pintas: menjalankan `llama_server.sh` (bila perlu) lalu asisten, dengan satu perintah |

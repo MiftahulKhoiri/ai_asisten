@@ -33,7 +33,12 @@ from . import server_unggah as ung
 
 # File statis tampilan web (hanya yang ada di daftar ini yang boleh diakses)
 STATIS = {
-    "/": ("index.html", "text/html; charset=utf-8"),
+    "/": ("dasbor.html", "text/html; charset=utf-8"),         # halaman awal: pilih Sesi Agent / Sesi AI Asisten
+    "/dasbor": ("dasbor.html", "text/html; charset=utf-8"),
+    "/dasbor.html": ("dasbor.html", "text/html; charset=utf-8"),
+    "/dasbor.css": ("dasbor.css", "text/css; charset=utf-8"),
+    "/dasbor.js": ("dasbor.js", "application/javascript; charset=utf-8"),
+    "/chat": ("index.html", "text/html; charset=utf-8"),      # Sesi AI Asisten
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/index.css": ("index.css", "text/css; charset=utf-8"),
     "/index.js": ("index.js", "application/javascript; charset=utf-8"),

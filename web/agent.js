@@ -219,6 +219,7 @@
     layar = nama;
     for (const n of ['token', 'setup', 'kerja']) $('layar_' + n).hidden = (n !== nama);
     $('btnPengaturan').hidden = (nama !== 'kerja');
+    $('btnSelesai').hidden = (nama !== 'kerja');
     $('subAgent').textContent = nama === 'kerja' ? ringkasCfg() : '';
   }
 
@@ -386,6 +387,15 @@
   $('btnPengaturan').onclick = () => {
     if (sibuk) { toast('Tunggu proses selesai atau tekan Stop.'); return; }
     tampil('setup'); muatStatus(true); muatRiwayat();
+  };
+  // Selesai = akhiri sesi Agent dan kembali ke dasbor (proses yang masih berjalan dihentikan lebih dulu).
+  // Untuk keluar TANPA menghentikan proses, pakai tombol "Dasbor" di kiri atas: proses tetap lanjut di server.
+  $('btnSelesai').onclick = async () => {
+    if (sibuk) {
+      if (!confirm('Proses Agent masih berjalan. Hentikan dan akhiri sesi?\n\n(Untuk keluar tanpa menghentikan, pakai tombol Dasbor.)')) return;
+      try { await api('/api/stop', {method: 'POST', body: {}}); } catch (e) { /* tetap keluar */ }
+    }
+    location.href = '/';
   };
 
   /* ---------- riwayat ---------- */

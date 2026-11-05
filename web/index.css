@@ -166,3 +166,26 @@ details.tool .rg{flex:1;min-width:0}
 .grupModel[hidden],#koneksiGalat[hidden]{display:none}
 #modelPanel .grupModel:first-of-type{margin-top:4px}
 #koneksiGalat{color:var(--bahaya)}
+
+/* ---------- Sesi AI Asisten (chat): header dan tata letak lebih rapi ---------- */
+.ikon svg{vertical-align:-3px}
+.dasbor-tb{display:inline-flex;align-items:center;gap:6px}
+body.halaman-chat header{position:relative;z-index:5;padding:10px 12px;border-bottom-color:var(--garis);
+  background:color-mix(in srgb,var(--panel) 86%,transparent);-webkit-backdrop-filter:saturate(1.4) blur(12px);backdrop-filter:saturate(1.4) blur(12px)}
+body.halaman-chat .ikon{border-radius:999px;padding:6px 14px;font-size:14px;min-height:34px;transition:background .15s ease}
+body.halaman-chat .ikon:active{background:var(--bg)}
+body.halaman-chat .btn{transition:transform .08s ease,opacity .2s ease,background .2s ease;font-weight:500}
+body.halaman-chat .btn:active:not(:disabled){transform:scale(.97)}
+body.halaman-chat button:focus-visible,body.halaman-chat a:focus-visible,body.halaman-chat input:focus-visible,body.halaman-chat textarea:focus-visible{outline:2px solid var(--aksen);outline-offset:2px}
+body.halaman-chat .tengah{width:100%;max-width:640px;margin:0 auto;padding:18px 16px 28px}
+body.halaman-chat .seg button{transition:border-color .15s ease,background .15s ease}
+body.halaman-chat .seg button:hover{border-color:color-mix(in srgb,var(--aksen) 55%,var(--garis))}
+body.halaman-chat #pesan{width:100%;max-width:900px;margin:0 auto}
+body.halaman-chat #bawah{padding-inline:max(10px,calc((100% - 900px) / 2 + 10px))}
+@media (max-width:430px){
+  .dasbor-tb .tx{display:none}
+  body.halaman-chat .ikon{padding:6px 11px}
+}
+@media (max-width:430px){
+  body.halaman-chat #btnAgent{display:none}      /* ruang header HP terbatas; Agent dibuka dari dasbor */
+}
