@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sama dengan variabel bg di web/index.css (mode gelap). Android di bawah 10 selalu gelap. -->
+    <color name="latar">#111317</color>
+    <color name="ikon_latar">#111317</color>
+</resources>

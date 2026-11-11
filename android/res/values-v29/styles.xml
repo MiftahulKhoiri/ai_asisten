@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- DayNight: halaman web ikut prefers-color-scheme terang/gelap seperti di browser. -->
+    <style name="Tema" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@color/latar</item>
+        <item name="android:statusBarColor">@color/latar</item>
+        <item name="android:navigationBarColor">@color/latar</item>
+    </style>
+</resources>

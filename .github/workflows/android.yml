@@ -1,0 +1,115 @@
+name: Aplikasi Android
+
+# Membangun APK AI Asisten (pembungkus WebView untuk halaman web asisten.py) dengan android/build.sh.
+# APK ditandatangani dengan kunci di android/kunci/, sama seperti build di Pi, jadi selalu bisa
+# menimpa versi lama tanpa uninstall.
+# APK: tab Actions -> pilih run -> Artifacts. Untuk tag android-v* APK juga masuk Releases.
+# Perubahan di web/ TIDAK perlu APK baru: aplikasi memuat halaman langsung dari server.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+    tags: ["android-v*"]
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+env:
+  ANDROID_PLATFORM: "android-34"
+  ANDROID_BUILD_TOOLS: "35.0.0"
+
+jobs:
+  apk:
+    name: Bangun APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write # untuk melampirkan APK ke Release pada tag android-v*
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # versionCode = jumlah commit, sama seperti build di Pi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Pasang komponen Android SDK
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" "platforms;${ANDROID_PLATFORM}" "build-tools;${ANDROID_BUILD_TOOLS}" > /dev/null
+
+      - name: Tentukan versi
+        id: ver
+        run: |
+          ver="$(tr -d ' \r\n' < android/VERSI)"
+          if ! [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::android/VERSI tidak valid: '$ver'"; exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/android-v* && "${GITHUB_REF_NAME#android-v}" != "$ver" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME tidak sama dengan android/VERSI ($ver). Samakan dulu."; exit 1
+          fi
+          kode="$(git rev-list --count HEAD)"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "kode=$kode" >> "$GITHUB_OUTPUT"
+          echo "apk=AI-Asisten-v${ver}-build${kode}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Bangun APK
+        env:
+          VERSI_KODE: ${{ steps.ver.outputs.kode }}
+          NAMA_APK: ${{ steps.ver.outputs.apk }}
+        run: |
+          bt="$ANDROID_HOME/build-tools/${ANDROID_BUILD_TOOLS}"
+          export AAPT2="$bt/aapt2" ZIPALIGN="$bt/zipalign"
+          export D8_JAR="$bt/lib/d8.jar" APKSIGNER_JAR="$bt/lib/apksigner.jar"
+          export ANDROID_JAR="$ANDROID_HOME/platforms/${ANDROID_PLATFORM}/android.jar"
+          bash -n android/build.sh android/siapkan-alat.sh
+          android/build.sh
+
+      - name: Periksa APK (tanda tangan, versi, izin)
+        run: |
+          bt="$ANDROID_HOME/build-tools/${ANDROID_BUILD_TOOLS}"
+          apk="android/build/${{ steps.ver.outputs.apk }}"
+          java -jar "$bt/lib/apksigner.jar" verify --print-certs "$apk" | tee signer.txt
+          want="$(keytool -list -v -keystore android/kunci/ai_asisten.jks -storepass "$(cat android/kunci/sandi)" -alias ai_asisten | grep -i 'SHA256:' | head -n1 | sed 's/.*SHA256: *//; s/://g' | tr 'A-F' 'a-f')"
+          got="$(grep -i 'certificate SHA-256 digest' signer.txt | head -n1 | sed 's/.*: *//' | tr 'A-F' 'a-f')"
+          if [ -z "$want" ] || [ "$want" != "$got" ]; then
+            echo "::error title=Tanda tangan APK berbeda::APK tidak akan bisa menimpa versi lama di HP"; exit 1
+          fi
+          "$bt/aapt2" dump badging "$apk" > badging.txt
+          grep -E "^package:|^uses-permission|^sdkVersion|^targetSdkVersion" badging.txt
+          grep -q "name='id.aiasisten.app'" badging.txt || { echo "::error::nama paket berubah"; exit 1; }
+          grep -q "versionCode='${{ steps.ver.outputs.kode }}'" badging.txt || { echo "::error::versionCode salah"; exit 1; }
+          grep -q "versionName='${{ steps.ver.outputs.version }}'" badging.txt || { echo "::error::versionName salah"; exit 1; }
+          grep -q "android.permission.INTERNET" badging.txt || { echo "::error::izin INTERNET hilang"; exit 1; }
+          size=$(stat -c %s "$apk")
+          {
+            echo "### APK ${{ steps.ver.outputs.apk }}"
+            echo "- ukuran: $((size / 1024)) KB, versionCode: ${{ steps.ver.outputs.kode }}, Android 7.0+"
+            echo "- sertifikat SHA-256: \`$got\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AI-Asisten-v${{ steps.ver.outputs.version }}-build${{ steps.ver.outputs.kode }}
+          path: android/build/${{ steps.ver.outputs.apk }}
+          if-no-files-found: error
+
+      - name: Lampirkan ke Release (tag android-v*)
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/build/${{ steps.ver.outputs.apk }}
+          name: AI Asisten Android v${{ steps.ver.outputs.version }}
+          generate_release_notes: true

@@ -9,3 +9,4 @@ llama-server.log
 *.zip
 pengaturan.json
 pengaturan.json.tmp
+android/build/

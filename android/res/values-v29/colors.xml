@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 10+ mengikuti tema sistem: mode terang memakai variabel bg terang dari web/index.css. -->
+    <color name="latar">#f4f5f7</color>
+</resources>
