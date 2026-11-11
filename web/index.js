@@ -124,6 +124,34 @@
   const kon = window.Koneksi ? window.Koneksi.pasang({token: () => TOKEN, wadah: $('koneksiBaris'), toast,
     setelahUbah: () => { modelPilih = null; cekStatus(); }}) : null;
   const prm = window.PromptPilih ? window.PromptPilih.pasang({token: () => TOKEN, onUbah: () => gambarPilihan()}) : null;
+
+  /* ---------- tombol pengaturan sesi: Skill, Prompt, Koneksi model, Konteks ----------
+     Skill dan Konteks membuka panel di bawah tombolnya (satu panel terbuka pada satu waktu);
+     Prompt membuka panel prompt (prompt.js); Koneksi model membuka dialog koneksi (koneksi.js). */
+  const PANEL = {skill: ['skillBox', 'btnAturSkill'], konteks: ['panelKonteks', 'btnAturKonteks']};
+  const panelBuka = n => !$(PANEL[n][0]).hidden;
+  function aturPanel(nama, buka) {
+    for (const n of Object.keys(PANEL)) {
+      if (n !== nama && !buka) continue;               // menutup satu panel tidak menyentuh panel lain
+      const on = n === nama && !!buka;
+      $(PANEL[n][0]).hidden = !on;
+      $(PANEL[n][1]).setAttribute('aria-expanded', on ? 'true' : 'false');
+    }
+    if (buka && nama && prm && prm.terbuka()) prm.tutup();   // membuka Skill/Konteks menutup panel prompt
+  }
+  for (const n of Object.keys(PANEL)) { $(PANEL[n][0]).hidden = true; $(PANEL[n][1]).setAttribute('aria-expanded', 'false'); }
+  $('btnAturSkill').onclick = () => aturPanel('skill', !panelBuka('skill'));
+  $('btnSkillSelesai').onclick = () => aturPanel('skill', false);
+  $('btnAturKonteks').onclick = () => aturPanel('konteks', !panelBuka('konteks'));
+  $('btnAturKoneksi').onclick = () => { aturPanel(null, true); if (kon) kon.buka(); };
+  if (prm) {
+    const togelPrompt = $('btnPromptUbah').onclick;           // dipasang prompt.js
+    $('btnPromptUbah').onclick = () => { if (togelPrompt) togelPrompt(); if (prm.terbuka()) aturPanel(null, true); };
+  }
+  function ringkasKoneksi(k) {
+    const t = kon && k ? kon.ringkas(k).replace(/^Sumber model:\s*/, '') : '';
+    $('koneksiRingkas').textContent = t || 'Atur alamat llama-server / API key';
+  }
   function rapikanSkill(v) {
     if (typeof v === 'string') v = v.split(/[+,\s]+/);
     if (!Array.isArray(v)) return null;
@@ -159,6 +187,8 @@
       b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     $('skillKet').textContent = ketSkill();
+    const nt = jumlahTool(skill);
+    $('skillRingkas').textContent = labelSkill(skill) + ' · ' + (nt ? nt + ' tool' : 'tanpa tool');
     if (prm) prm.atur({mode: promptMode(), tanpa: !!skill && skill.includes('tanpa')});
     gambarPilihan();                      // ringkasan "Siap: model · skill" ikut berubah
   }
@@ -168,6 +198,53 @@
     setSkill(URUT_SKILL.filter(x => s.has(x)), true);
   }
   for (const b of document.querySelectorAll('#seg button')) b.onclick = () => togelSkill(b.dataset.skill);
+
+  /* ---------- konteks: maks token per sesi (kosong = bawaan server) ---------- */
+  const K_CTX = 'aa_ctx';
+  let ctxInfo = {bawaan: 8192, min: 512, maks: 1048576}, ctxPilih = null;
+  try { const v = parseInt(localStorage.getItem(K_CTX), 10); ctxPilih = v > 0 ? v : null; } catch (e) { ctxPilih = null; }
+  $('ctxIsi').value = ctxPilih ? String(ctxPilih) : '';
+  const fmtAngka = n => String(Math.round(Number(n))).replace(/\B(?=(\d{3})+(?!\d))/g, '.');   // 16384 -> 16.384
+  const tombolCtx = Array.from(document.querySelectorAll('#ctxCepat button'));
+  function bacaCtx() {                    // {ok, nilai: angka atau null (= bawaan), pesan}
+    const t = String($('ctxIsi').value || '').trim();
+    if (!t) return {ok: true, nilai: null};
+    const n = Number(t);
+    if (!Number.isInteger(n) || n < ctxInfo.min || n > ctxInfo.maks)
+      return {ok: false, pesan: 'Konteks harus angka bulat ' + fmtAngka(ctxInfo.min) + ' - ' + fmtAngka(ctxInfo.maks) + ' token, atau kosongkan untuk bawaan.'};
+    return {ok: true, nilai: n};
+  }
+  /* batas nyata model terpilih: --ctx-size llama-server, atau konteks latih model (null = tidak diketahui) */
+  function batasModel() { const m = modelNama[modelPilih]; return m ? (m.ctx || m.ctx_latih || null) : null; }
+  function gambarKonteks() {
+    const c = bacaCtx();
+    $('ctxIsi').classList.toggle('salah', !c.ok);
+    $('ctxGalat').textContent = c.ok ? '' : c.pesan;
+    if (c.ok) {
+      ctxPilih = c.nilai;
+      try { if (ctxPilih) localStorage.setItem(K_CTX, String(ctxPilih)); else localStorage.removeItem(K_CTX); } catch (e) { /* abaikan */ }
+    }
+    const m = modelNama[modelPilih] || null, batas = batasModel();
+    $('ctxBawaan').textContent = fmtAngka(ctxInfo.bawaan) + ' token';
+    $('ctxServer').textContent = !m ? 'pilih model dulu' : m.ctx ? fmtAngka(m.ctx) + ' token'
+      : m.jenis === 'online' ? 'diatur penyedia online' : 'tidak diketahui';
+    $('ctxLatih').textContent = m && m.ctx_latih ? fmtAngka(m.ctx_latih) + ' token' : '-';
+    const minta = ctxPilih || ctxInfo.bawaan, pakai = batas ? Math.min(minta, batas) : minta;
+    const dipangkas = !!batas && minta > batas;
+    $('ctxPakai').textContent = fmtAngka(pakai) + ' token';
+    $('ctxCatatan').hidden = !dipangkas;
+    $('ctxCatatan').textContent = dipangkas ? fmtAngka(minta) + ' melebihi batas model ini, jadi dipakai ' + fmtAngka(batas)
+      + '. Untuk konteks lebih besar, naikkan --ctx llama-server.' : '';
+    for (const b of tombolCtx) b.classList.toggle('on', Number(b.dataset.ctx) === ctxPilih);
+    $('konteksRingkas').textContent = (ctxPilih ? fmtAngka(ctxPilih) + ' token' : 'Bawaan · ' + fmtAngka(ctxInfo.bawaan))
+      + (dipangkas ? ' → ' + fmtAngka(batas) : '');
+    gambarPilihan();
+  }
+  $('ctxIsi').addEventListener('input', gambarKonteks);
+  $('ctxIsi').addEventListener('keydown', e => { if (e.key === 'Enter' && bacaCtx().ok) aturPanel('konteks', false); });
+  for (const b of tombolCtx) b.onclick = () => { $('ctxIsi').value = b.dataset.ctx; gambarKonteks(); };
+  $('btnCtxBawaan').onclick = () => { $('ctxIsi').value = ''; gambarKonteks(); };
+  $('btnCtxSelesai').onclick = () => { gambarKonteks(); if (bacaCtx().ok) aturPanel('konteks', false); };
 
   /* ---------- status & model ---------- */
   async function cekStatus() {
@@ -210,10 +287,12 @@
     pesan.textContent = s.status === 'memuat' ? (s.pesan || 'Memuat model...') :
                         s.status === 'error' ? ('Gagal: ' + s.pesan) : (s.pesan || '');
     if (kon) kon.perbarui(s.koneksi);
+    ringkasKoneksi(s.koneksi);
+    if (s.ctx_bawaan) ctxInfo = {bawaan: s.ctx_bawaan, min: s.ctx_min || 512, maks: s.ctx_maks || 1048576};
     if (!(s.models || []).length && /llama-server/.test(s.pesan || '') && s.status !== 'memuat')
       pesan.textContent += '. Nyalakan ./llama_server.sh di terminal lain, atau periksa alamat/API key lewat "Atur koneksi".';
     box.className = s.status === 'memuat' ? 'mati' : '';
-    $('seg').className = s.status === 'memuat' ? 'seg mati' : 'seg';
+    $('seg').className = s.status === 'memuat' ? 'seg daftar mati' : 'seg daftar';
     if (s.skills && s.skill_tools) {
       skillTools = s.skill_tools;
       $('nWeb').textContent = s.skills.web + ' tool';
@@ -236,7 +315,7 @@
     let grupAkhir = null;
     for (const m of (s.models || [])) {
       const cid = m.koneksi || 'lokal', jenis = m.jenis === 'online' ? 'online' : 'lokal';
-      modelNama[m.id] = {nama: m.nama || m.id, jenis, sumber: m.sumber || ''};
+      modelNama[m.id] = {nama: m.nama || m.id, jenis, sumber: m.sumber || '', ctx: m.ctx || null, ctx_latih: m.ctx_latih || null};
       if (banyak && cid !== grupAkhir) {
         grupAkhir = cid;
         const h = document.createElement('div'); h.className = 'grupModel ' + jenis; h.dataset.grup = cid;
@@ -261,6 +340,7 @@
     if (cari.hidden) cari.value = '';
     saringModel();
     gambarPilihan();
+    gambarKonteks();
   }
   /* "Lokal" saja bila nama sumbernya memang cuma "Lokal" (nama bawaan koneksi utama) */
   function judulSumber(jenis, nama) {
@@ -298,6 +378,7 @@
     try { localStorage.setItem('aa_model_pilih', id); } catch (e) { /* abaikan */ }
     aturPanelModel(false);               // sudah memilih: daftar kembali tertutup
     gambarPilihan();
+    gambarKonteks();
   }
   /* daftar model disembunyikan di balik tombol; terbuka hanya saat diketuk */
   function aturPanelModel(buka) {
@@ -330,15 +411,18 @@
     }
     $('btnMulai').disabled = !ada || memuat;
     $('btnMulai').textContent = memuat ? 'Memuat ...' : 'Mulai sesi';
-    $('mulaiKet').textContent = memuat ? '' : ada ? 'Siap: ' + ((modelNama[modelPilih] || {}).nama || modelPilih) + ' · ' + labelSkill(skill || []) + (prm ? prm.ringkasPendek() : '') : 'Pilih satu model di atas dulu.';
+    $('mulaiKet').textContent = memuat ? '' : ada ? 'Siap: ' + ((modelNama[modelPilih] || {}).nama || modelPilih) + ' · ' + labelSkill(skill || []) + (prm ? prm.ringkasPendek() : '')
+      + ' · konteks ' + (ctxPilih ? fmtAngka(ctxPilih) : 'bawaan') : 'Pilih satu model di atas dulu.';
   }
   $('btnMulai').onclick = () => { if (modelPilih && daftarModelAda.includes(modelPilih) && statusModel !== 'memuat') pilihModel(modelPilih); };
 
   async function pilihModel(id) {
-    try { await apij('/api/model/pilih', {method: 'POST', body: {model: id, skill, prompt: prm ? prm.ids() : undefined}}); }
+    const c = bacaCtx();
+    if (!c.ok) { aturPanel('konteks', true); gambarKonteks(); toast(c.pesan); return; }
+    try { await apij('/api/model/pilih', {method: 'POST', body: {model: id, skill, prompt: prm ? prm.ids() : undefined, ctx: c.nilai}}); }
     catch (e) { if (e.message !== '401') { $('modelPesan').className = 'err'; $('modelPesan').textContent = e.message; } return; }
     $('modelPesan').className = ''; $('modelPesan').textContent = 'Memuat ' + id + ' ...';
-    $('daftarModel').className = 'mati'; $('seg').className = 'seg mati';
+    $('daftarModel').className = 'mati'; $('seg').className = 'seg daftar mati';
     statusModel = 'memuat'; gambarPilihan();
     setPoll(1500); cekStatus();
   }

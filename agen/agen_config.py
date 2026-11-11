@@ -6,6 +6,7 @@ sehingga mengubah `agen.GERBANG = ...` atau `agen.CTX_MAKS = ...` langsung berla
 import os
 import re
 import sys
+import threading
 import urllib.parse
 from pathlib import Path
 
@@ -155,6 +156,20 @@ def _env_int(nama, bawaan, minimum=1):
 # dan untuk menentukan seberapa banyak riwayat yang dikirim (lihat max_history).
 CTX_MAKS = _env_int("ASISTEN_CTX", 8192, 512)
 
+# Batas konteks pilihan sesi chat (tombol "Konteks" di web). Disimpan per thread supaya proses
+# Agent yang berjalan bersamaan tetap memakai CTX_MAKS. None = pakai CTX_MAKS.
+_LOKAL = threading.local()
+
+
+def ctx_maks():
+    """Batas konteks (token) yang berlaku untuk thread ini: pilihan sesi (atur_ctx) atau CTX_MAKS."""
+    return getattr(_LOKAL, "ctx", None) or CTX_MAKS
+
+
+def atur_ctx(n=None):
+    """Pasang batas konteks untuk thread ini; None/0 = kembali ke CTX_MAKS."""
+    _LOKAL.ctx = int(n) if n else None
+
 
 # Batas token satu jawaban/putaran. Terlalu kecil memotong jawaban dan isi file panjang.
 MAX_TOKENS = _env_int("ASISTEN_MAX_TOKENS", 1400, 128)
@@ -172,4 +187,4 @@ PESAN_TOOL_TERPOTONG = ("ERROR: panggilan tool terpotong karena batas token jawa
 KRITIK_MIN = 80   # draf lebih pendek dari ini (sapaan, jawaban singkat) tidak diperiksa ulang
 
 
-__all__ = ['ROOT', 'LLAMA_URL', 'LLAMA_V1', 'pecah_alamat', 'LLAMA_NAMA', 'KONEKSI_UTAMA', 'PEMISAH_MODEL', 'LLAMA_EXTRA', 'nama_otomatis', 'sambungan', 'pecah_model', 'kunci_model', 'sambungan_model', 'adalah_anthropic', 'saring_body', 'jalur_daftar_model', 'kepala_daftar_model', 'LLAMA_KEY', 'LLAMA_JENIS', 'LOG_AKSI', 'MAX_OUTPUT', 'MAX_STEPS', 'RINGKAS_AMBANG', 'RINGKAS_SISA_GILIRAN', 'RINGKAS_MAKS_KARAKTER', 'GERBANG', '_env_int', 'CTX_MAKS', 'MAX_TOKENS', 'CATATAN_TERPOTONG', 'PESAN_TOOL_TERPOTONG', 'KRITIK_MIN']
+__all__ = ['ROOT', 'LLAMA_URL', 'LLAMA_V1', 'pecah_alamat', 'LLAMA_NAMA', 'KONEKSI_UTAMA', 'PEMISAH_MODEL', 'LLAMA_EXTRA', 'nama_otomatis', 'sambungan', 'pecah_model', 'kunci_model', 'sambungan_model', 'adalah_anthropic', 'saring_body', 'jalur_daftar_model', 'kepala_daftar_model', 'LLAMA_KEY', 'LLAMA_JENIS', 'LOG_AKSI', 'MAX_OUTPUT', 'MAX_STEPS', 'RINGKAS_AMBANG', 'RINGKAS_SISA_GILIRAN', 'RINGKAS_MAKS_KARAKTER', 'GERBANG', '_env_int', 'CTX_MAKS', 'ctx_maks', 'atur_ctx', 'MAX_TOKENS', 'CATATAN_TERPOTONG', 'PESAN_TOOL_TERPOTONG', 'KRITIK_MIN']

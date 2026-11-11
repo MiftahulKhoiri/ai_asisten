@@ -19,7 +19,10 @@ def status_json():
              "tool_aktif": len(agen.tools_untuk(sk)) if sk else None,
              "skill_bawaan": list(agen.tolls.normal_skill(None)),
              "skills": {m: len(agen.tools_untuk(m)) for m in ids},
-             "skill_tools": {m: agen.tolls.nama_tool_aktif(m) for m in ids}}
+             "skill_tools": {m: agen.tolls.nama_tool_aktif(m) for m in ids},
+             "ctx": state.S["ctx"], "ctx_server": state.S["ctx_server"],
+             "ctx_bawaan": agen.CTX_MAKS, "ctx_min": mdl.CTX_MIN, "ctx_maks": mdl.CTX_MAKS_PILIH}
+    d["ctx_pakai"] = mdl.ctx_efektif() if d["status"] == "siap" else None
     d["prompt_mode"] = prm.mode(sk)
     # nama prompt yang dipakai sesi ini: yang menggantikan bawaan, atau yang ditambahkan ke prompt sistem skill
     d["prompt"] = prm.rakit_tambahan(state.S["prompt"])[1] if d["prompt_mode"] == "tambah" else prm.rakit(state.S["prompt"])[1]

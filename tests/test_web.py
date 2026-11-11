@@ -85,13 +85,22 @@ class TestWebAgent(unittest.TestCase):
 
 
 class TestLayarMulai(unittest.TestCase):
-    """Layar awal chat: pilih skill -> pilih model -> tekan Mulai (model baru dimuat setelah Mulai)."""
+    """Layar awal chat: atur sesi (Skill, Prompt, Koneksi model, Konteks) -> pilih model -> tekan Mulai
+    (model baru dimuat setelah Mulai)."""
 
     def test_html_memiliki_tiga_langkah_dan_tombol_mulai(self):
         html = (WEB / "index.html").read_text(encoding="utf-8")
-        for pasti in ("1. Pilih skill", "2. Pilih model", "3. Mulai", 'id="btnMulai"', 'id="mulaiKet"',
+        for pasti in ("1. Atur sesi", "2. Pilih model", "3. Mulai", 'id="btnMulai"', 'id="mulaiKet"',
                       'role="radiogroup"'):
             self.assertIn(pasti, html)
+        # empat tombol pengaturan, berurutan, sebelum langkah pilih model
+        urut = [html.index(f'id="{i}"') for i in ("btnAturSkill", "btnPromptUbah", "btnAturKoneksi", "btnAturKonteks")]
+        self.assertEqual(urut, sorted(urut))
+        self.assertLess(urut[-1], html.index('id="langkahModel"'))
+        # panel Skill dan Konteks tertutup sampai tombolnya diketuk; isian konteks berupa angka
+        self.assertIn('<div id="skillBox" class="panel-atur" hidden>', html)
+        self.assertIn('<div id="panelKonteks" class="panel-atur" hidden>', html)
+        self.assertRegex(html, r'<input type="number" id="ctxIsi" min="512" max="1048576"')
         self.assertLess(html.index('id="skillBox"'), html.index('id="daftarModel"'))
         self.assertLess(html.index('id="daftarModel"'), html.index('id="btnMulai"'))
         # daftar model ada di dalam panel tertutup di balik tombol

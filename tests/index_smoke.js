@@ -168,5 +168,45 @@ const kelas = e => ' ' + e.className + ' ';
   L = lingkungan({models: MODEL, status: {koneksi: {daftar: [KON.daftar[0]]}}}); await tunggu(60);
   assert.ok(L.byId['daftarModel'].children.every(x => x.dataset.model !== undefined));
   assert.strictEqual(L.byId['koneksiGalat'].hidden, true);
+
+  // --- 13. tombol pengaturan sesi: Skill dan Konteks membuka panel (satu per satu), ringkasan tampil di tombol
+  const MKTX = [{id: 'A', mb: 1000, ctx: 8192, ctx_latih: 131072}, {id: 'B', mb: 2500, ctx: 4096, ctx_latih: 32768}];
+  L = lingkungan({models: MKTX, status: {ctx_bawaan: 8192, ctx_min: 512, ctx_maks: 1048576}, lemari: {aa_model_pilih: 'A'}}); await tunggu(60);
+  assert.strictEqual(L.byId['skillBox'].hidden, true, 'panel skill tertutup di awal');
+  assert.strictEqual(L.byId['panelKonteks'].hidden, true, 'panel konteks tertutup di awal');
+  assert.ok(L.byId['skillRingkas'].textContent.startsWith('Kompleks · '), L.byId['skillRingkas'].textContent);
+  L.byId['btnAturSkill'].onclick();
+  assert.strictEqual(L.byId['skillBox'].hidden, false); assert.strictEqual(L.byId['btnAturSkill'].attrs['aria-expanded'], 'true');
+  L.byId['btnAturKonteks'].onclick();
+  assert.strictEqual(L.byId['skillBox'].hidden, true, 'membuka Konteks menutup Skill'); assert.strictEqual(L.byId['panelKonteks'].hidden, false);
+  // bawaan: kosong -> konteks bawaan, dibatasi --ctx-size model terpilih
+  assert.strictEqual(L.byId['konteksRingkas'].textContent, 'Bawaan · 8.192');
+  assert.strictEqual(L.byId['ctxServer'].textContent, '8.192 token'); assert.strictEqual(L.byId['ctxLatih'].textContent, '131.072 token');
+  assert.strictEqual(L.byId['ctxPakai'].textContent, '8.192 token');
+  // isian lebih besar dari batas llama-server: dipangkas, ringkasan memberi tahu
+  L.byId['ctxIsi'].value = '16384'; L.byId['ctxIsi'].handlers.input();
+  assert.strictEqual(L.byId['ctxPakai'].textContent, '8.192 token');
+  assert.strictEqual(L.byId['ctxCatatan'].hidden, false); assert.ok(L.byId['ctxCatatan'].textContent.startsWith('16.384 melebihi batas'));
+  assert.strictEqual(L.byId['konteksRingkas'].textContent, '16.384 token → 8.192');
+  assert.strictEqual(L.lemari['aa_ctx'], '16384', 'pilihan konteks diingat');
+  // isian tidak valid: tidak disimpan, panel tetap terbuka, Mulai tidak memuat
+  L.byId['ctxIsi'].value = '100'; L.byId['ctxIsi'].handlers.input();
+  assert.ok(L.byId['ctxGalat'].textContent.includes('512'), L.byId['ctxGalat'].textContent);
+  L.byId['btnCtxSelesai'].onclick(); assert.strictEqual(L.byId['panelKonteks'].hidden, false, 'isian salah: panel tidak ditutup');
+  L.byId['btnMulai'].onclick(); await tunggu(20);
+  assert.strictEqual(L.panggilan.filter(p => p.url === '/api/model/pilih').length, 0, 'konteks salah: tidak memuat');
+  // isian valid -> dikirim ke server bersama model
+  L.byId['ctxIsi'].value = '4096'; L.byId['ctxIsi'].handlers.input(); L.byId['btnCtxSelesai'].onclick();
+  assert.strictEqual(L.byId['panelKonteks'].hidden, true);
+  assert.ok(L.byId['mulaiKet'].textContent.endsWith(' · konteks 4.096'), L.byId['mulaiKet'].textContent);
+  L.byId['btnMulai'].onclick(); await tunggu(20);
+  assert.strictEqual(JSON.parse(L.panggilan.find(p => p.url === '/api/model/pilih').body).ctx, 4096);
+  // "Pakai bawaan": dikirim null (server memakai bawaan) dan tidak diingat lagi
+  L = lingkungan({models: MKTX, status: {ctx_bawaan: 8192}, lemari: {aa_model_pilih: 'B', aa_ctx: '2048'}}); await tunggu(60);
+  assert.strictEqual(L.byId['ctxIsi'].value, '2048', 'pilihan tersimpan dimuat');
+  L.byId['btnCtxBawaan'].onclick();
+  assert.strictEqual(L.lemari['aa_ctx'], undefined); assert.strictEqual(L.byId['ctxPakai'].textContent, '4.096 token');
+  L.byId['btnMulai'].onclick(); await tunggu(20);
+  assert.strictEqual(JSON.parse(L.panggilan.find(p => p.url === '/api/model/pilih').body).ctx, null);
   console.log('OK');
 })().catch(e => { console.error(e); process.exit(1); });

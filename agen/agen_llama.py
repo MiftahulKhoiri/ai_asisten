@@ -168,7 +168,7 @@ def _event_info(timings):
     gen = timings.get("predicted_n") or 0
     pakai = (timings.get("prompt_n") or 0) + (timings.get("cache_n") or 0) + gen
     return {"t": "info", "tok_s": round(timings.get("predicted_per_second") or 0, 1),
-            "tok": gen, "pakai": pakai, "maks": cfg.CTX_MAKS}
+            "tok": gen, "pakai": pakai, "maks": cfg.ctx_maks()}
 
 
 __all__ = ['llama', 'llama_url', 'llama_kepala', 'llama_buka', 'llama_uji', 'stream_chat', '_gabung_tool_call', '_baca_stream', '_event_info']

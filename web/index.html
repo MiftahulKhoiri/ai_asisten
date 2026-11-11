@@ -36,19 +36,43 @@
   <section class="layar" id="layar_model" hidden>
     <div class="tengah">
       <h2>Mulai sesi</h2>
-      <p class="redup">Pilih skill dan model, lalu tekan <b>Mulai</b>. Model baru dimuat setelah Mulai ditekan, dan otomatis dibongkar saat sesi selesai.</p>
-      <div id="skillBox">
-        <div class="label">1. Pilih skill (kemampuan) - boleh lebih dari satu</div>
-        <div class="seg" id="seg">
-          <button type="button" data-skill="tanpa"><b>Tanpa skill</b><small>Tanya jawab saja</small></button>
-          <button type="button" data-skill="web"><b>Web</b><small id="nWeb">4 tool</small></button>
-          <button type="button" data-skill="dasar"><b>Dasar</b><small id="nDasar">4 tool</small></button>
-          <button type="button" data-skill="kompleks"><b>Kompleks</b><small id="nKompleks">27 tool</small></button>
-          <button type="button" data-skill="kritis"><b>Berpikir kritis</b><small>Periksa &amp; perbaiki jawaban</small></button>
+      <p class="redup">Atur sesi lewat tombol di bawah, pilih model, lalu tekan <b>Mulai</b>. Model baru dimuat setelah Mulai ditekan, dan otomatis dibongkar saat sesi selesai.</p>
+      <div class="langkah">1. Atur sesi</div>
+      <div class="atur-sesi" id="aturSesi">
+        <button type="button" class="atur" id="btnAturSkill" aria-expanded="false" aria-controls="skillBox">
+          <span class="atur-ik" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg></span>
+          <span class="atur-tk"><b>Skill</b><small id="skillRingkas">-</small></span>
+          <span class="atur-panah" aria-hidden="true">&#9662;</span>
+        </button>
+        <button type="button" class="atur" id="btnPromptUbah" aria-expanded="false" aria-controls="promptBox">
+          <span class="atur-ik" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg></span>
+          <span class="atur-tk" id="promptRingkas"><b>Prompt</b><small id="promptRingkasTeks">-</small></span>
+          <span class="atur-panah" aria-hidden="true">&#9662;</span>
+        </button>
+        <button type="button" class="atur" id="btnAturKoneksi" aria-haspopup="dialog">
+          <span class="atur-ik" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 01-10 0z"/><path d="M12 16v5"/></svg></span>
+          <span class="atur-tk"><b>Koneksi model</b><small id="koneksiRingkas">-</small></span>
+          <span class="atur-panah" aria-hidden="true">&#8250;</span>
+        </button>
+        <button type="button" class="atur" id="btnAturKonteks" aria-expanded="false" aria-controls="panelKonteks">
+          <span class="atur-ik" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h10M7 12h7M7 15h4"/></svg></span>
+          <span class="atur-tk"><b>Konteks</b><small id="konteksRingkas">Bawaan</small></span>
+          <span class="atur-panah" aria-hidden="true">&#9662;</span>
+        </button>
+      </div>
+      <div id="skillBox" class="panel-atur" hidden>
+        <div class="panel-kepala"><b>Pilih skill</b><span class="redup">boleh lebih dari satu</span></div>
+        <div class="seg daftar" id="seg" role="group" aria-label="Skill">
+          <button type="button" data-skill="tanpa"><span class="cek" aria-hidden="true"></span><span class="isi"><b>Tanpa skill</b><small>Tanya jawab saja</small></span></button>
+          <button type="button" data-skill="web"><span class="cek" aria-hidden="true"></span><span class="isi"><b>Web</b><small><span id="nWeb">4 tool</span> · cari info &amp; berita di internet</small></span></button>
+          <button type="button" data-skill="dasar"><span class="cek" aria-hidden="true"></span><span class="isi"><b>Dasar</b><small><span id="nDasar">4 tool</span> · perintah, file, folder</small></span></button>
+          <button type="button" data-skill="kompleks"><span class="cek" aria-hidden="true"></span><span class="isi"><b>Kompleks</b><small><span id="nKompleks">27 tool</span> · semua tool sistem</small></span></button>
+          <button type="button" data-skill="kritis"><span class="cek" aria-hidden="true"></span><span class="isi"><b>Berpikir kritis</b><small>Periksa &amp; perbaiki jawaban (lebih lambat, lebih teliti)</small></span></button>
         </div>
         <p id="skillKet" class="redup kecil"></p>
+        <button type="button" class="btn panel-selesai" id="btnSkillSelesai">Selesai</button>
       </div>
-      <div id="promptBox" hidden>
+      <div id="promptBox" class="panel-atur" hidden>
         <p id="promptModeTeks" class="redup kecil"></p>
         <div class="promptKepala"><span>List prompt</span><span class="promptTombol"><button type="button" class="btn abu" id="btnPromptImpor" title="Impor prompt dari berkas .json (misalnya dari teman)">⬆ Impor</button><button type="button" class="btn abu" id="btnPromptBaru">+ prompt</button></span><input type="file" id="promptBerkas" accept=".json,application/json" multiple hidden></div>
         <div id="promptForm" hidden>
@@ -62,10 +86,29 @@
         <p id="promptKet" class="redup kecil"></p>
         <button type="button" class="btn" id="btnPromptSelesai">Selesai</button>
       </div>
-      <div id="promptRingkas" class="redup kecil" hidden><span id="promptRingkasTeks"></span><button type="button" class="tautan" id="btnPromptUbah">Ubah</button></div>
+      <div id="panelKonteks" class="panel-atur" hidden>
+        <div class="panel-kepala"><b>Maks konteks</b><span class="redup">kosong = bawaan</span></div>
+        <table class="tabel-konteks">
+          <tbody>
+            <tr><th scope="row"><label for="ctxIsi">Maks konteks (token)</label></th>
+                <td><input type="number" id="ctxIsi" min="512" max="1048576" step="512" inputmode="numeric" placeholder="bawaan" autocomplete="off"></td></tr>
+            <tr><th scope="row">Bawaan</th><td id="ctxBawaan">-</td></tr>
+            <tr><th scope="row">Batas llama-server</th><td id="ctxServer">-</td></tr>
+            <tr><th scope="row">Maksimal model</th><td id="ctxLatih">-</td></tr>
+            <tr class="hasil"><th scope="row">Dipakai sesi</th><td id="ctxPakai">-</td></tr>
+          </tbody>
+        </table>
+        <div class="ctx-cepat" id="ctxCepat" role="group" aria-label="Pilihan cepat">
+          <button type="button" data-ctx="2048">2K</button><button type="button" data-ctx="4096">4K</button><button type="button" data-ctx="8192">8K</button><button type="button" data-ctx="16384">16K</button><button type="button" data-ctx="32768">32K</button>
+        </div>
+        <p id="ctxCatatan" class="catatan-ctx kecil" hidden></p>
+        <p id="ctxGalat" class="galat kecil" role="alert"></p>
+        <p class="redup kecil">Konteks = seberapa banyak percakapan yang diingat model dalam satu kali jawab. Lebih besar berarti riwayat lebih panjang, tapi lebih lambat dan lebih boros RAM. Model lokal tidak bisa melebihi batas llama-server (naikkan dengan <code>./llama_server.sh --ctx 16384</code>).</p>
+        <div class="panel-aksi"><button type="button" class="btn abu" id="btnCtxBawaan">Pakai bawaan</button><button type="button" class="btn" id="btnCtxSelesai">Selesai</button></div>
+      </div>
       <div id="langkahModel">
         <div class="langkah">2. Pilih model</div>
-        <div id="koneksiBaris"></div>
+        <div id="koneksiBaris" hidden></div>
         <div id="modelPesan"></div>
         <button type="button" id="btnDaftarModel" class="pilihModel" aria-expanded="false" aria-controls="modelPanel" disabled>
           <span class="teks"><span class="nama"><span id="modelLabel">Pilih model</span><span class="lencana" id="modelBadge" hidden></span></span><span class="meta" id="modelJumlah"></span></span>

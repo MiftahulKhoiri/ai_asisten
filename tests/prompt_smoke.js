@@ -99,7 +99,7 @@ function teks_(e) { return [e._text].concat(e.children.map(teks_)).join('|'); }
   let L = lingkungan({}); await tunggu(60);
   assert.strictEqual(L.byId['promptBox'].hidden, true, 'skill dengan akses sistem: panel tidak memaksa terbuka'); assert.strictEqual(L.byId['langkahModel'].hidden, false);
   assert.strictEqual(L.byId['promptRingkas'].hidden, false, 'tetap ada ringkasan satu baris dengan tombol Ubah');
-  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt tambahan: tidak ada');
+  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Tambahan: tidak ada');
   assert.strictEqual(L.panggilan.filter(p => p.url === '/api/prompt').length, 1, 'daftar dimuat sekali untuk semua skill');
 
   // --- 2. pilih skill Tanpa (bukan kompleks): panel tampil, langkah model menunggu "Selesai"
@@ -232,7 +232,7 @@ function teks_(e) { return [e._text].concat(e.children.map(teks_)).join('|'); }
   // --- 6. Selesai: panel ditutup jadi ringkasan, pilih model & Mulai muncul
   L.byId['btnPromptSelesai'].onclick();
   assert.strictEqual(L.byId['promptBox'].hidden, true); assert.strictEqual(L.byId['promptRingkas'].hidden, false);
-  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt: Bawaan (asisten ramah), Singkat');
+  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Bawaan (asisten ramah), Singkat');
   assert.strictEqual(L.byId['langkahModel'].hidden, false); assert.strictEqual(L.lemari['aa_prompt_selesai'], '1');
   L.byId['daftarModel'].children[1].onclick();
   assert.ok(L.byId['mulaiKet'].textContent.includes('prompt: Bawaan (asisten ramah), Singkat'), L.byId['mulaiKet'].textContent);
@@ -249,7 +249,7 @@ function teks_(e) { return [e._text].concat(e.children.map(teks_)).join('|'); }
   // --- 9. Tanpa digabung skill dengan akses sistem: prompt DITAMBAHKAN (bukan mengganti); panel tidak memaksa terbuka
   L.skillBtn[3].onclick(); await tunggu(20);                                   // tambah Kompleks
   assert.strictEqual(L.byId['promptBox'].hidden, true); assert.strictEqual(L.byId['langkahModel'].hidden, false);
-  assert.strictEqual(L.byId['promptRingkas'].hidden, false); assert.ok(L.byId['promptRingkasTeks'].textContent.startsWith('Prompt tambahan: '));
+  assert.strictEqual(L.byId['promptRingkas'].hidden, false); assert.ok(L.byId['promptRingkasTeks'].textContent.startsWith('Tambahan: '));
   L = lingkungan({lemari: {skill: JSON.stringify(['tanpa', 'kompleks']), aa_model_pilih: 'A', aa_prompt_pilih: JSON.stringify(['bawaan'])}}); await tunggu(60);
   assert.strictEqual(L.byId['promptBox'].hidden, true); assert.strictEqual(L.panggilan.filter(p => p.url === '/api/prompt').length, 1);
   L.byId['btnMulai'].onclick(); await tunggu(30);
@@ -260,10 +260,10 @@ function teks_(e) { return [e._text].concat(e.children.map(teks_)).join('|'); }
   const tersimpan = [{id: 'bawaan', nama: 'Bawaan (asisten ramah)', isi: 'x', bawaan: true}, {id: 'p00000009', nama: 'Puitis', isi: 'Jawab berpuisi.', bawaan: false}];
   L = lingkungan({lemari: {skill: JSON.stringify(['tanpa']), aa_prompt_pilih: JSON.stringify(['p00000009']), aa_prompt_selesai: '1'}, prompt: tersimpan}); await tunggu(80);
   assert.strictEqual(L.byId['promptBox'].hidden, true); assert.strictEqual(L.byId['promptRingkas'].hidden, false);
-  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt: Puitis'); assert.strictEqual(L.byId['langkahModel'].hidden, false);
+  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Puitis'); assert.strictEqual(L.byId['langkahModel'].hidden, false);
   // pilihan yang sudah dihapus dari server dilepas; semuanya hilang = murni (bukan bawaan)
   L = lingkungan({lemari: {skill: JSON.stringify(['tanpa']), aa_prompt_pilih: JSON.stringify(['p0000dead']), aa_prompt_selesai: '1'}}); await tunggu(80);
-  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt: tanpa prompt (murni)');
+  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'tanpa prompt (murni)');
   // pilihan kosong yang tersimpan tetap kosong (tidak dikembalikan ke bawaan)
   L = lingkungan({lemari: {skill: JSON.stringify(['tanpa']), aa_prompt_pilih: '[]'}}); await tunggu(80);
   assert.strictEqual(cek(baris(L)[0]).checked, false);
@@ -275,7 +275,7 @@ function teks_(e) { return [e._text].concat(e.children.map(teks_)).join('|'); }
   // --- 10c. skill dengan akses sistem: Bawaan selalu aktif (tidak bisa dicentang), prompt pilihan ditambahkan
   const puitis = [{id: 'bawaan', nama: 'Bawaan (asisten ramah)', isi: 'x'.repeat(100), bawaan: true}, {id: 'p00000009', nama: 'Puitis', isi: 'Jawab berpuisi.', bawaan: false}];
   L = lingkungan({lemari: {skill: JSON.stringify(['kompleks']), aa_model_pilih: 'A', aa_prompt_pilih: JSON.stringify(['bawaan', 'p00000009'])}, prompt: puitis}); await tunggu(80);
-  assert.strictEqual(L.byId['promptBox'].hidden, true); assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt tambahan: Puitis');
+  assert.strictEqual(L.byId['promptBox'].hidden, true); assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Tambahan: Puitis');
   assert.ok(L.byId['mulaiKet'].textContent.includes('prompt tambahan: Puitis'), L.byId['mulaiKet'].textContent);
   L.byId['btnPromptUbah'].onclick();
   assert.strictEqual(L.byId['promptBox'].hidden, false); assert.strictEqual(L.byId['langkahModel'].hidden, true, 'panel dibuka manual menahan pilih model sampai Selesai');
@@ -287,7 +287,7 @@ function teks_(e) { return [e._text].concat(e.children.map(teks_)).join('|'); }
   cek(baris(L)[1]).checked = false; cek(baris(L)[1]).onchange();
   assert.strictEqual(L.byId['promptKet'].textContent, 'Tidak ada prompt tambahan: skill memakai prompt sistemnya sendiri.');
   L.byId['btnPromptSelesai'].onclick();
-  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt tambahan: tidak ada');
+  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Tambahan: tidak ada');
   assert.ok(!L.byId['mulaiKet'].textContent.includes('prompt tambahan'), 'tanpa tambahan: tidak disebut di ringkasan Mulai');
   L.byId['btnMulai'].onclick(); await tunggu(30);
   assert.same(JSON.parse(L.panggilan.find(p => p.url === '/api/model/pilih').body).prompt, ['bawaan'], 'Puitis sudah tidak dicentang');
@@ -295,7 +295,7 @@ function teks_(e) { return [e._text].concat(e.children.map(teks_)).join('|'); }
   // --- 10d. skill Web/Berpikir kritis (tanpa Tanpa): prompt MENGGANTIKAN bawaan, panel tidak memaksa terbuka
   L = lingkungan({lemari: {skill: JSON.stringify(['web']), aa_model_pilih: 'A'}, prompt: puitis}); await tunggu(80);
   assert.strictEqual(L.byId['promptBox'].hidden, true); assert.strictEqual(L.byId['langkahModel'].hidden, false);
-  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt: Bawaan (asisten ramah)');
+  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Bawaan (asisten ramah)');
   L.byId['btnPromptUbah'].onclick();
   assert.ok(L.byId['promptModeTeks'].textContent.includes('menggantikan prompt bawaan'), L.byId['promptModeTeks'].textContent);
   assert.strictEqual(cek(baris(L)[0]).disabled, false, 'mode ganti: Bawaan boleh dilepas');
@@ -303,11 +303,11 @@ function teks_(e) { return [e._text].concat(e.children.map(teks_)).join('|'); }
   // --- 10e. berganti skill saat berjalan: mode mengikuti; Selesai yang sudah ditekan diingat
   L = lingkungan({lemari: {skill: JSON.stringify(['tanpa'])}, prompt: puitis}); await tunggu(80);
   assert.strictEqual(L.byId['promptBox'].hidden, false, 'alur Tanpa skill: panel terbuka'); L.byId['btnPromptSelesai'].onclick();
-  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt: Bawaan (asisten ramah)');
+  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Bawaan (asisten ramah)');
   L.skillBtn[3].onclick(); await tunggu(20);                                    // tambah Kompleks -> mode tambah
-  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt tambahan: tidak ada'); assert.strictEqual(L.byId['promptBox'].hidden, true);
+  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Tambahan: tidak ada'); assert.strictEqual(L.byId['promptBox'].hidden, true);
   L.skillBtn[3].onclick(); await tunggu(20);                                    // lepas Kompleks -> kembali ke mode ganti, tetap diringkas
-  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Prompt: Bawaan (asisten ramah)'); assert.strictEqual(L.byId['promptBox'].hidden, true);
+  assert.strictEqual(L.byId['promptRingkasTeks'].textContent, 'Bawaan (asisten ramah)'); assert.strictEqual(L.byId['promptBox'].hidden, true);
 
   // --- 11. daftar gagal dimuat: pesan jelas dan alur tetap bisa dilanjutkan
   L = lingkungan({lemari: {skill: JSON.stringify(['tanpa'])}, galatDaftar: true}); await tunggu(80);

@@ -145,12 +145,13 @@ def mode_dari(ctx):
 def max_history(tools):
     """Jatah karakter riwayat yang dikirim ke model.
 
-    Patokan: konteks 8192 token ~ 24000 karakter, diskalakan mengikuti CTX_MAKS
-    (ASISTEN_CTX). Dikurangi system prompt, skema tool aktif (makin banyak tool, makin
+    Patokan: konteks 8192 token ~ 24000 karakter, diskalakan mengikuti batas konteks sesi
+    (ctx_maks(): pilihan di web, atau CTX_MAKS / ASISTEN_CTX). Dikurangi system prompt, skema
+    tool aktif (makin banyak tool, makin
     sedikit ruang riwayat), ruang jawaban (MAX_TOKENS) dan margin. Dengan nilai bawaan hasilnya
     sama seperti sebelumnya: antara 5000 dan 12000 karakter.
     """
-    total = int(cfg.CTX_MAKS * 24000 / 8192)
+    total = int(cfg.ctx_maks() * 24000 / 8192)
     sisa = total - 1800 - len(json.dumps(tools)) - cfg.MAX_TOKENS * 3 - 3000
     return max(total * 5 // 24, min(total // 2, sisa))
 

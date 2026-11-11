@@ -10,9 +10,11 @@
  * untuk dibagikan; "⬆ Impor" memasukkan berkas .json dari orang lain; "(−)" menghapus; "Selesai"
  * menutup panel dan melanjutkan ke pilih model. Satu prompt = satu berkas di folder prompt/ server.
  *
- *   const pr = PromptPilih.pasang({token: () => TOKEN, onUbah: () => ...});
- *   pr.atur(true/false)   panel berlaku (skill Tanpa aktif) atau tidak
- *   pr.ids()  pr.nama()  pr.ringkasTeks()  pr.terbuka()  pr.aktif()
+ *   const pr = PromptPilih.pasang({token: () => TOKEN, onUbah: () => ..., onBuka: terbuka => ...});
+ *   pr.atur({mode, tanpa})   dipanggil tiap skill berubah
+ *   pr.ids()  pr.nama()  pr.ringkasTeks()  pr.terbuka()  pr.aktif()  pr.buka()  pr.tutup()
+ * Tombol "Prompt" (#btnPromptUbah) di layar Mulai sesi membuka/menutup panel; ringkasannya
+ * (#promptRingkasTeks, diawali "Tambahan: " pada skill Dasar/Kompleks) selalu tampil.
  */
 (function () {
   'use strict';
@@ -84,11 +86,14 @@
       return tambah() ? (n.length ? ' · prompt tambahan: ' + n.join(', ') : '') : ' · prompt: ' + ringkasTeks();
     }
     function gambar() {
-      const tampilPanel = st.aktif && st.terbuka, tampilRingkas = st.aktif && !st.terbuka;
+      const tampilPanel = st.aktif && st.terbuka;
       $('promptBox').hidden = !tampilPanel;
-      $('promptRingkas').hidden = !tampilRingkas;
+      $('promptRingkas').hidden = !st.aktif;                               // tombol "Prompt" selalu ada
+      const tb = $('btnPromptUbah');
+      if (tb) tb.setAttribute('aria-expanded', tampilPanel ? 'true' : 'false');
       const lm = $('langkahModel'); if (lm) lm.hidden = tampilPanel;       // pilih model & Mulai menunggu "Selesai"
-      if (tampilRingkas) $('promptRingkasTeks').textContent = (tambah() ? 'Prompt tambahan: ' : 'Prompt: ') + ringkasTeks();
+      if (st.aktif) $('promptRingkasTeks').textContent = (tambah() ? 'Tambahan: ' : '') + ringkasTeks();
+      if (opt.onBuka) opt.onBuka(tampilPanel);
       if (!tampilPanel) return;
       $('promptModeTeks').textContent = tambah()
         ? 'Skill Dasar/Kompleks punya prompt sistem sendiri (aturan tool dan keamanan). Prompt yang kamu centang ditambahkan di bawahnya, tidak menggantikan.'
@@ -206,8 +211,10 @@
     $('btnPromptImpor').onclick = () => $('promptBerkas').click();
     $('promptBerkas').onchange = () => { const f = Array.from($('promptBerkas').files || []); $('promptBerkas').value = ''; if (f.length) impor(f); };
     $('btnPromptBatal').onclick = tutupForm;
-    $('btnPromptSelesai').onclick = () => { st.terbuka = false; selesaiFlag(true); tutupForm(); gambar(); ubah(); };
-    $('btnPromptUbah').onclick = () => { st.terbuka = true; selesaiFlag(false); gambar(); ubah(); };
+    function tutup() { st.terbuka = false; selesaiFlag(true); tutupForm(); gambar(); ubah(); }
+    function buka() { st.terbuka = true; selesaiFlag(false); gambar(); ubah(); }
+    $('btnPromptSelesai').onclick = tutup;
+    $('btnPromptUbah').onclick = () => { if (st.aktif && st.terbuka) tutup(); else buka(); };   // tombol "Prompt": buka/tutup
 
     return {
       /* dipanggil tiap skill berubah: {mode: 'ganti'|'tambah', tanpa: skill Tanpa aktif}.
@@ -226,6 +233,7 @@
       nama: namaDipilih, ringkasTeks, ringkasPendek, mode: () => st.mode,
       terbuka: () => st.aktif && st.terbuka,
       aktif: () => st.aktif,
+      buka, tutup,
     };
   }
   window.PromptPilih = {pasang};

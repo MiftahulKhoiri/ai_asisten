@@ -19,6 +19,59 @@ def _galat_singkat(e):
     return type(e).__name__
 
 
+# Batas isian konteks dari web (token).
+CTX_MIN = 512
+CTX_MAKS_PILIH = 1_048_576
+
+
+def _ctx_dari_args(args):
+    """Nilai --ctx-size / -c dari argumen anak llama-server (mode router), atau None.
+    0 berarti llama-server memakai konteks latih model (lihat context_length)."""
+    if not isinstance(args, list):
+        return None
+    for i, a in enumerate(args[:-1]):
+        if a in ("--ctx-size", "-c"):
+            try:
+                return int(args[i + 1])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _angka(v):
+    return v if isinstance(v, int) and not isinstance(v, bool) and v > 0 else None
+
+
+def batas_ctx_model(m):
+    """Batas konteks nyata satu model dari daftar_model(): --ctx-size llama-server, atau konteks
+    latih model bila --ctx-size 0/tidak ada. None = tidak diketahui (mis. penyedia online tanpa info)."""
+    return _angka(m.get("ctx")) or _angka(m.get("ctx_latih"))
+
+
+def rapikan_ctx(v):
+    """Isian konteks dari web -> int, atau None (= bawaan). ValueError bila tidak valid."""
+    if v is None or v == "" or v == 0 or v == "0":
+        return None
+    if isinstance(v, bool):
+        raise ValueError("Konteks harus berupa angka (token)")
+    try:
+        n = int(str(v).strip())
+    except (TypeError, ValueError):
+        raise ValueError("Konteks harus berupa angka (token)") from None
+    if not CTX_MIN <= n <= CTX_MAKS_PILIH:
+        raise ValueError(f"Konteks harus antara {CTX_MIN} dan {CTX_MAKS_PILIH} token")
+    return n
+
+
+def ctx_efektif():
+    """Batas konteks yang dipakai sesi chat: pilihan pengguna (atau bawaan CTX_MAKS),
+    dipangkas ke batas model yang dimuat supaya tidak melebihi konteks llama-server."""
+    with state.S_LOCK:
+        pilih, server = state.S["ctx"], state.S["ctx_server"]
+    n = pilih or agen.CTX_MAKS
+    return min(n, server) if server else n
+
+
 def _daftar_satu(cid):
     """Model dari satu koneksi. Kunci model koneksi tambahan diberi awalan id koneksinya."""
     s = agen.sambungan(cid)
@@ -34,8 +87,11 @@ def _daftar_satu(cid):
         if cid == agen.KONEKSI_UTAMA:       # folder model lokal hanya cocok untuk koneksi utama
             f = conf.MODELS_DIR / (m["id"] + ".gguf")
             mb = round(f.stat().st_size / 1048576) if f.exists() else None
+        st = m.get("status") or {}
         hasil.append({"id": agen.kunci_model(cid, m["id"]), "nama": m["id"], "mb": mb,
-                      "llama": (m.get("status") or {}).get("value"),
+                      "llama": st.get("value"),
+                      "ctx": _ctx_dari_args(st.get("args")),         # --ctx-size saat dimuat
+                      "ctx_latih": _angka(m.get("context_length")),  # konteks maksimal model
                       "koneksi": cid, "jenis": s["jenis"], "sumber": s["nama"]})
     router = any(h["llama"] for h in hasil)
     for h in hasil:
@@ -176,9 +232,16 @@ def muat_model(nama):
             dimuat_kita = True
         else:
             lg.log("INFO", f"{nama} sudah termuat oleh pihak lain; dipakai, tidak akan dibongkar")
+        batas = batas_ctx_model(info[nama])
         with state.S_LOCK:
             state.S.update(model=nama, status="siap", pesan="", target=None,
-                     kita_muat=dimuat_kita, aktivitas=time.time())
+                     kita_muat=dimuat_kita, aktivitas=time.time(), ctx_server=batas)
+            pilih = state.S["ctx"]
+        if pilih and batas and pilih > batas:
+            lg.log("WARN", f"Konteks {pilih} melebihi batas model ({batas}); dipakai {batas}. "
+                           "Naikkan --ctx di llama_server.sh untuk konteks lebih besar.")
+        lg.log("INFO", f"Konteks sesi: {ctx_efektif()} token"
+                       + (f" (batas model {batas})" if batas else ""))
     except Exception as e:  # noqa: BLE001
         lg.log("ERR", f"Gagal memuat {nama}: {e}")
         if dimuat_kita:
@@ -209,7 +272,8 @@ def bongkar_model():
         except Exception:  # noqa: BLE001
             pass
     with state.S_LOCK:
-        state.S.update(model=None, status="kosong", pesan="", target=None, kita_muat=False)
+        state.S.update(model=None, status="kosong", pesan="", target=None, kita_muat=False,
+                       ctx_server=None)
 
 
 def selesai_sesi():
@@ -241,4 +305,4 @@ def sentuh():
         state.S["aktivitas"] = time.time()
 
 
-__all__ = ['daftar_model', 'nama_tampil', 'router_aktif', 'berkas_belum_dikenal', 'status_llama', '_unload', 'muat_model', 'bongkar_model', 'selesai_sesi', 'jaga_idle', 'sentuh', '_POTONGAN_GGUF']
+__all__ = ['CTX_MIN', 'CTX_MAKS_PILIH', 'batas_ctx_model', 'rapikan_ctx', 'ctx_efektif', 'daftar_model', 'nama_tampil', 'router_aktif', 'berkas_belum_dikenal', 'status_llama', '_unload', 'muat_model', 'bongkar_model', 'selesai_sesi', 'jaga_idle', 'sentuh', '_POTONGAN_GGUF']

@@ -525,6 +525,7 @@ class H(BaseHTTPRequestHandler):
         skill = agen.tolls.normal_skill(skill)   # boleh beberapa skill sekaligus
         try:
             pilihan_prompt = prm.rapikan_pilihan(b.get("prompt"))
+            ctx_pilih = mdl.rapikan_ctx(b.get("ctx"))
         except ValueError as e:
             return self._json(400, {"error": str(e)})
         with state.S_LOCK:
@@ -536,12 +537,15 @@ class H(BaseHTTPRequestHandler):
             state.S["pesan"] = f"Menyiapkan {nama} ..."
             state.S["skill"] = skill
             state.S["prompt"] = pilihan_prompt
+            state.S["ctx"] = ctx_pilih
+            state.S["ctx_server"] = None
         if prm.mode(skill) == "tambah":
             nama_prompt = ", ".join(prm.rakit_tambahan(pilihan_prompt)[1])
             ket_prompt = f", prompt tambahan: {nama_prompt}" if nama_prompt else ""
         else:
             ket_prompt = f", prompt: {', '.join(prm.rakit(pilihan_prompt)[1]) or 'tanpa prompt (murni)'}"
-        lg.log("INFO", f"Skill dipilih: {'+'.join(skill)} ({len(agen.tools_untuk(skill))} tool){ket_prompt}")
+        ket_ctx = f", konteks: {ctx_pilih}" if ctx_pilih else ", konteks: bawaan"
+        lg.log("INFO", f"Skill dipilih: {'+'.join(skill)} ({len(agen.tools_untuk(skill))} tool){ket_prompt}{ket_ctx}")
         mdl.sentuh()
         threading.Thread(target=mdl.muat_model, args=(nama,), daemon=True).start()
         self._json(200, {"ok": True})
@@ -601,6 +605,7 @@ class H(BaseHTTPRequestHandler):
                 q.put({"t": "lampiran", "berkas": ringkas})
             ctx = kts.Ctx(q, threading.Event())
             ctx.skill = skill
+            ctx.ctx_maks = mdl.ctx_efektif()     # batas konteks sesi (tombol Konteks di web)
             # prompt pilihan: menggantikan prompt bawaan (skill tanpa akses sistem) atau ditambahkan di bawah
             # prompt sistem (skill dasar/kompleks); lihat server_prompt.mode
             if prm.mode(skill) == "tambah":
@@ -619,6 +624,7 @@ class H(BaseHTTPRequestHandler):
     def _mulai_kerja(self, chat, model, ctx, q):
         """Jalankan giliran agen di thread sendiri; thread itu yang melepas GEN_LOCK."""
         def kerja():
+            agen.atur_ctx(getattr(ctx, "ctx_maks", None))   # berlaku hanya di thread ini
             try:
                 # tanpa prompt sama sekali (murni) = tanpa ringkasan otomatis juga: tidak ada yang disisipkan
                 memori = None if agen.dasar_dari(ctx) == "" else chat
@@ -627,6 +633,7 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:  # noqa: BLE001
                 q.put({"t": "error", "d": f"{type(e).__name__}: {e}"})
             finally:
+                agen.atur_ctx(None)
                 try:
                     rwy.simpan_chat(chat)
                 except OSError as e:

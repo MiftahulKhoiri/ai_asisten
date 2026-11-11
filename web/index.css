@@ -189,3 +189,64 @@ body.halaman-chat #bawah{padding-inline:max(10px,calc((100% - 900px) / 2 + 10px)
 @media (max-width:430px){
   body.halaman-chat #btnAgent{display:none}      /* ruang header HP terbatas; Agent dibuka dari dasbor */
 }
+
+/* ---------- layar Mulai sesi: 4 tombol pengaturan (Skill, Prompt, Koneksi model, Konteks) ---------- */
+.atur-sesi{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.atur{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:11px 12px;text-align:left;background:var(--panel);
+  border:1px solid var(--garis);border-radius:14px;color:var(--teks);transition:border-color .15s ease,box-shadow .15s ease,transform .08s ease}
+.atur:active{transform:scale(.98)}
+.atur-ik{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:11px;color:var(--aksen);
+  background:color-mix(in srgb,var(--aksen) 14%,var(--panel))}
+.atur-tk{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+.atur-tk b{font-size:15px}
+.atur-tk small{color:var(--redup);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.atur-panah{flex:none;color:var(--redup);font-size:14px;transition:transform .15s ease}
+.atur[aria-expanded="true"]{border-color:var(--aksen);box-shadow:0 0 0 1px var(--aksen) inset}
+.atur[aria-expanded="true"] .atur-panah{transform:rotate(180deg);color:var(--aksen)}
+@media (max-width:340px){.atur-sesi{grid-template-columns:minmax(0,1fr)}}
+
+/* panel yang terbuka di bawah tombol */
+.panel-atur{margin-top:10px;padding:12px 14px 14px;border:1px solid var(--garis);border-radius:16px;background:var(--panel)}
+.panel-atur[hidden]{display:none}
+.panel-kepala{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 8px}
+.panel-kepala b{font-size:15px}
+.panel-kepala .redup{font-size:12.5px}
+.panel-selesai{display:block;margin:12px 0 0 auto;padding:9px 22px}
+.panel-aksi{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.panel-aksi .btn{padding:9px 18px}
+#skillBox{margin:10px 0 0}
+
+/* skill sebagai daftar centang (boleh beberapa) */
+.seg.daftar{display:flex;flex-direction:column;gap:0}
+.seg.daftar button{flex-direction:row;align-items:center;gap:12px;width:100%;padding:11px 4px;text-align:left;background:none;
+  border:0;border-top:1px solid var(--garis);border-radius:0;box-shadow:none}
+.seg.daftar button:first-child{border-top:0}
+.seg.daftar button.on{box-shadow:none}
+.seg.daftar .isi{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.seg.daftar .isi small{font-size:12.5px}
+.seg.daftar .cek{flex:none;width:22px;height:22px;border:2px solid var(--garis);border-radius:7px;display:grid;place-items:center;transition:background .12s ease,border-color .12s ease}
+.seg.daftar button.on .cek{background:var(--aksen);border-color:var(--aksen)}
+.seg.daftar button.on .cek::after{content:"";width:6px;height:11px;border:solid #fff;border-width:0 2.5px 2.5px 0;transform:translateY(-1px) rotate(45deg)}
+.seg.daftar.mati{opacity:.6;pointer-events:none}
+
+/* tabel konteks */
+.tabel-konteks{width:100%;border-collapse:collapse;font-size:14px}
+.tabel-konteks th{font-weight:400;color:var(--redup);text-align:left;padding:9px 8px 9px 0;vertical-align:middle}
+.tabel-konteks td{text-align:right;padding:9px 0;font-weight:500}
+.tabel-konteks tr+tr th,.tabel-konteks tr+tr td{border-top:1px solid var(--garis)}
+.tabel-konteks tr.hasil th{color:var(--teks);font-weight:600}
+.tabel-konteks tr.hasil td{color:var(--aksen);font-weight:700}
+.tabel-konteks input{width:9.5em;max-width:100%;margin:0;padding:8px 10px;text-align:right;background:var(--bg);border:1px solid var(--garis);border-radius:10px;font-size:16px}
+.tabel-konteks input:focus{outline:none;border-color:var(--aksen)}
+.tabel-konteks input.salah{border-color:var(--bahaya)}
+.ctx-cepat{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+.ctx-cepat button{flex:1 1 0;min-width:52px;padding:7px 0;border:1px solid var(--garis);border-radius:999px;background:var(--bg);font-size:13px;font-weight:600}
+.ctx-cepat button.on{border-color:var(--aksen);color:var(--aksen);background:color-mix(in srgb,var(--aksen) 12%,var(--panel))}
+.panel-atur .galat{color:var(--bahaya);margin:6px 2px 0}
+.panel-atur .galat:empty{display:none}
+.panel-atur code{font-size:12px}
+#promptRingkas.atur-tk{display:flex;flex-direction:column;align-items:stretch;gap:0;margin:0}
+.tabel-konteks th{white-space:nowrap}
+.catatan-ctx{margin:8px 2px 0;padding:8px 10px;border-radius:10px;color:var(--teks);
+  background:color-mix(in srgb,var(--izin) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--izin) 40%,var(--garis))}
+.catatan-ctx[hidden]{display:none}

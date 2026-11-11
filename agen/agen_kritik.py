@@ -47,7 +47,7 @@ def _kritik(model, pesan_riwayat, batas, tools, skill, ringkasan, draf, ctx):
         gen = timings.get("predicted_n") or 0
         pakai = (timings.get("prompt_n") or 0) + (timings.get("cache_n") or 0) + gen
         yield {"t": "info", "tok_s": round(timings.get("predicted_per_second") or 0, 1),
-               "tok": gen, "pakai": pakai, "maks": cfg.CTX_MAKS}
+               "tok": gen, "pakai": pakai, "maks": cfg.ctx_maks()}
     akhir = _bersih_final(akhir, draf)
     if selesai == "length":
         yield {"t": "terpotong"}
