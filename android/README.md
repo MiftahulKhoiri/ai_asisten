@@ -4,14 +4,23 @@ Aplikasi Android yang membuka halaman web `asisten.py` di WebView. Isinya **pers
 (dasbor, Sesi AI Asisten, Sesi Agent, prompt, unggah, serahkan) karena halamannya diambil langsung
 dari server. Kalau berkas `web/` diubah, aplikasi ikut berubah tanpa perlu build ulang.
 
-Tambahan dibanding membuka lewat browser:
+Saat dibuka, aplikasi menampilkan **Beranda** (layar asli Android):
 
-- alamat server disimpan; saat pertama dibuka diminta sekali (boleh ditempel lengkap dengan `?token=...`)
+- **Server**: isi alamat, tekan **Tes koneksi**. Statusnya bisa aktif (beserta waktu respons), tidak aktif,
+  beda jaringan, atau "bukan server AI Asisten" (port dipakai aplikasi lain). Tombol **Masuk** baru muncul
+  kalau server AI Asisten aktif, lalu halaman utama web terbuka seperti biasa. Alamat yang berhasil
+  disimpan di **Alamat terakhir** (maksimal 5, ketuk untuk mengetes, ✕ untuk menghapus).
+- **Aplikasi**: versi dan nomor build terpasang. Pembaruan diperiksa otomatis ke GitHub Releases
+  (tag `android-v*`), sama seperti Game_server. Kalau ada versi baru, tekan **Unduh dan pasang**: APK
+  diunduh, ukuran dan sha256-nya diperiksa, lalu Android meminta konfirmasi "Perbarui". Saat pertama kali,
+  Android meminta izin "Izinkan dari sumber ini".
+
+Di halaman web:
+
 - unggah berkas dan zip proyek lewat pemilih berkas Android (bisa beberapa berkas)
 - unduhan dari halaman (ekspor prompt `.json`, hasil Agent `.zip`) disimpan ke **Download/AI Asisten**
 - dialog konfirmasi asli Android, tautan luar dibuka di browser
-- tombol **Kembali** di halaman pertama memunculkan menu: Muat ulang / Ubah alamat server / Keluar
-- layar "Tidak bisa terhubung" dengan tombol Coba lagi dan Ubah alamat
+- tombol **Kembali** di halaman pertama kembali ke Beranda; kalau koneksi putus, aplikasi juga kembali ke Beranda
 - tema terang/gelap mengikuti sistem (Android 10+), sama seperti web
 
 Butuh Android 7.0 atau yang lebih baru, dengan HP berada di jaringan yang sama dengan Pi (Wi-Fi yang sama atau Tailscale).
@@ -31,7 +40,8 @@ APK dibangun otomatis oleh GitHub Actions (`.github/workflows/android.yml`), sam
 
 1. Pasang APK di HP (izinkan "pasang dari sumber tidak dikenal").
 2. Jalankan server di Pi: `./start.sh` atau `python3 asisten.py`.
-3. Buka aplikasi **AI Asisten**, lalu isi alamat yang tampil di terminal, misalnya `http://192.168.1.10:8090/?token=...`.
+3. Buka aplikasi **AI Asisten**, isi alamat yang tampil di terminal (misalnya `http://192.168.1.10:8090/?token=...`),
+   tekan **Tes koneksi**, lalu **Masuk**.
 
 ## Membangun di Pi (tanpa Android Studio dan tanpa sudo)
 
@@ -51,7 +61,9 @@ cd android
 | Berkas | Fungsi |
 |---|---|
 | `AndroidManifest.xml` | identitas aplikasi `id.aiasisten.app`, izin internet, HTTP lokal diizinkan |
-| `src/id/aiasisten/app/MainActivity.java` | seluruh logika aplikasi (WebView, alamat, unggah, unduh) |
+| `src/id/aiasisten/app/MainActivity.java` | layar Beranda dan Web (tes koneksi, unggah, unduh) |
+| `src/id/aiasisten/app/Pembaruan.java` | cek rilis GitHub, unduh + sha256, pasang lewat PackageInstaller |
+| `src/id/aiasisten/app/Versi.java` | fungsi murni (alamat, nomor build), diuji `uji/UjiVersi.java` saat build |
 | `res/` | nama aplikasi, warna, tema, ikon |
 | `ikon.py` | pembuat ikon peluncur |
 | `siapkan-alat.sh` | mengunduh aapt2, zipalign, android.jar, d8, apksigner |

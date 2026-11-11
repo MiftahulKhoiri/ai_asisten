@@ -8,21 +8,30 @@ import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageInstaller;
+import android.content.res.ColorStateList;
 import android.content.res.Configuration;
-import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
+import android.provider.Settings;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.util.Base64;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
@@ -35,34 +44,42 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.ConnectException;
+import java.net.HttpURLConnection;
+import java.net.NoRouteToHostException;
+import java.net.SocketTimeoutException;
+import java.net.URL;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * AI Asisten untuk Android: membuka halaman web asisten.py di WebView, jadi tampilannya persis sama
- * dengan di browser dan otomatis ikut berubah kalau berkas web/ di server diperbarui.
+ * AI Asisten untuk Android.
  *
- * Tambahan yang tidak dimiliki WebView biasa:
- *  - alamat server disimpan (pertama kali ditanya; boleh ditempel lengkap dengan ?token=...)
- *  - unggah berkas (input type=file, bisa banyak berkas)
- *  - unduhan blob dari halaman (ekspor prompt .json, hasil Agent .zip) disimpan ke Download/AI Asisten
- *  - dialog alert/confirm/prompt, tautan luar dibuka di browser, tombol kembali, layar galat koneksi
+ * Layar Beranda (asli Android): isi alamat server, Tes koneksi, tombol Masuk (muncul kalau server
+ * ai_asisten aktif), alamat terakhir, versi aplikasi, dan pembaruan dari GitHub Releases.
+ * Layar Web: halaman web asisten.py di WebView, persis sama dengan di browser, ditambah unggah berkas,
+ * unduhan ke Download/AI Asisten, dialog asli, dan tautan luar dibuka di browser.
  */
 public class MainActivity extends Activity {
 
     private static final String PREF = "pengaturan";
     private static final String KUNCI_ALAMAT = "alamat";
+    private static final String KUNCI_RIWAYAT = "riwayat_alamat";
+    private static final int MAKS_RIWAYAT = 5;
     private static final int KODE_BERKAS = 7;
     private static final String NAMA_JEMBATAN = "AiAsistenAndroid";
 
@@ -81,50 +98,118 @@ public class MainActivity extends Activity {
         + "return;}"
         + "return asli.apply(this,arguments);};})();";
 
-    private WebView web;
-    private ProgressBar bilah;
-    private LinearLayout layarGalat;
-    private TextView teksGalat;
-    private boolean galat;
-    private String alamat = "";          // http://host:port tanpa path/query
-    private ValueCallback<Uri[]> panggilBerkas;
+    // warna (sama dengan variabel di web/index.css)
     private boolean gelap;
-    private int warnaLatar;
+    private int cLatar, cPanel, cPanel2, cGaris, cTeks, cRedup, cAksen, cOk, cBahaya, cIzin;
+
+    // layar
+    private FrameLayout akar;
+    private ScrollView layarBeranda;
+    private FrameLayout layarWeb;
+    private WebView web;
+    private ProgressBar bilahWeb;
+
+    // beranda: server
+    private EditText isianAlamat;
+    private TextView titikStatus, teksStatus, tombolMasuk, tombolTes;
+    private LinearLayout wadahRiwayat, barisRiwayat;
+    private int nomorTes;               // hasil tes lama yang terlambat datang diabaikan
+    private boolean serverAktif;
+    private String alamatAktif = "";    // http://host:port yang lolos tes
+    private String muatLengkap = "";    // alamat lengkap (boleh dengan ?token=) yang dimuat saat Masuk
+    private String alamatWeb = "";      // server yang sedang dimuat di WebView
+
+    // beranda: pembaruan
+    private TextView teksPembaruan, tombolPasang, tombolCekLagi;
+    private ProgressBar bilahUnduh;
+    private Pembaruan.Rilis rilisBaru;
+    private boolean sedangUnduh;
+
+    private ValueCallback<Uri[]> panggilBerkas;
+
+    /* ============================================================ siklus hidup */
 
     @Override
     protected void onCreate(Bundle simpanan) {
         super.onCreate(simpanan);
+        aturWarna();
+        aturBilahSistem();
+        akar = new FrameLayout(this);
+        akar.setBackgroundColor(cLatar);
+        bangunWeb();
+        bangunBeranda();
+        setContentView(akar);
+        //noinspection ResultOfMethodCallIgnored
+        berkasPembaruan().delete();   // sisa unduhan pembaruan sebelumnya
+
+        String tersimpan = pref().getString(KUNCI_ALAMAT, "");
+        isianAlamat.setText(tersimpan);
+        isianAlamat.setSelection(isianAlamat.getText().length());
+        gambarRiwayat();
+        tampilBeranda();
+        if (!tersimpan.isEmpty()) tesKoneksi();
+        else setStatus(cRedup, "Isi alamat server lalu tekan Tes koneksi.");
+        cekPembaruan();
+        tanganiIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent i) {
+        super.onNewIntent(i);
+        tanganiIntent(i);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        web.onResume();
+    }
+
+    @Override
+    protected void onPause() {
+        web.onPause();
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+        web.destroy();
+        super.onDestroy();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        if (layarWeb.getVisibility() == View.VISIBLE) {
+            if (web.canGoBack()) web.goBack();
+            else tampilBeranda();
+            return;
+        }
+        super.onBackPressed();
+    }
+
+    /* ============================================================ warna dan gaya */
+
+    private void aturWarna() {
         gelap = Build.VERSION.SDK_INT < 29
             || (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                == Configuration.UI_MODE_NIGHT_YES;
-        warnaLatar = gelap ? 0xFF111317 : 0xFFF4F5F7;
-        aturBilahSistem();
-        bangunTampilan();
-        aturWeb();
-
-        alamat = pref().getString(KUNCI_ALAMAT, "");
-        if (simpanan != null && web.restoreState(simpanan) != null) {
-            return;
-        }
-        if (alamat.isEmpty()) {
-            tanyaAlamat(true);
+        if (gelap) {
+            cLatar = 0xFF111317; cPanel = 0xFF1A1D23; cPanel2 = 0xFF20242C; cGaris = 0xFF2A2E37;
+            cTeks = 0xFFE6E8EC; cRedup = 0xFF8B93A1; cAksen = 0xFF5B9CFF;
+            cOk = 0xFF4CC38A; cBahaya = 0xFFFF6B6B; cIzin = 0xFFD9A441;
         } else {
-            web.loadUrl(alamat + "/");
+            cLatar = 0xFFF4F5F7; cPanel = 0xFFFFFFFF; cPanel2 = 0xFFF3F5F9; cGaris = 0xFFDDE1E7;
+            cTeks = 0xFF1B1F27; cRedup = 0xFF6B7280; cAksen = 0xFF2563EB;
+            cOk = 0xFF16A34A; cBahaya = 0xFFDC2626; cIzin = 0xFFB7791F;
         }
-    }
-
-    /* ------------------------------------------------------------ tampilan */
-
-    private int dp(float v) {
-        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v,
-            getResources().getDisplayMetrics()));
     }
 
     @SuppressWarnings("deprecation")
     private void aturBilahSistem() {
         Window w = getWindow();
-        w.setStatusBarColor(warnaLatar);
-        w.setNavigationBarColor(warnaLatar);
+        w.setStatusBarColor(cLatar);
+        w.setNavigationBarColor(cLatar);
         if (!gelap) {
             int f = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
             if (Build.VERSION.SDK_INT >= 26) f |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
@@ -132,163 +217,535 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void bangunTampilan() {
-        FrameLayout akar = new FrameLayout(this);
-        akar.setBackgroundColor(warnaLatar);
+    private int dp(float v) {
+        return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v,
+            getResources().getDisplayMetrics()));
+    }
 
-        web = new WebView(this);
-        web.setBackgroundColor(warnaLatar);
-        akar.addView(web, new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    private GradientDrawable kotak(int isi, float sudutDp, int garis) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(isi);
+        g.setCornerRadius(dp(sudutDp));
+        if (garis != 0) g.setStroke(dp(1), garis);
+        return g;
+    }
 
-        bilah = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        bilah.setMax(100);
-        bilah.setVisibility(View.GONE);
-        FrameLayout.LayoutParams lpBilah = new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(3), Gravity.TOP);
-        akar.addView(bilah, lpBilah);
+    private TextView teks(String isi, float sp, int warna, boolean tebal) {
+        TextView t = new TextView(this);
+        t.setText(isi);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTextColor(warna);
+        if (tebal) t.setTypeface(Typeface.DEFAULT_BOLD);
+        return t;
+    }
 
-        int warnaTeks = gelap ? 0xFFE6E8EC : 0xFF1B1F27;
-        int warnaRedup = gelap ? 0xFF8B93A1 : 0xFF6B7280;
+    /** Tombol datar dengan efek sentuh. utama = latar aksen, selain itu bergaris. */
+    private TextView tombol(String isi, boolean utama) {
+        TextView t = teks(isi, 15, utama ? 0xFFFFFFFF : cTeks, true);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(dp(16), dp(12), dp(16), dp(12));
+        t.setMinHeight(dp(46));
+        GradientDrawable dasar = utama ? kotak(cAksen, 12, 0) : kotak(cPanel2, 12, cGaris);
+        t.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33808080), dasar, null));
+        t.setClickable(true);
+        t.setFocusable(true);
+        return t;
+    }
 
-        layarGalat = new LinearLayout(this);
-        layarGalat.setOrientation(LinearLayout.VERTICAL);
-        layarGalat.setGravity(Gravity.CENTER);
-        layarGalat.setPadding(dp(28), dp(28), dp(28), dp(28));
-        layarGalat.setVisibility(View.GONE);
+    private LinearLayout kartu(String judul) {
+        LinearLayout k = new LinearLayout(this);
+        k.setOrientation(LinearLayout.VERTICAL);
+        k.setBackground(kotak(cPanel, 18, cGaris));
+        k.setPadding(dp(18), dp(16), dp(18), dp(18));
+        TextView j = teks(judul, 13, cRedup, true);
+        j.setLetterSpacing(0.08f);
+        k.addView(j);
+        return k;
+    }
 
-        TextView judul = new TextView(this);
-        judul.setText("Tidak bisa terhubung");
-        judul.setTextColor(warnaTeks);
-        judul.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-        judul.setTypeface(Typeface.DEFAULT_BOLD);
+    private LinearLayout.LayoutParams lp(int atas) {
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.topMargin = dp(atas);
+        return p;
+    }
+
+    /* ============================================================ layar Beranda */
+
+    private void bangunBeranda() {
+        layarBeranda = new ScrollView(this);
+        layarBeranda.setFillViewport(true);
+        LinearLayout isi = new LinearLayout(this);
+        isi.setOrientation(LinearLayout.VERTICAL);
+        isi.setPadding(dp(20), dp(28), dp(20), dp(28));
+        layarBeranda.addView(isi);
+
+        // kepala
+        ImageView ikon = new ImageView(this);
+        ikon.setImageResource(R.mipmap.ic_launcher_fg);
+        LinearLayout.LayoutParams lpIkon = new LinearLayout.LayoutParams(dp(112), dp(112));
+        lpIkon.gravity = Gravity.CENTER_HORIZONTAL;
+        isi.addView(ikon, lpIkon);
+        TextView judul = teks("AI Asisten", 26, cTeks, true);
         judul.setGravity(Gravity.CENTER);
-        layarGalat.addView(judul);
+        isi.addView(judul, lp(0));
+        TextView sub = teks("Asisten AI lokal di Raspberry Pi", 14, cRedup, false);
+        sub.setGravity(Gravity.CENTER);
+        isi.addView(sub, lp(4));
 
-        teksGalat = new TextView(this);
-        teksGalat.setTextColor(warnaRedup);
-        teksGalat.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
-        teksGalat.setGravity(Gravity.CENTER);
-        teksGalat.setPadding(0, dp(12), 0, dp(20));
-        layarGalat.addView(teksGalat);
+        // kartu server
+        LinearLayout ks = kartu("SERVER");
+        isi.addView(ks, lp(24));
 
-        LinearLayout tombol = new LinearLayout(this);
-        tombol.setOrientation(LinearLayout.HORIZONTAL);
-        tombol.setGravity(Gravity.CENTER);
-        Button ulang = new Button(this);
-        ulang.setText("Coba lagi");
-        ulang.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { cobaLagi(); }
+        isianAlamat = new EditText(this);
+        isianAlamat.setSingleLine(true);
+        isianAlamat.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        isianAlamat.setImeOptions(EditorInfo.IME_ACTION_GO);
+        isianAlamat.setHint("http://192.168.1.10:8090");
+        isianAlamat.setTextColor(cTeks);
+        isianAlamat.setHintTextColor(cRedup);
+        isianAlamat.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        isianAlamat.setBackground(kotak(cPanel2, 12, cGaris));
+        isianAlamat.setPadding(dp(14), dp(12), dp(14), dp(12));
+        ks.addView(isianAlamat, lp(12));
+        isianAlamat.setOnEditorActionListener((v, aksi, ev) -> {
+            tesKoneksi();
+            return true;
         });
-        Button ubah = new Button(this);
-        ubah.setText("Ubah alamat");
-        ubah.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { tanyaAlamat(false); }
+        isianAlamat.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable s) {
+                if (!isianAlamat.hasFocus()) return;   // diisi program, bukan diketik
+                nomorTes++;
+                setAktif(false);
+                setStatus(cRedup, "Belum dites.");
+            }
         });
-        tombol.addView(ulang);
-        tombol.addView(ubah);
-        layarGalat.addView(tombol);
 
-        akar.addView(layarGalat, new FrameLayout.LayoutParams(
+        LinearLayout baris = new LinearLayout(this);
+        baris.setOrientation(LinearLayout.HORIZONTAL);
+        baris.setGravity(Gravity.CENTER_VERTICAL);
+        titikStatus = teks("●", 16, cRedup, false);
+        teksStatus = teks("", 14, cRedup, false);
+        teksStatus.setPadding(dp(8), 0, dp(8), 0);
+        tombolTes = tombol("Tes koneksi", false);
+        tombolTes.setOnClickListener(v -> tesKoneksi());
+        baris.addView(titikStatus);
+        baris.addView(teksStatus, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        baris.addView(tombolTes);
+        ks.addView(baris, lp(12));
+
+        tombolMasuk = tombol("Masuk  →", true);
+        tombolMasuk.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        tombolMasuk.setOnClickListener(v -> masuk());
+        tombolMasuk.setVisibility(View.GONE);
+        ks.addView(tombolMasuk, lp(14));
+
+        wadahRiwayat = new LinearLayout(this);
+        wadahRiwayat.setOrientation(LinearLayout.VERTICAL);
+        wadahRiwayat.addView(teks("Alamat terakhir", 13, cRedup, false));
+        barisRiwayat = new LinearLayout(this);
+        barisRiwayat.setOrientation(LinearLayout.VERTICAL);
+        wadahRiwayat.addView(barisRiwayat);
+        ks.addView(wadahRiwayat, lp(16));
+
+        TextView petunjuk = teks("Alamat tampil di terminal saat asisten.py dijalankan. Boleh ditempel "
+            + "lengkap dengan ?token=... supaya token langsung tersimpan. HP harus satu jaringan dengan Pi "
+            + "(Wi-Fi yang sama atau Tailscale).", 12.5f, cRedup, false);
+        ks.addView(petunjuk, lp(14));
+
+        // kartu aplikasi
+        LinearLayout ka = kartu("APLIKASI");
+        isi.addView(ka, lp(16));
+        ka.addView(teks("Versi " + versiNama() + "  ·  build " + versiKode(), 16, cTeks, true), lp(10));
+        teksPembaruan = teks("", 14, cRedup, false);
+        ka.addView(teksPembaruan, lp(6));
+        bilahUnduh = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bilahUnduh.setMax(1000);
+        bilahUnduh.setVisibility(View.GONE);
+        ka.addView(bilahUnduh, lp(10));
+        tombolPasang = tombol("Unduh dan pasang", true);
+        tombolPasang.setVisibility(View.GONE);
+        tombolPasang.setOnClickListener(v -> unduhDanPasang());
+        ka.addView(tombolPasang, lp(12));
+
+        LinearLayout barisApp = new LinearLayout(this);
+        barisApp.setOrientation(LinearLayout.HORIZONTAL);
+        tombolCekLagi = tombol("Periksa pembaruan", false);
+        tombolCekLagi.setOnClickListener(v -> cekPembaruan());
+        TextView rilis = tombol("Halaman rilis", false);
+        rilis.setOnClickListener(v -> bukaLuar(Uri.parse(Versi.HALAMAN_RILIS)));
+        LinearLayout.LayoutParams kiri = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        LinearLayout.LayoutParams kanan = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        kanan.leftMargin = dp(10);
+        barisApp.addView(tombolCekLagi, kiri);
+        barisApp.addView(rilis, kanan);
+        ka.addView(barisApp, lp(12));
+
+        akar.addView(layarBeranda, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        setContentView(akar);
     }
 
-    private void tampilGalat(String pesan) {
-        galat = true;
-        web.setVisibility(View.INVISIBLE);
-        bilah.setVisibility(View.GONE);
-        teksGalat.setText("Server: " + (alamat.isEmpty() ? "(belum diisi)" : alamat)
-            + "\n" + pesan
-            + "\n\nPastikan asisten.py sedang berjalan dan HP satu jaringan dengan Pi "
-            + "(Wi-Fi yang sama atau Tailscale).");
-        layarGalat.setVisibility(View.VISIBLE);
+    private void tampilBeranda() {
+        layarWeb.setVisibility(View.GONE);
+        layarBeranda.setVisibility(View.VISIBLE);
     }
 
-    private void cobaLagi() {
-        galat = false;
-        layarGalat.setVisibility(View.GONE);
-        web.setVisibility(View.VISIBLE);
-        String u = web.getUrl();
-        if (u == null || u.isEmpty() || u.startsWith("data:") || u.startsWith("about:")) {
-            web.loadUrl(alamat + "/");
-        } else {
-            web.reload();
-        }
+    private void tampilWeb() {
+        sembunyikanPapanKetik();
+        layarBeranda.setVisibility(View.GONE);
+        layarWeb.setVisibility(View.VISIBLE);
     }
 
-    /* ------------------------------------------------------------ alamat server */
+    private void sembunyikanPapanKetik() {
+        InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(isianAlamat.getWindowToken(), 0);
+        isianAlamat.clearFocus();
+    }
+
+    private void setStatus(int warna, String pesan) {
+        titikStatus.setTextColor(warna);
+        teksStatus.setText(pesan);
+    }
+
+    private void setAktif(boolean aktif) {
+        serverAktif = aktif;
+        tombolMasuk.setVisibility(aktif ? View.VISIBLE : View.GONE);
+    }
+
+    /* ------------------------------------------------------------ alamat dan tes koneksi */
 
     private SharedPreferences pref() {
         return getSharedPreferences(PREF, Context.MODE_PRIVATE);
     }
 
-    private void tanyaAlamat(final boolean pertama) {
-        final EditText isian = new EditText(this);
-        isian.setSingleLine(true);
-        isian.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        isian.setHint("http://192.168.1.10:8090");
-        isian.setText(alamat.isEmpty() ? "http://" : alamat);
-        isian.setSelection(isian.getText().length());
-        FrameLayout bungkus = new FrameLayout(this);
-        bungkus.setPadding(dp(22), dp(4), dp(22), 0);
-        bungkus.addView(isian);
-
-        AlertDialog.Builder b = new AlertDialog.Builder(this)
-            .setTitle("Alamat server AI Asisten")
-            .setMessage("Isi alamat yang tampil di terminal saat asisten.py dijalankan. "
-                + "Boleh ditempel lengkap dengan ?token=... supaya token langsung tersimpan.")
-            .setView(bungkus)
-            .setPositiveButton("Simpan", null)
-            .setCancelable(!pertama);
-        if (!pertama) b.setNegativeButton("Batal", null);
-        final AlertDialog d = b.create();
-        d.setOnShowListener(new android.content.DialogInterface.OnShowListener() {
-            @Override public void onShow(android.content.DialogInterface di) {
-                d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(new View.OnClickListener() {
-                    @Override public void onClick(View v) {
-                        String hasil = simpanAlamat(isian.getText().toString());
-                        if (hasil == null) {
-                            isian.setError("Alamat tidak valid, contoh: http://192.168.1.10:8090");
-                            return;
-                        }
-                        d.dismiss();
-                        galat = false;
-                        layarGalat.setVisibility(View.GONE);
-                        web.setVisibility(View.VISIBLE);
-                        web.loadUrl(hasil);
-                    }
-                });
-            }
-        });
-        d.show();
+    private List<String> riwayat() {
+        List<String> d = new ArrayList<>();
+        for (String s : pref().getString(KUNCI_RIWAYAT, "").split("\n")) {
+            if (!s.trim().isEmpty()) d.add(s.trim());
+        }
+        return d;
     }
 
-    /** Simpan http://host:port; kembalikan alamat lengkap yang dimuat (beserta path/?token=), atau null. */
-    private String simpanAlamat(String teks) {
-        String t = teks.trim();
-        if (t.isEmpty() || t.equals("http://") || t.equals("https://")) return null;
-        if (!t.startsWith("http://") && !t.startsWith("https://")) t = "http://" + t;
-        Uri u = Uri.parse(t);
-        String host = u.getHost();
-        if (host == null || host.isEmpty()) return null;
-        String dasar = u.getScheme() + "://" + (host.contains(":") ? "[" + host + "]" : host)
-            + (u.getPort() > 0 ? ":" + u.getPort() : "");
-        alamat = dasar;
-        pref().edit().putString(KUNCI_ALAMAT, dasar).apply();
-        String path = u.getEncodedPath();
-        String q = u.getEncodedQuery();
-        return dasar + (path == null || path.isEmpty() ? "/" : path) + (q == null ? "" : "?" + q);
+    private void simpanAlamat(String dasar) {
+        List<String> d = riwayat();
+        d.remove(dasar);
+        d.add(0, dasar);
+        while (d.size() > MAKS_RIWAYAT) d.remove(d.size() - 1);
+        StringBuilder sb = new StringBuilder();
+        for (String s : d) sb.append(s).append('\n');
+        pref().edit().putString(KUNCI_ALAMAT, dasar).putString(KUNCI_RIWAYAT, sb.toString()).apply();
+        gambarRiwayat();
+    }
+
+    private void gambarRiwayat() {
+        barisRiwayat.removeAllViews();
+        List<String> d = riwayat();
+        wadahRiwayat.setVisibility(d.isEmpty() ? View.GONE : View.VISIBLE);
+        for (final String a : d) {
+            LinearLayout b = new LinearLayout(this);
+            b.setOrientation(LinearLayout.HORIZONTAL);
+            b.setGravity(Gravity.CENTER_VERTICAL);
+            b.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33808080),
+                kotak(cPanel2, 10, 0), null));
+            b.setPadding(dp(12), dp(4), dp(4), dp(4));
+            TextView t = teks(a.replaceFirst("^https?://", ""), 14, cTeks, false);
+            b.addView(t, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+            TextView hapus = teks("✕", 15, cRedup, false);
+            hapus.setPadding(dp(14), dp(8), dp(10), dp(8));
+            hapus.setOnClickListener(v -> hapusRiwayat(a));
+            b.addView(hapus);
+            b.setOnClickListener(v -> {
+                sembunyikanPapanKetik();
+                isianAlamat.setText(a);
+                tesKoneksi();
+            });
+            barisRiwayat.addView(b, lp(6));
+        }
+    }
+
+    private void hapusRiwayat(String a) {
+        List<String> d = riwayat();
+        d.remove(a);
+        StringBuilder sb = new StringBuilder();
+        for (String s : d) sb.append(s).append('\n');
+        pref().edit().putString(KUNCI_RIWAYAT, sb.toString()).apply();
+        gambarRiwayat();
+    }
+
+    private void tesKoneksi() {
+        sembunyikanPapanKetik();
+        final String[] a = Versi.alamat(isianAlamat.getText().toString());
+        setAktif(false);
+        if (a == null) {
+            setStatus(cBahaya, "Alamat tidak valid. Contoh: http://192.168.1.10:8090");
+            return;
+        }
+        final int nomor = ++nomorTes;
+        setStatus(cIzin, "Mengetes " + a[0].replaceFirst("^https?://", "") + " ...");
+        tombolTes.setEnabled(false);
+        new Thread(() -> {
+            long mulai = System.currentTimeMillis();
+            int warna;
+            String pesan;
+            boolean aktif = false;
+            HttpURLConnection c = null;
+            try {
+                c = (HttpURLConnection) new URL(a[0] + "/").openConnection();
+                c.setConnectTimeout(4000);
+                c.setReadTimeout(5000);
+                c.setRequestProperty("User-Agent", "AiAsistenAndroid/" + versiNama());
+                int kode = c.getResponseCode();
+                String isi = "";
+                if (kode == 200) {
+                    try (InputStream in = c.getInputStream()) {
+                        byte[] buf = new byte[65536];
+                        int n, total = 0;
+                        StringBuilder sb = new StringBuilder();
+                        while (total < 65536 && (n = in.read(buf)) > 0) {
+                            sb.append(new String(buf, 0, n, "UTF-8"));
+                            total += n;
+                        }
+                        isi = sb.toString();
+                    }
+                }
+                long ms = System.currentTimeMillis() - mulai;
+                if (kode == 200 && Versi.halamanAiAsisten(isi)) {
+                    aktif = true;
+                    warna = cOk;
+                    pesan = "Server AI Asisten aktif · " + ms + " ms";
+                } else if (kode == 200) {
+                    warna = cIzin;
+                    pesan = "Terhubung, tapi ini bukan server AI Asisten (port dipakai aplikasi lain?)";
+                } else {
+                    warna = cIzin;
+                    pesan = "Server menjawab kode " + kode + ", bukan halaman AI Asisten";
+                }
+            } catch (ConnectException e) {
+                warna = cBahaya;
+                pesan = "Tidak aktif: tidak ada yang menjawab di alamat ini (asisten.py belum jalan?)";
+            } catch (SocketTimeoutException e) {
+                warna = cBahaya;
+                pesan = "Waktu habis: HP dan Pi mungkin beda jaringan";
+            } catch (UnknownHostException e) {
+                warna = cBahaya;
+                pesan = "Nama alamat tidak dikenal";
+            } catch (NoRouteToHostException e) {
+                warna = cBahaya;
+                pesan = "Tidak ada jalur ke alamat ini (beda jaringan?)";
+            } catch (Exception e) {
+                warna = cBahaya;
+                pesan = "Gagal: " + e.getClass().getSimpleName()
+                    + (e.getMessage() == null ? "" : " (" + e.getMessage() + ")");
+            } finally {
+                if (c != null) c.disconnect();
+            }
+            final int w = warna;
+            final String p = pesan;
+            final boolean ok = aktif;
+            runOnUiThread(() -> {
+                tombolTes.setEnabled(true);
+                if (nomor != nomorTes) return;
+                setStatus(w, p);
+                setAktif(ok);
+                if (ok) {
+                    alamatAktif = a[0];
+                    muatLengkap = a[1];
+                    simpanAlamat(a[0]);
+                }
+            });
+        }).start();
+    }
+
+    private void masuk() {
+        if (!serverAktif || alamatAktif.isEmpty()) return;
+        boolean sudahDimuat = alamatAktif.equals(alamatWeb) && web.getUrl() != null
+            && web.getUrl().startsWith(alamatAktif) && !muatLengkap.contains("?");
+        tampilWeb();
+        if (!sudahDimuat) {
+            alamatWeb = alamatAktif;
+            web.clearHistory();
+            web.loadUrl(muatLengkap);
+        }
+        muatLengkap = alamatAktif + "/";    // ?token= cukup sekali: halaman menyimpannya sendiri
+    }
+
+    /* ============================================================ pembaruan */
+
+    private String versiNama() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "?";
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private long versiKode() {
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            return Build.VERSION.SDK_INT >= 28 ? pi.getLongVersionCode() : pi.versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private File berkasPembaruan() {
+        return new File(getCacheDir(), "pembaruan.apk");
+    }
+
+    private void cekPembaruan() {
+        if (sedangUnduh) return;
+        teksPembaruan.setTextColor(cRedup);
+        teksPembaruan.setText("Memeriksa pembaruan...");
+        tombolPasang.setVisibility(View.GONE);
+        tombolCekLagi.setEnabled(false);
+        new Thread(() -> {
+            Pembaruan.Rilis r = null;
+            String galat = null;
+            try {
+                r = Pembaruan.cekTerbaru();
+            } catch (Exception e) {
+                galat = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            }
+            final Pembaruan.Rilis hasil = r;
+            final String g = galat;
+            runOnUiThread(() -> {
+                tombolCekLagi.setEnabled(true);
+                if (g != null) {
+                    teksPembaruan.setTextColor(cIzin);
+                    teksPembaruan.setText("Tidak bisa memeriksa pembaruan: " + g);
+                } else if (hasil == null) {
+                    teksPembaruan.setTextColor(cRedup);
+                    teksPembaruan.setText("Belum ada rilis di GitHub.");
+                } else if (hasil.build > versiKode()) {
+                    rilisBaru = hasil;
+                    teksPembaruan.setTextColor(cOk);
+                    teksPembaruan.setText("Pembaruan tersedia: versi " + hasil.versi + " · build " + hasil.build
+                        + (hasil.ukuran > 0 ? "  (" + Math.max(1, hasil.ukuran / 1024) + " KB)" : ""));
+                    tombolPasang.setText("Unduh dan pasang versi " + hasil.versi);
+                    tombolPasang.setVisibility(View.VISIBLE);
+                } else {
+                    teksPembaruan.setTextColor(cRedup);
+                    teksPembaruan.setText("Sudah versi terbaru.");
+                }
+            });
+        }).start();
+    }
+
+    private void unduhDanPasang() {
+        if (rilisBaru == null || sedangUnduh) return;
+        if (Build.VERSION.SDK_INT >= 26 && !getPackageManager().canRequestPackageInstalls()) {
+            new AlertDialog.Builder(this)
+                .setTitle("Izin memasang aplikasi")
+                .setMessage("Aktifkan \"Izinkan dari sumber ini\" untuk AI Asisten, lalu kembali dan tekan "
+                    + "tombol pasang lagi.")
+                .setPositiveButton("Buka pengaturan", (d, w) -> {
+                    try {
+                        startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:" + getPackageName())));
+                    } catch (ActivityNotFoundException e) {
+                        bukaLuar(Uri.parse(Versi.HALAMAN_RILIS));
+                    }
+                })
+                .setNegativeButton("Batal", null)
+                .show();
+            return;
+        }
+        final Pembaruan.Rilis r = rilisBaru;
+        final File f = berkasPembaruan();
+        sedangUnduh = true;
+        tombolPasang.setEnabled(false);
+        tombolCekLagi.setEnabled(false);
+        bilahUnduh.setProgress(0);
+        bilahUnduh.setVisibility(View.VISIBLE);
+        teksPembaruan.setTextColor(cRedup);
+        teksPembaruan.setText("Mengunduh " + r.nama + " ...");
+        new Thread(() -> {
+            String galat = null;
+            try {
+                Pembaruan.unduh(r, f, (dapat, total) -> runOnUiThread(() -> {
+                    if (total > 0) bilahUnduh.setProgress((int) (dapat * 1000 / total));
+                    teksPembaruan.setText("Mengunduh " + (dapat / 1024) + " KB"
+                        + (total > 0 ? " dari " + (total / 1024) + " KB" : ""));
+                }));
+                runOnUiThread(() -> teksPembaruan.setText("Menyiapkan pemasangan..."));
+                Pembaruan.pasang(MainActivity.this, f);
+            } catch (Exception e) {
+                galat = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            }
+            final String g = galat;
+            runOnUiThread(() -> {
+                sedangUnduh = false;
+                tombolPasang.setEnabled(true);
+                tombolCekLagi.setEnabled(true);
+                bilahUnduh.setVisibility(View.GONE);
+                if (g != null) gagalPasang(g);
+                else teksPembaruan.setText("Menunggu konfirmasi pemasangan dari Android...");
+            });
+        }).start();
+    }
+
+    private void gagalPasang(String alasan) {
+        teksPembaruan.setTextColor(cBahaya);
+        teksPembaruan.setText("Pembaruan gagal: " + alasan
+            + ". Bisa juga diunduh manual dari Halaman rilis.");
+    }
+
+    /** Hasil PackageInstaller (lihat Pembaruan.pasang). */
+    private void tanganiIntent(Intent i) {
+        if (i == null || !Pembaruan.AKSI_PASANG.equals(i.getAction())) return;
+        int status = i.getIntExtra(PackageInstaller.EXTRA_STATUS, Integer.MIN_VALUE);
+        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+            Intent konfirmasi = i.getParcelableExtra(Intent.EXTRA_INTENT);
+            if (konfirmasi != null) {
+                try {
+                    startActivity(konfirmasi);
+                    return;
+                } catch (Exception e) {
+                    gagalPasang("pemasang Android tidak bisa dibuka");
+                    return;
+                }
+            }
+            gagalPasang("Android tidak memberi layar konfirmasi");
+        } else if (status == PackageInstaller.STATUS_SUCCESS) {
+            teksPembaruan.setTextColor(cOk);
+            teksPembaruan.setText("Pembaruan terpasang.");
+            tombolPasang.setVisibility(View.GONE);
+        } else if (status == PackageInstaller.STATUS_FAILURE_ABORTED) {
+            teksPembaruan.setTextColor(cRedup);
+            teksPembaruan.setText("Pemasangan dibatalkan. Tekan tombol pasang untuk mencoba lagi.");
+        } else if (status != Integer.MIN_VALUE) {
+            String pesan = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+            gagalPasang(pesan == null ? "kode " + status : pesan);
+        }
+    }
+
+    /* ============================================================ layar Web */
+
+    private void bangunWeb() {
+        layarWeb = new FrameLayout(this);
+        web = new WebView(this);
+        web.setBackgroundColor(cLatar);
+        layarWeb.addView(web, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        bilahWeb = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        bilahWeb.setMax(100);
+        bilahWeb.setVisibility(View.GONE);
+        layarWeb.addView(bilahWeb, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(3), Gravity.TOP));
+        akar.addView(layarWeb, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        aturWeb();
     }
 
     private boolean sesamaServer(Uri u) {
-        if (alamat.isEmpty()) return true;
-        Uri a = Uri.parse(alamat);
+        if (alamatWeb.isEmpty()) return true;
+        Uri a = Uri.parse(alamatWeb);
         return a.getHost() != null && a.getHost().equalsIgnoreCase(u.getHost())
             && a.getPort() == u.getPort();
     }
-
-    /* ------------------------------------------------------------ WebView */
 
     private void aturWeb() {
         WebSettings s = web.getSettings();
@@ -303,7 +760,7 @@ public class MainActivity extends Activity {
         s.setTextZoom(100);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        s.setUserAgentString(s.getUserAgentString() + " AiAsistenAndroid/" + versi());
+        s.setUserAgentString(s.getUserAgentString() + " AiAsistenAndroid/" + versiNama());
 
         web.addJavascriptInterface(new Jembatan(), NAMA_JEMBATAN);
 
@@ -319,26 +776,34 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPageStarted(WebView v, String url, android.graphics.Bitmap ikon) {
-                bilah.setProgress(5);
-                bilah.setVisibility(View.VISIBLE);
+                bilahWeb.setProgress(5);
+                bilahWeb.setVisibility(View.VISIBLE);
             }
 
             @Override
             public void onPageFinished(WebView v, String url) {
-                bilah.setVisibility(View.GONE);
+                bilahWeb.setVisibility(View.GONE);
                 v.evaluateJavascript(JS_UNDUH, null);
             }
 
             @Override
             public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
-                if (r.isForMainFrame()) tampilGalat(String.valueOf(e.getDescription()));
+                if (!r.isForMainFrame()) return;
+                // Koneksi putus: kembali ke Beranda dengan pesan, tombol Masuk disembunyikan.
+                alamatWeb = "";
+                v.stopLoading();
+                v.loadUrl("about:blank");
+                tampilBeranda();
+                setAktif(false);
+                setStatus(cBahaya, "Koneksi ke server terputus: " + e.getDescription()
+                    + ". Tekan Tes koneksi untuk mencoba lagi.");
             }
         });
 
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onProgressChanged(WebView v, int p) {
-                bilah.setProgress(Math.max(5, p));
+                bilahWeb.setProgress(Math.max(5, p));
             }
 
             @Override
@@ -421,14 +886,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    private String versi() {
-        try {
-            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-        } catch (Exception e) {
-            return "?";
-        }
-    }
-
     private void pesan(final String t) {
         runOnUiThread(() -> Toast.makeText(MainActivity.this, t, Toast.LENGTH_LONG).show());
     }
@@ -456,7 +913,7 @@ public class MainActivity extends Activity {
         panggilBerkas = null;
     }
 
-    /* ------------------------------------------------------------ unduhan */
+    /* ------------------------------------------------------------ unduhan dari halaman */
 
     /** Dipanggil dari JavaScript halaman. */
     private class Jembatan {
@@ -512,50 +969,5 @@ public class MainActivity extends Activity {
             o.write(isi);
         }
         return f.getAbsolutePath();
-    }
-
-    /* ------------------------------------------------------------ siklus hidup */
-
-    @Override
-    @SuppressWarnings("deprecation")
-    public void onBackPressed() {
-        if (!galat && web.canGoBack()) {
-            web.goBack();
-            return;
-        }
-        String[] pilihan = {"Muat ulang", "Ubah alamat server", "Keluar"};
-        new AlertDialog.Builder(this)
-            .setTitle("AI Asisten")
-            .setItems(pilihan, (d, i) -> {
-                if (i == 0) cobaLagi();
-                else if (i == 1) tanyaAlamat(false);
-                else finish();
-            })
-            .setNegativeButton("Batal", null)
-            .show();
-    }
-
-    @Override
-    protected void onSaveInstanceState(Bundle out) {
-        super.onSaveInstanceState(out);
-        web.saveState(out);
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        web.onResume();
-    }
-
-    @Override
-    protected void onPause() {
-        web.onPause();
-        super.onPause();
-    }
-
-    @Override
-    protected void onDestroy() {
-        web.destroy();
-        super.onDestroy();
     }
 }

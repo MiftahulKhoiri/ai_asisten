@@ -47,6 +47,11 @@ rm -rf "$B"
 mkdir -p "$B/gen" "$B/kelas" "$B/dex"
 echo "AI Asisten versi $VERSI_NAMA (versionCode $VERSI_KODE)"
 
+echo "== 0/6 uji fungsi murni (Versi)"
+mkdir -p "$B/uji"
+javac -nowarn -encoding UTF-8 -d "$B/uji" "$DIR/src/id/aiasisten/app/Versi.java" "$DIR/uji/UjiVersi.java"
+java -cp "$B/uji" id.aiasisten.app.UjiVersi
+
 echo "== 1/6 sumber daya (aapt2 compile)"
 "$AAPT2" compile --dir "$DIR/res" -o "$B/res.zip"
 
