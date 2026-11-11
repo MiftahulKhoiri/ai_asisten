@@ -1,0 +1,44 @@
+/* beranda.css - tambahan kecil untuk Beranda aplikasi Android. Warna dan bentuk dasar
+   diambil dari index.css + dasbor.css milik web (disalin saat build), di sini hanya
+   bagian yang tidak ada di dasbor web: kotak alamat, baris tes, tombol aksi kartu, bilah unduh. */
+
+.beranda .sesi{cursor:default}
+.beranda .sesi:hover{transform:none;box-shadow:none;border-color:var(--garis)}
+
+.beranda #alamat{width:100%;margin:2px 0 0;padding:11px 13px;font-size:16px;border-radius:12px;
+  background:color-mix(in srgb,var(--panel) 70%,var(--bg));border:1px solid var(--garis);outline:none}
+.beranda #alamat:focus{border-color:color-mix(in srgb,var(--cs) 70%,var(--garis))}
+
+.baris-tes{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.baris-tes .sesi-status{flex:1 1 auto;width:auto;min-width:0}
+.baris-tes .btn{flex:none;padding:8px 14px;border-radius:999px;font-size:14px;font-weight:600}
+.baris-tes .btn:active:not(:disabled){transform:scale(.97)}
+
+/* tombol aksi di kaki kartu: tampil sama dengan tautan "Buka Agent ›" di dasbor web */
+button.sesi-aksi{width:100%;margin:8px 0 0;padding:12px 0 2px;background:none;border:0;border-top:1px solid var(--garis);
+  border-radius:0;font:inherit;font-weight:600;color:var(--cs);text-align:left;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+button.sesi-aksi:active .panah{transform:translateX(4px)}
+button.sesi-aksi:disabled{opacity:.5}
+
+/* titik status: keadaan "muat" (sedang mengetes / mengunduh) sudah ada di dasbor.css */
+.sesi-status[data-st="ok"] span,.chip[data-st="ok"] #chipTeks{color:var(--teks)}
+
+#bilah{width:100%;height:6px;border:0;border-radius:999px;overflow:hidden;appearance:none;-webkit-appearance:none;
+  background:color-mix(in srgb,var(--teks) 9%,transparent)}
+#bilah::-webkit-progress-bar{background:transparent}
+#bilah::-webkit-progress-value{background:var(--cs);border-radius:999px}
+
+/* riwayat alamat memakai gaya .daftar-run dari dasbor */
+.daftar-run .alamat{display:flex;align-items:center;gap:12px;width:100%;padding:10px 2px;border:0;background:none;
+  color:inherit;text-align:left;border-radius:10px;font:inherit;cursor:pointer}
+.daftar-run .alamat:active{background:color-mix(in srgb,var(--teks) 6%,transparent)}
+.daftar-run .hapus{flex:none;border:0;background:none;color:var(--redup);font-size:18px;line-height:1;padding:8px 10px;border-radius:10px}
+.daftar-run .hapus:active{background:color-mix(in srgb,var(--bahaya) 14%,transparent);color:var(--bahaya)}
+.daftar-run li{display:flex;align-items:center}
+.daftar-run li .alamat{flex:1;min-width:0}
+
+/* pesan status boleh turun baris (di dasbor web dipotong satu baris) */
+.beranda .sesi-isi .sesi-status{border-radius:14px;align-items:flex-start}
+.beranda .sesi-isi .sesi-status span{white-space:normal;overflow:visible;line-height:1.4}
+.beranda .sesi-isi .sesi-status .titik-st{margin-top:6px}

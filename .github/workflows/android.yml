@@ -4,7 +4,8 @@ name: Aplikasi Android
 # APK ditandatangani dengan kunci di android/kunci/, sama seperti build di Pi, jadi selalu bisa
 # menimpa versi lama tanpa uninstall.
 # APK: tab Actions -> pilih run -> Artifacts. Untuk tag android-v* APK juga masuk Releases.
-# Perubahan di web/ TIDAK perlu APK baru: aplikasi memuat halaman langsung dari server.
+# Perubahan di web/ umumnya TIDAK perlu APK baru (halaman dimuat langsung dari server), kecuali
+# CSS/maskot yang ikut dikemas untuk Beranda aplikasi (daftar paths di bawah).
 
 on:
   push:
@@ -12,11 +13,19 @@ on:
     paths:
       - "android/**"
       - ".github/workflows/android.yml"
+      - "web/index.css"     # Beranda aplikasi memakai CSS dan maskot dasbor web
+      - "web/dasbor.css"
+      - "web/robot.css"
+      - "web/robot.js"
     tags: ["android-v*"]
   pull_request:
     paths:
       - "android/**"
       - ".github/workflows/android.yml"
+      - "web/index.css"     # Beranda aplikasi memakai CSS dan maskot dasbor web
+      - "web/dasbor.css"
+      - "web/robot.css"
+      - "web/robot.js"
   workflow_dispatch:
 
 concurrency:

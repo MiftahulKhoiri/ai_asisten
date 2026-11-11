@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI Asisten · Beranda</title>
+<!-- index.css, dasbor.css, robot.css, robot.js disalin dari web/ saat build (android/build.sh),
+     jadi warna, huruf, kartu, dan maskot Robi selalu sama dengan dasbor web. -->
+<link rel="stylesheet" href="index.css">
+<link rel="stylesheet" href="robot.css">
+<link rel="stylesheet" href="dasbor.css">
+<link rel="stylesheet" href="beranda.css">
+</head>
+<body class="dasbor beranda">
+<div id="app">
+  <header>
+    <div class="merek">
+      <span class="logo" aria-hidden="true"><span class="robot r-logo" data-robot="kepala"></span></span>
+      <b>AI Asisten</b>
+    </div>
+    <span class="chip" id="chipServer" data-st="" role="status" aria-live="polite"><i class="titik-st" aria-hidden="true"></i><span id="chipTeks">Belum terhubung</span></span>
+  </header>
+
+  <section class="layar">
+    <main class="isi">
+      <div class="hero hero-robot">
+        <span class="robot r-dasbor" data-robot title="Ketuk Robi untuk menyapa"></span>
+        <div class="hero-teks">
+          <h1 id="salam">Halo</h1>
+          <p class="redup">Hubungkan ke server AI Asisten di Raspberry Pi, lalu masuk.</p>
+        </div>
+      </div>
+
+      <div class="pilihan">
+        <div class="sesi sesi-chat" id="kartuServer">
+          <span class="sesi-ik" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4" width="17" height="6.5" rx="2"/><rect x="3.5" y="13.5" width="17" height="6.5" rx="2"/><path d="M7.5 7.25h.01M7.5 16.75h.01M11 7.25h5.5M11 16.75h5.5"/></svg>
+          </span>
+          <span class="sesi-isi">
+            <span class="sesi-judul">Server</span>
+            <span class="sesi-ket">Alamat tampil di terminal saat asisten.py dijalankan. Boleh ditempel lengkap dengan ?token=... supaya token langsung tersimpan.</span>
+            <input type="text" id="alamat" inputmode="url" autocapitalize="off" autocorrect="off" autocomplete="off"
+                   spellcheck="false" enterkeyhint="go" placeholder="http://192.168.1.10:8090" aria-label="Alamat server">
+            <span class="baris-tes">
+              <span class="sesi-status" id="stTes" data-st=""><i class="titik-st" aria-hidden="true"></i><span id="stTesTeks">Belum dites</span></span>
+              <button type="button" class="btn abu" id="btnTes">Tes koneksi</button>
+            </span>
+          </span>
+          <button type="button" class="sesi-aksi" id="btnMasuk" hidden><span>Masuk</span><span class="panah" aria-hidden="true">&#8250;</span></button>
+        </div>
+
+        <div class="sesi sesi-agent" id="kartuApp">
+          <span class="sesi-ik" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M12 7.5v7M9 11.5l3 3 3-3M10.5 18.5h3"/></svg>
+          </span>
+          <span class="sesi-isi">
+            <span class="sesi-judul">Aplikasi</span>
+            <span class="sesi-ket" id="teksVersi">Versi -</span>
+            <span class="sesi-status" id="stApp" data-st=""><i class="titik-st" aria-hidden="true"></i><span id="stAppTeks">Memeriksa pembaruan...</span></span>
+            <progress id="bilah" max="1000" value="0" hidden></progress>
+          </span>
+          <button type="button" class="sesi-aksi" id="btnApp"><span id="btnAppTeks">Periksa pembaruan</span><span class="panah" aria-hidden="true">&#8250;</span></button>
+        </div>
+      </div>
+
+      <div class="kisi-bawah">
+        <section class="kartu" id="kartuRiwayat" aria-labelledby="jdlRiwayat" hidden>
+          <h2 id="jdlRiwayat">Alamat terakhir</h2>
+          <ul class="daftar-run" id="riwayat"></ul>
+        </section>
+      </div>
+
+      <p class="kaki redup">
+        HP harus satu jaringan dengan Pi (Wi-Fi yang sama atau Tailscale).<br>
+        <button type="button" class="tautan" id="btnRilis">Halaman rilis di GitHub</button>
+      </p>
+    </main>
+  </section>
+</div>
+<div id="toast" hidden></div>
+<script src="beranda.js"></script>
+<script src="robot.js"></script>
+</body>
+</html>

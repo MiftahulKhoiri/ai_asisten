@@ -4,7 +4,9 @@ Aplikasi Android yang membuka halaman web `asisten.py` di WebView. Isinya **pers
 (dasbor, Sesi AI Asisten, Sesi Agent, prompt, unggah, serahkan) karena halamannya diambil langsung
 dari server. Kalau berkas `web/` diubah, aplikasi ikut berubah tanpa perlu build ulang.
 
-Saat dibuka, aplikasi menampilkan **Beranda** (layar asli Android):
+Saat dibuka, aplikasi menampilkan **Beranda**. Tampilannya sama dengan dasbor web karena memakai
+`index.css`, `dasbor.css`, `robot.css`, dan `robot.js` yang sama persis (disalin dari `web/` saat build,
+bersama `beranda/`). Kalau berkas-berkas itu diubah, GitHub Actions membangun APK baru.
 
 - **Server**: isi alamat, tekan **Tes koneksi**. Statusnya bisa aktif (beserta waktu respons), tidak aktif,
   beda jaringan, atau "bukan server AI Asisten" (port dipakai aplikasi lain). Tombol **Masuk** baru muncul
@@ -61,7 +63,8 @@ cd android
 | Berkas | Fungsi |
 |---|---|
 | `AndroidManifest.xml` | identitas aplikasi `id.aiasisten.app`, izin internet, HTTP lokal diizinkan |
-| `src/id/aiasisten/app/MainActivity.java` | layar Beranda dan Web (tes koneksi, unggah, unduh) |
+| `beranda/` | halaman Beranda (HTML/JS/CSS tambahan), dikemas sebagai aset APK |
+| `src/id/aiasisten/app/MainActivity.java` | WebView Beranda + halaman server, jembatan JS (tes koneksi, pembaruan, unggah, unduh) |
 | `src/id/aiasisten/app/Pembaruan.java` | cek rilis GitHub, unduh + sha256, pasang lewat PackageInstaller |
 | `src/id/aiasisten/app/Versi.java` | fungsi murni (alamat, nomor build), diuji `uji/UjiVersi.java` saat build |
 | `res/` | nama aplikasi, warna, tema, ikon |

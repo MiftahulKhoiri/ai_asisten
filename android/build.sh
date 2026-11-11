@@ -52,7 +52,11 @@ mkdir -p "$B/uji"
 javac -nowarn -encoding UTF-8 -d "$B/uji" "$DIR/src/id/aiasisten/app/Versi.java" "$DIR/uji/UjiVersi.java"
 java -cp "$B/uji" id.aiasisten.app.UjiVersi
 
-echo "== 1/6 sumber daya (aapt2 compile)"
+echo "== 1/6 aset Beranda + sumber daya (aapt2 compile)"
+# Beranda memakai CSS dan maskot yang sama persis dengan dasbor web.
+mkdir -p "$B/assets"
+cp "$DIR/../web/index.css" "$DIR/../web/dasbor.css" "$DIR/../web/robot.css" "$DIR/../web/robot.js" "$B/assets/"
+cp "$DIR/beranda/"* "$B/assets/"
 "$AAPT2" compile --dir "$DIR/res" -o "$B/res.zip"
 
 echo "== 2/6 manifest + sumber daya (aapt2 link)"
@@ -60,7 +64,7 @@ echo "== 2/6 manifest + sumber daya (aapt2 link)"
     --manifest "$DIR/AndroidManifest.xml" --java "$B/gen" \
     --min-sdk-version "$MIN_SDK" --target-sdk-version "$TARGET_SDK" \
     --version-code "$VERSI_KODE" --version-name "$VERSI_NAMA" \
-    "$B/res.zip"
+    -A "$B/assets" "$B/res.zip"
 
 echo "== 3/6 kompilasi Java"
 find "$DIR/src" "$B/gen" -name '*.java' > "$B/sumber.txt"
