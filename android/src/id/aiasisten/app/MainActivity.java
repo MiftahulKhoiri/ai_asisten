@@ -29,6 +29,7 @@ import android.webkit.JsPromptResult;
 import android.webkit.JsResult;
 import android.webkit.MimeTypeMap;
 import android.webkit.URLUtil;
+import android.webkit.WebBackForwardList;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -107,6 +108,7 @@ public class MainActivity extends Activity {
     private volatile String alamatAktif = "";   // http://host:port yang lolos tes
     private volatile String muatLengkap = "";   // alamat lengkap (boleh ?token=) untuk Masuk berikutnya
     private String alamatWeb = "";              // server yang sedang dimuat di WebView
+    private boolean bersihkanRiwayat;           // riwayat WebView dibuang setelah halaman baru selesai dimuat
 
     private volatile Pembaruan.Rilis rilisBaru;
     private volatile boolean sedangUnduh;
@@ -164,15 +166,44 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    /**
+     * Kembali: di halaman server mundur hanya ke halaman server yang sah (bukan halaman kosong/galat
+     * dari koneksi lama). Di halaman pertama muncul pilihan Beranda / Keluar; di Beranda minta
+     * konfirmasi keluar.
+     */
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
         if (layarWeb.getVisibility() == View.VISIBLE) {
-            if (web.canGoBack()) web.goBack();
-            else tampilBeranda();
+            if (bisaMundurDiWeb()) web.goBack();
+            else tanyaKeluar(true);
             return;
         }
-        super.onBackPressed();
+        tanyaKeluar(false);
+    }
+
+    private boolean bisaMundurDiWeb() {
+        if (alamatWeb.isEmpty()) return false;
+        WebBackForwardList h = web.copyBackForwardList();
+        int i = h.getCurrentIndex();
+        if (i <= 0) return false;
+        String sebelum = h.getItemAtIndex(i - 1).getUrl();
+        return sebelum != null && sebelum.startsWith(alamatWeb + "/");
+    }
+
+    private void tanyaKeluar(boolean dariWeb) {
+        AlertDialog.Builder b = new AlertDialog.Builder(this)
+            .setTitle("AI Asisten")
+            .setMessage(dariWeb ? "Kembali ke Beranda atau keluar dari aplikasi?" : "Keluar dari aplikasi?")
+            .setPositiveButton("Keluar", (d, w) -> keluar())
+            .setNegativeButton("Batal", null);
+        if (dariWeb) b.setNeutralButton("Beranda", (d, w) -> tampilBeranda());
+        b.show();
+    }
+
+    /** Tutup aplikasi (sesi di server tidak diakhiri: bisa dilanjutkan dari browser atau aplikasi). */
+    private void keluar() {
+        finishAndRemoveTask();
     }
 
     @SuppressWarnings("deprecation")
@@ -293,6 +324,11 @@ public class MainActivity extends Activity {
         @JavascriptInterface
         public void bukaRilis() {
             bukaLuar(Uri.parse(Versi.HALAMAN_RILIS));
+        }
+
+        @JavascriptInterface
+        public void keluar() {
+            runOnUiThread(MainActivity.this::keluar);
         }
     }
 
@@ -427,8 +463,8 @@ public class MainActivity extends Activity {
         tampilWeb();
         if (!sudahDimuat) {
             alamatWeb = dasar;
+            bersihkanRiwayat = true;   // clearHistory baru berlaku setelah halaman baru selesai dimuat
             web.loadUrl(muatLengkap.isEmpty() ? dasar + "/" : muatLengkap);
-            web.clearHistory();
         }
         muatLengkap = dasar + "/";   // ?token= cukup sekali: halaman menyimpannya sendiri
     }
@@ -619,6 +655,10 @@ public class MainActivity extends Activity {
             @Override
             public void onPageFinished(WebView v, String url) {
                 bilahWeb.setVisibility(View.GONE);
+                if (bersihkanRiwayat && url != null && !url.startsWith("about:")) {
+                    v.clearHistory();      // halaman server lama / kosong / galat tidak bisa dimundurkan lagi
+                    bersihkanRiwayat = false;
+                }
                 v.evaluateJavascript(JS_UNDUH, null);
             }
 
@@ -628,6 +668,7 @@ public class MainActivity extends Activity {
                 // Koneksi putus: kembali ke Beranda dengan pesan, tombol Masuk disembunyikan.
                 alamatWeb = "";
                 alamatAktif = "";
+                bersihkanRiwayat = true;
                 v.stopLoading();
                 v.loadUrl("about:blank");
                 tampilBeranda();

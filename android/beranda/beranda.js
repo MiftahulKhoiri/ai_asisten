@@ -127,6 +127,7 @@
     else if (aksiApp === 'cek') cekPembaruan();
   };
   $('btnRilis').onclick = () => { if (App) App.bukaRilis(); };
+  $('btnKeluar').onclick = () => { if (App) App.keluar(); };
 
   if (!App) { toast('Halaman ini hanya berfungsi di aplikasi Android.'); return; }
   const info = JSON.parse(App.info());

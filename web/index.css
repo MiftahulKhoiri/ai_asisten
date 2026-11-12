@@ -250,3 +250,13 @@ body.halaman-chat #bawah{padding-inline:max(10px,calc((100% - 900px) / 2 + 10px)
 .catatan-ctx{margin:8px 2px 0;padding:8px 10px;border-radius:10px;color:var(--teks);
   background:color-mix(in srgb,var(--izin) 14%,var(--panel));border:1px solid color-mix(in srgb,var(--izin) 40%,var(--garis))}
 .catatan-ctx[hidden]{display:none}
+
+/* ---------- kolom token dengan tombol mata (tampilkan / sembunyikan) ---------- */
+.sandi{position:relative;margin:8px 0}
+.sandi input[type=password],.sandi input[type=text]{margin:0;padding-right:50px}
+.lihat-sandi{position:absolute;top:50%;right:6px;transform:translateY(-50%);display:grid;place-items:center;width:40px;height:36px;
+  padding:0;border:0;border-radius:9px;background:none;color:var(--redup);cursor:pointer}
+.lihat-sandi:active{background:color-mix(in srgb,var(--teks) 8%,transparent)}
+.lihat-sandi .coret{display:none}
+.lihat-sandi[aria-pressed="true"]{color:var(--aksen)}
+.lihat-sandi[aria-pressed="true"] .coret{display:inline}

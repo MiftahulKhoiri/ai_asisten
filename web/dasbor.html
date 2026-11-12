@@ -30,7 +30,7 @@
         <p class="redup">Token ada di terminal Raspberry Pi (baris "Buka dari HP"). Cukup sekali; tersimpan di browser ini.</p>
       </div>
       <div class="kartu">
-        <input type="password" id="tokenInput" placeholder="token" autocomplete="off" aria-label="Token">
+        <div class="sandi"><input type="password" id="tokenInput" placeholder="token" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Token"><button type="button" class="lihat-sandi" id="btnLihatToken" aria-label="Tampilkan token" aria-pressed="false" title="Tampilkan token"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="mata" d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle class="mata" cx="12" cy="12" r="3"/><path class="coret" d="M4 4l16 16"/></svg></button></div>
         <button class="btn besar" id="btnToken" type="button">Masuk</button>
         <p id="tokenPesan" class="redup" role="alert"></p>
       </div>

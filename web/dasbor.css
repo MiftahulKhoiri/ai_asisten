@@ -100,7 +100,8 @@ body.dasbor{
 .daftar-run .rt b{font-size:14.5px;font-weight:600}
 .daftar-run .rt small{color:var(--redup);font-size:12px}
 
-.kartu input[type=password]{margin:0 0 12px}
+.kartu .sandi{margin:0 0 12px}
+.kartu .sandi input{margin:0}
 .dasbor .btn.besar{width:100%;padding:12px 18px;border-radius:14px;font-size:16px;font-weight:600;transition:transform .08s ease,opacity .2s ease}
 .dasbor .btn.besar:active{transform:scale(.98)}
 .kaki{margin:22px 0 0;text-align:center;font-size:13px}

@@ -22,7 +22,8 @@ Di halaman web:
 - unggah berkas dan zip proyek lewat pemilih berkas Android (bisa beberapa berkas)
 - unduhan dari halaman (ekspor prompt `.json`, hasil Agent `.zip`) disimpan ke **Download/AI Asisten**
 - dialog konfirmasi asli Android, tautan luar dibuka di browser
-- tombol **Kembali** di halaman pertama kembali ke Beranda; kalau koneksi putus, aplikasi juga kembali ke Beranda
+- tombol **Kembali** hanya mundur ke halaman server yang sah; di halaman pertama muncul pilihan Beranda / Keluar.
+  Kalau koneksi putus, aplikasi kembali ke Beranda. Di Beranda ada tombol **Keluar aplikasi**
 - tema terang/gelap mengikuti sistem (Android 10+), sama seperti web
 
 Butuh Android 7.0 atau yang lebih baru, dengan HP berada di jaringan yang sama dengan Pi (Wi-Fi yang sama atau Tailscale).

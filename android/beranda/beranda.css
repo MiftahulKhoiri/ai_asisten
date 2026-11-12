@@ -42,3 +42,8 @@ button.sesi-aksi:disabled{opacity:.5}
 .beranda .sesi-isi .sesi-status{border-radius:14px;align-items:flex-start}
 .beranda .sesi-isi .sesi-status span{white-space:normal;overflow:visible;line-height:1.4}
 .beranda .sesi-isi .sesi-status .titik-st{margin-top:6px}
+
+/* tombol keluar di bawah Beranda */
+.beranda .keluar{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:14px 0 4px;padding:12px;
+  border-radius:14px;font-weight:600;color:var(--bahaya);border-color:color-mix(in srgb,var(--bahaya) 35%,var(--garis))}
+.beranda .keluar:active{background:color-mix(in srgb,var(--bahaya) 10%,transparent)}

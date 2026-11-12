@@ -1001,10 +1001,21 @@
     setTimeout(() => { b.textContent = 'Salin'; }, 1500);
   });
   $('btnToken').onclick = () => {
+    lihatToken(false);                    // token disembunyikan lagi setelah dipakai
     const v = $('tokenInput').value.trim(); if (!v) return;
     TOKEN = v; localStorage.setItem('aa_token', v); $('tokenPesan').textContent = '';
     tampil('setup'); muatStatus(true); muatRiwayat();
   };
+  /* ---------- tombol mata: tampilkan / sembunyikan token ---------- */
+  function lihatToken(tampil) {
+    const inp = $('tokenInput'), b = $('btnLihatToken');
+    if (!inp || !b) return;
+    inp.type = tampil ? 'text' : 'password';
+    b.setAttribute('aria-pressed', tampil ? 'true' : 'false');
+    b.setAttribute('aria-label', tampil ? 'Sembunyikan token' : 'Tampilkan token');
+    b.title = tampil ? 'Sembunyikan token' : 'Tampilkan token';
+  }
+  if ($('btnLihatToken')) $('btnLihatToken').onclick = () => { lihatToken($('tokenInput').type === 'password'); $('tokenInput').focus(); };
   $('tokenInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnToken').click(); });
   setInterval(() => { if (layar === 'setup' && !document.hidden && TOKEN) muatStatus(false); }, 6000);
 
