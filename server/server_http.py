@@ -478,7 +478,7 @@ class H(BaseHTTPRequestHandler):
         with tempfile.TemporaryFile() as tmp:
             with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as z:
                 for rel, p in berkas:
-                    z.write(p, slug + "/" + rel)        # satu folder induk: unzip tidak berserakan
+                    z.write(p, rel)
             ukuran = tmp.tell()
             tmp.seek(0)
             lg.log("INFO", f"Hasil Agent diunduh: {run_id} ({len(berkas)} berkas, {ukuran // 1024} KB)")
@@ -489,8 +489,10 @@ class H(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", tipe)
         self.send_header("Content-Length", str(ukuran))
-        self.send_header("Content-Disposition",
-                         "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (aman, quote(nama, safe="")))
+        cd = 'attachment; filename="%s"' % aman
+        if aman != nama:          # nama asli berisi huruf non-ASCII/spasi: sertakan juga bentuk UTF-8
+            cd += "; filename*=UTF-8''%s" % quote(nama, safe="")
+        self.send_header("Content-Disposition", cd)
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
 
