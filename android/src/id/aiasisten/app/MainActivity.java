@@ -3,6 +3,7 @@ package id.aiasisten.app;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DownloadManager;
 import android.content.ActivityNotFoundException;
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -45,6 +46,7 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -54,6 +56,7 @@ import java.net.HttpURLConnection;
 import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
 import java.net.URL;
+import java.net.URLDecoder;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
@@ -95,6 +98,29 @@ public class MainActivity extends Activity {
         + "fr.readAsDataURL(b);}).catch(function(e){" + JEMBATAN_WEB + ".pesan('Unduhan gagal: '+e);});"
         + "return;}"
         + "return asli.apply(this,arguments);};})();";
+
+    /**
+     * Disuntikkan setelah halaman server dimuat: tombol "Tutup" (ikon daya) di ujung kanan header
+     * halaman Dasbor, Chat, dan Agent. Menekannya membuka dialog Keluar / Beranda / Batal.
+     * Hanya ada di aplikasi; di browser biasa halaman web tidak berubah.
+     */
+    private static final String JS_TUTUP =
+        "(function(){var h=document.querySelector('header');"
+        + "if(!h||document.getElementById('aaTutup'))return;"
+        + "if(!document.getElementById('aaTutupGaya')){var g=document.createElement('style');g.id='aaTutupGaya';"
+        + "g.textContent='#aaTutup{flex:none;margin-left:auto;display:inline-flex;align-items:center;justify-content:center;"
+        + "width:36px;height:36px;padding:0;border-radius:999px;border:1px solid var(--garis,#8884);"
+        + "background:none;color:var(--redup,inherit);cursor:pointer;transition:color .15s ease,border-color .15s ease}"
+        + "#aaTutup:active{color:var(--bahaya,#e5484d);border-color:var(--bahaya,#e5484d)}"
+        + ".dasbor header .chip{margin-left:auto}"
+        + "';document.head.appendChild(g);}"
+        + "var b=document.createElement('button');b.id='aaTutup';b.type='button';"
+        + "b.title='Tutup aplikasi';b.setAttribute('aria-label','Tutup aplikasi');"
+        + "b.innerHTML='<svg viewBox=\\\"0 0 24 24\\\" width=\\\"18\\\" height=\\\"18\\\" fill=\\\"none\\\" stroke=\\\"currentColor\\\" "
+        + "stroke-width=\\\"2\\\" stroke-linecap=\\\"round\\\" aria-hidden=\\\"true\\\"><path d=\\\"M12 3v9\\\"/>"
+        + "<path d=\\\"M6.3 6.3a8 8 0 1 0 11.4 0\\\"/></svg>';"
+        + "b.onclick=function(){" + JEMBATAN_WEB + ".tutup();};"
+        + "h.appendChild(b);})();";
 
     private boolean gelap;
     private int cLatar;
@@ -660,6 +686,7 @@ public class MainActivity extends Activity {
                     bersihkanRiwayat = false;
                 }
                 v.evaluateJavascript(JS_UNDUH, null);
+                v.evaluateJavascript(JS_TUTUP, null);
             }
 
             @Override
@@ -794,13 +821,14 @@ public class MainActivity extends Activity {
 
     /* ------------------------------------------------------------ unduhan dari halaman server */
 
-    /** Dipasang di halaman server: hanya untuk menyimpan unduhan dan menampilkan pesan. */
+    /** Dipasang di halaman server: menyimpan unduhan, menampilkan pesan, dan tombol Tutup aplikasi. */
     private class JembatanWeb {
         @JavascriptInterface
         public void simpan(final String base64, final String nama, final String mime) {
             new Thread(() -> {
                 try {
-                    pesan("Tersimpan: " + simpanBerkas(Base64.decode(base64, Base64.DEFAULT), nama, mime));
+                    byte[] isi = Base64.decode(base64, Base64.DEFAULT);
+                    kabarTersimpan(simpanAliran(new ByteArrayInputStream(isi), nama, mime));
                 } catch (Exception e) {
                     pesan("Gagal menyimpan " + nama + ": " + e.getMessage());
                 }
@@ -811,17 +839,107 @@ public class MainActivity extends Activity {
         public void pesan(String t) {
             MainActivity.this.pesan(t);
         }
+
+        /**
+         * Unduh langsung oleh aplikasi (tanpa blob/base64 lewat WebView): `jalur` = /api/... di server
+         * yang sedang dibuka, `token` untuk header Authorization. Hasil disimpan ke Download/AI Asisten
+         * lalu muncul dialog Buka / Folder Unduhan. False bila jalur ditolak (halaman memakai cara lama).
+         */
+        @JavascriptInterface
+        public boolean unduh(final String jalur, final String token, final String cadangan) {
+            final String dasar = alamatWeb;
+            if (dasar.isEmpty() || jalur == null || !jalur.startsWith("/api/") || jalur.contains("..")) return false;
+            pesan("Mengunduh " + (cadangan == null || cadangan.isEmpty() ? "berkas" : cadangan) + " ...");
+            new Thread(() -> unduhAsli(dasar + jalur, token == null ? "" : token, cadangan)).start();
+            return true;
+        }
+
+        /** Tombol Tutup di header halaman server: tanya Keluar / Beranda / Batal. */
+        @JavascriptInterface
+        public void tutup() {
+            runOnUiThread(() -> { if (!isFinishing()) tanyaKeluar(true); });
+        }
     }
 
-    private String simpanBerkas(byte[] isi, String nama, String mime) throws Exception {
+    /** Lokasi berkas yang baru disimpan: `uri` bisa dibuka aplikasi lain (null di Android < 10). */
+    private static final class Tersimpan {
+        final Uri uri;
+        final String lokasi, mime;
+
+        Tersimpan(Uri uri, String lokasi, String mime) {
+            this.uri = uri;
+            this.lokasi = lokasi;
+            this.mime = mime;
+        }
+    }
+
+    private void unduhAsli(String url, String token, String cadangan) {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(url).openConnection();
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(180000);
+            c.setRequestProperty("Authorization", "Bearer " + token);
+            int kode = c.getResponseCode();
+            if (kode != 200) throw new Exception(galatServer(c, kode));
+            String nama = namaDariTajuk(c.getHeaderField("Content-Disposition"), cadangan);
+            String mime = c.getContentType();
+            if (mime != null && mime.contains(";")) mime = mime.substring(0, mime.indexOf(';')).trim();
+            try (InputStream in = c.getInputStream()) {
+                kabarTersimpan(simpanAliran(in, nama, mime));
+            }
+        } catch (Exception e) {
+            pesan("Unduhan gagal: " + e.getMessage());
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
+
+    private static String galatServer(HttpURLConnection c, int kode) {
+        try (InputStream e = c.getErrorStream()) {
+            if (e != null) {
+                java.io.ByteArrayOutputStream b = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = e.read(buf)) > 0 && b.size() < 8192) b.write(buf, 0, n);
+                String t = new JSONObject(b.toString("UTF-8")).optString("error", "");
+                if (!t.isEmpty()) return t;
+            }
+        } catch (Exception ignored) {
+            // bukan JSON: pakai kode HTTP
+        }
+        return kode == 401 ? "token salah" : "HTTP " + kode;
+    }
+
+    /** Nama berkas dari Content-Disposition: filename*=UTF-8''... lebih dulu, lalu filename="...". */
+    private static String namaDariTajuk(String cd, String cadangan) {
+        String bawaan = cadangan == null || cadangan.isEmpty() ? "unduhan" : cadangan;
+        if (cd == null) return bawaan;
+        java.util.regex.Matcher m = java.util.regex.Pattern
+            .compile("filename\\*\\s*=\\s*UTF-8''([^;]+)", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(cd);
+        if (m.find()) {
+            try {
+                return URLDecoder.decode(m.group(1).trim().replace("+", "%2B"), "UTF-8");
+            } catch (Exception ignored) {
+                // pakai filename biasa
+            }
+        }
+        m = java.util.regex.Pattern.compile("filename\\s*=\\s*\"([^\"]+)\"", java.util.regex.Pattern.CASE_INSENSITIVE).matcher(cd);
+        return m.find() ? m.group(1) : bawaan;
+    }
+
+    /** Simpan aliran ke Download/AI Asisten (Android 10+) atau folder unduhan aplikasi (Android 7-9). */
+    private Tersimpan simpanAliran(InputStream in, String nama, String mime) throws Exception {
         String n = nama.replaceAll("[\\\\/:*?\"<>|\\x00-\\x1f]", "_").trim();
         if (n.isEmpty()) n = "unduhan";
         String m = mime;
-        if (m == null || m.isEmpty()) {
+        if (m == null || m.isEmpty() || m.equals("application/octet-stream")) {
             String ext = MimeTypeMap.getFileExtensionFromUrl(n.replace(' ', '_'));
-            m = ext == null ? null : MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext.toLowerCase());
-            if (m == null) m = "application/octet-stream";
+            String tebak = ext == null ? null : MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext.toLowerCase());
+            m = tebak != null ? tebak : (m == null || m.isEmpty() ? "application/octet-stream" : m);
         }
+        byte[] buf = new byte[64 * 1024];
+        int k;
         if (Build.VERSION.SDK_INT >= 29) {
             ContentResolver cr = getContentResolver();
             ContentValues cv = new ContentValues();
@@ -833,20 +951,64 @@ public class MainActivity extends Activity {
             if (u == null) throw new Exception("MediaStore menolak");
             try (OutputStream o = cr.openOutputStream(u)) {
                 if (o == null) throw new Exception("tidak bisa menulis");
-                o.write(isi);
+                while ((k = in.read(buf)) > 0) o.write(buf, 0, k);
+            } catch (Exception e) {
+                cr.delete(u, null, null);          // jangan tinggalkan berkas setengah jadi
+                throw e;
             }
             cv.clear();
             cv.put(MediaStore.MediaColumns.IS_PENDING, 0);
             cr.update(u, cv, null, null);
-            return "Download/AI Asisten/" + n;
+            // nama akhir bisa berbeda bila sudah ada berkas bernama sama (mis. "hasil (1).zip")
+            String akhir = n;
+            try (android.database.Cursor q = cr.query(u, new String[]{MediaStore.MediaColumns.DISPLAY_NAME}, null, null, null)) {
+                if (q != null && q.moveToFirst()) akhir = q.getString(0);
+            } catch (Exception ignored) {
+                // tetap pakai nama yang diminta
+            }
+            return new Tersimpan(u, "Download/AI Asisten/" + akhir, m);
         }
         File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
         if (dir == null) dir = getFilesDir();
         if (!dir.exists() && !dir.mkdirs()) throw new Exception("folder tidak bisa dibuat");
         File f = new File(dir, n);
         try (FileOutputStream o = new FileOutputStream(f)) {
-            o.write(isi);
+            while ((k = in.read(buf)) > 0) o.write(buf, 0, k);
         }
-        return f.getAbsolutePath();
+        return new Tersimpan(null, f.getAbsolutePath(), m);
+    }
+
+    /** Beri tahu lokasi berkas: dialog dengan tombol Buka dan Folder Unduhan. */
+    private void kabarTersimpan(final Tersimpan t) {
+        runOnUiThread(() -> {
+            if (isFinishing()) return;
+            AlertDialog.Builder b = new AlertDialog.Builder(this)
+                .setTitle("Unduhan selesai")
+                .setMessage("Tersimpan di:\n" + t.lokasi
+                    + (t.uri == null ? "" : "\n\nBuka lewat aplikasi Files / File Manager, folder Download → AI Asisten."))
+                .setNegativeButton("Tutup", null)
+                .setNeutralButton("Folder Unduhan", (d, w) -> bukaFolderUnduhan());
+            if (t.uri != null) b.setPositiveButton("Buka", (d, w) -> bukaBerkas(t));
+            b.show();
+        });
+    }
+
+    private void bukaBerkas(Tersimpan t) {
+        Intent i = new Intent(Intent.ACTION_VIEW).setDataAndType(t.uri, t.mime)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            startActivity(Intent.createChooser(i, "Buka dengan"));
+        } catch (ActivityNotFoundException e) {
+            pesan("Tidak ada aplikasi untuk membuka berkas ini");
+            bukaFolderUnduhan();
+        }
+    }
+
+    private void bukaFolderUnduhan() {
+        try {
+            startActivity(new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        } catch (ActivityNotFoundException e) {
+            pesan("Buka aplikasi Files lalu cari folder Download/AI Asisten");
+        }
     }
 }

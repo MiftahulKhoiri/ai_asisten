@@ -221,9 +221,14 @@
      jadi diambil dengan fetch lalu disimpan lewat blob (aplikasi Android menangkap klik ini). */
   async function unduhHasil(runId, berkas, tombol) {
     if (!runId) { toast('Hasil belum tersedia.'); return; }
+    const url = '/api/agent/run/' + runId + '/unduh' + (berkas ? '?berkas=' + encodeURIComponent(berkas) : '');
+    const app = window.AiAsistenAndroid;     // aplikasi Android 1.4+: unduh langsung oleh aplikasi
+    if (app && typeof app.unduh === 'function') {
+      try { if (app.unduh(url, TOKEN, berkas ? berkas.split('/').pop() : runId + '.zip')) return; }
+      catch (e) { /* jembatan gagal: pakai cara biasa */ }
+    }
     if (tombol) { if (tombol.disabled) return; tombol.disabled = true; tombol._label = tombol.textContent; tombol.textContent = tombol.classList.contains('x') ? '⏳' : '⏳ Menyiapkan...'; }
     try {
-      const url = '/api/agent/run/' + runId + '/unduh' + (berkas ? '?berkas=' + encodeURIComponent(berkas) : '');
       const r = await api(url);
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + r.status)); }
       const blob = await r.blob();
