@@ -210,6 +210,31 @@
     if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
     return j;
   }
+  function namaDariTajuk(r, cadangan) {   // nama berkas dari Content-Disposition (filename* lebih dulu)
+    const cd = r.headers.get('Content-Disposition') || '';
+    let m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+    if (m) { try { return decodeURIComponent(m[1]); } catch (e) { /* pakai bentuk biasa */ } }
+    m = /filename="([^"]+)"/i.exec(cd);
+    return m ? m[1] : cadangan;
+  }
+  /* Unduh hasil Agent: semua (zip) atau satu berkas. Header Authorization tidak bisa lewat <a href>,
+     jadi diambil dengan fetch lalu disimpan lewat blob (aplikasi Android menangkap klik ini). */
+  async function unduhHasil(runId, berkas, tombol) {
+    if (!runId) { toast('Hasil belum tersedia.'); return; }
+    if (tombol) { if (tombol.disabled) return; tombol.disabled = true; tombol._label = tombol.textContent; tombol.textContent = tombol.classList.contains('x') ? '⏳' : '⏳ Menyiapkan...'; }
+    try {
+      const url = '/api/agent/run/' + runId + '/unduh' + (berkas ? '?berkas=' + encodeURIComponent(berkas) : '');
+      const r = await api(url);
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + r.status)); }
+      const blob = await r.blob();
+      const nama = namaDariTajuk(r, berkas ? berkas.split('/').pop() : runId + '.zip');
+      const a = el('a'); a.href = URL.createObjectURL(blob); a.download = nama;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      toast('Diunduh: ' + nama);
+    } catch (e) { if (e.message !== '401') toast('Unduhan gagal: ' + e.message); }
+    finally { if (tombol) { tombol.disabled = false; tombol.textContent = tombol._label; } }
+  }
 
   /* ---------- layar ---------- */
   function ringkasCfg() {
@@ -421,9 +446,12 @@
         el('span', 'meta', waktuRingkas(r.dibuat) + ' · ' + (LABEL_STATUS[r.status] || r.status || '').replace(/^\S+\s/, '') +
           (r.putaran ? ' · putaran ' + r.putaran + '/' + r.maks : '')));
       b.onclick = () => bukaRun(r.id);
+      const u = el('button', 'x unduh', '⬇'); u.type = 'button'; u.title = 'Unduh hasil (.zip)';
+      u.setAttribute('aria-label', 'Unduh hasil proses ini');
+      u.onclick = () => unduhHasil(r.id, null, u);
       const x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Hapus proses ini');
       x.onclick = () => hapusRun(r);
-      baris.append(b, x); box.appendChild(baris);
+      baris.append(b, u, x); box.appendChild(baris);
     }
   }
   async function hapusRun(r) {
@@ -454,9 +482,9 @@
     masukKerja(true);
     tambahUser(r.tugas || '');
     if (r.spec) kartuRencana(r.spec);
-    for (const b of (r.berkas || [])) kartuBerkas(b.nama, b.isi, false, false);
+    for (const b of (r.berkas || [])) kartuBerkas(b.nama, b.isi, false, false, r.id);
     if (r.laporan) { const st2 = {raw: r.laporan, bubble: tambahAsisten(''), kartuLaporan: null}; isiLaporan(st2); }
-    tambahHasil({status: r.status, teks: LABEL_STATUS[r.status] || r.status, dir: r.dir});
+    tambahHasil({status: r.status, teks: LABEL_STATUS[r.status] || r.status, dir: r.dir, id: r.id, total: r.berkas_total});
     aturLanjut(r.id, r.judul);
     gulir(true);
   }
@@ -580,7 +608,7 @@
     if (spec.catatan) k.appendChild(el('div', 'uji', 'Catatan: ' + spec.catatan));
     $('pesan').appendChild(k); gulir();
   }
-  function kartuBerkas(nama, isi, baru, dipotong) {
+  function kartuBerkas(nama, isi, baru, dipotong, runId) {
     const d = el('details', 'tool berkas'), s = el('summary');
     const baris = isi.replace(/\n$/, '').split('\n').length;
     const rg = el('span', 'rg', nama);
@@ -592,7 +620,13 @@
     const kotak = el('div', 'kode'), salin = el('button', 'salin', 'Salin'); salin.type = 'button';
     const pre = el('pre'); pre.textContent = isi + (dipotong ? '\n...[tampilan dipotong; isi lengkap ada di folder hasil]' : '');
     kotak._teks = isi;
-    kotak.append(salin, pre); d.append(s, kotak); $('pesan').appendChild(d); gulir();
+    kotak.append(salin, pre);
+    if (runId) {
+      const u = el('button', 'unduh-b', '⬇ Unduh'); u.type = 'button'; u.title = 'Unduh berkas ' + nama;
+      u.onclick = () => unduhHasil(runId, nama, u);
+      kotak.appendChild(u);
+    }
+    d.append(s, kotak); $('pesan').appendChild(d); gulir();
   }
   function kartuCek(ev) {
     const d = el('details', 'tool'), s = el('summary');
@@ -633,6 +667,12 @@
     tx.appendChild(el('b', '', t.charAt(0).toUpperCase() + t.slice(1)));
     if (ev.dir) tx.appendChild(el('small', '', ev.dir));
     d.append(el('span', 'hs-ik', IKON_STATUS[ev.status] || '•'), tx);
+    if (ev.id) {
+      const u = el('button', 'hs-unduh', '⬇ Unduh hasil (.zip)'); u.type = 'button';
+      u.title = 'Unduh semua berkas hasil Agent sebagai satu zip';
+      u.onclick = () => unduhHasil(ev.id, null, u);
+      d.appendChild(u);
+    }
     $('pesan').appendChild(d); gulir();
   }
   /* laporan akhir: prosa dari Penjelas (gelembung) + fakta dari sistem (kartu berbaris) */
@@ -818,7 +858,7 @@
     mulaiLog(p.tugas || '', p.lalu || 1);
     tambahInfo(p.aktif ? 'ℹ Tersambung ke proses yang berjalan di server. Halaman ini boleh ditutup lagi.'
                        : 'ℹ Menampilkan ulang proses terakhir dari server.');
-    await pantau(p.sesi, {kartu: null, bubble: null, raw: '', teks: p.tugas || ''});
+    await pantau(p.sesi, {kartu: null, bubble: null, raw: '', teks: p.tugas || '', runId: p.id || null});
   }
   const KATA_AKTIF = {diagnosa: 'memeriksa kode yang ada', rencana: 'menyusun lembar tugas', tulis: 'menulis kode', periksa: 'menilai hasil',
     jelaskan: 'menjelaskan hasil'};
@@ -860,6 +900,7 @@
         for (const m of (ev.masalah || []).slice(0, 3)) catatLog('', m.slice(0, 160), 'sub');
         break;
       case 'mulai':
+        st.runId = ev.id;
         if (ev.model) { susunModel(ev.model); if (panelBuka) gambarModel(); }
         $('infoAlur').textContent = 'Folder kerja: ' + ev.dir;
         catatLog('📁', 'Folder kerja: ' + ev.dir);
@@ -908,7 +949,7 @@
         st.judul = ev.d.judul; tutupKartu(st, 'ok', 'selesai'); kartuRencana(ev.d);
         catatLog('📋', 'Lembar tugas: ' + ev.d.judul + ' (' + (ev.d.berkas || []).length + ' berkas)'); break;
       case 'berkas':
-        kartuBerkas(ev.nama, ev.isi, ev.baru, ev.dipotong);
+        kartuBerkas(ev.nama, ev.isi, ev.baru, ev.dipotong, st.runId);
         catatLog('✏', (ev.baru ? 'Membuat ' : 'Mengubah ') + ev.nama); break;
       case 'cek_mulai':
         setAktif('Pemeriksa memeriksa hasil', '');

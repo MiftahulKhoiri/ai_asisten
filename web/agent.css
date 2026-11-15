@@ -197,7 +197,14 @@ details.berkas .rg small{margin-left:6px;color:var(--redup);font-family:system-u
 /* hasil akhir + izin */
 .agent .hasil{display:flex;align-items:center;gap:12px;align-self:stretch;padding:14px;border-radius:16px;background:var(--panel);border:1px solid var(--garis);box-shadow:var(--bayang)}
 .hasil .hs-ik{flex:none;width:40px;height:40px;display:grid;place-items:center;border-radius:50%;font-size:18px;background:var(--panel2)}
-.hasil .hs-tx{min-width:0}
+.hasil .hs-tx{min-width:0;flex:1}
+.hasil{flex-wrap:wrap}
+.hasil .hs-unduh{flex:none;margin-left:auto;padding:9px 14px;border-radius:999px;border:1px solid var(--aksen);background:color-mix(in srgb,var(--aksen) 14%,transparent);color:var(--aksen);font-weight:600;font-size:13.5px;transition:background .15s ease}
+.hasil .hs-unduh:active{background:color-mix(in srgb,var(--aksen) 28%,transparent)}
+.hasil .hs-unduh:disabled{opacity:.6}
+.agent .kode .unduh-b{position:absolute;top:7px;right:74px;z-index:1;background:var(--panel);border:1px solid var(--garis);border-radius:999px;padding:2px 10px;font-size:12px;color:var(--redup)}
+.agent .kode .unduh-b:active{color:var(--aksen)}
+.baris-run .x.unduh:active{color:var(--aksen);border-color:var(--aksen)}
 .hasil .hs-tx b{display:block;font-size:15px}
 .hasil .hs-tx small{display:block;margin-top:2px;font:11.5px ui-monospace,Menlo,Consolas,monospace;color:var(--redup);word-break:break-all}
 .hasil.lolos{border-color:color-mix(in srgb,var(--ok) 55%,var(--garis))}

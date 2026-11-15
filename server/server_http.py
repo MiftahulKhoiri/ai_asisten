@@ -1,18 +1,21 @@
 """server_http.py - penangan HTTP: rute /api, file statis web, dan proses generasi di thread."""
 
 import hmac
-import io
 import json
+import mimetypes
+import os
 import queue
 import re
 import secrets
+import shutil
+import tempfile
 import threading
 import time
 import traceback
 import zipfile
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 import agen
 import tim
 from . import server_agent as agt
@@ -60,6 +63,12 @@ STATIS = {
     "/unggah.css": ("unggah.css", "text/css; charset=utf-8"),
     "/unggah.js": ("unggah.js", "application/javascript; charset=utf-8"),
 }
+
+
+# Unduh hasil Agent (zip): batas supaya server RAM kecil tetap aman
+UNDUH_MAKS_BYTE = 200_000_000
+UNDUH_MAKS_BERKAS = 5000
+UNDUH_LEWATI = {"__pycache__", ".git", ".venv", "venv", "node_modules", ".mypy_cache", ".pytest_cache"}
 
 
 # Dikirim di SEMUA jawaban: token bisa ada di alamat (?token=), jadi alamat tidak boleh bocor lewat Referer,
@@ -420,44 +429,81 @@ class H(BaseHTTPRequestHandler):
         self._kirim_unduhan((json.dumps(d, ensure_ascii=False, indent=1) + "\n").encode("utf-8"),
                             "application/json; charset=utf-8", pid + ".json")
 
+    @staticmethod
+    def _berkas_hasil(akar):
+        """[(rel, Path)] semua berkas di folder hasil apa adanya (biner juga), tanpa symlink/cache."""
+        hasil = []
+        for d, subs, files in os.walk(str(akar)):          # followlinks=False: folder symlink tidak dimasuki
+            subs[:] = sorted(s for s in subs if s not in UNDUH_LEWATI)
+            for f in sorted(files):
+                p = Path(d) / f
+                if f.endswith((".pyc", ".pyo")) or p.is_symlink() or not p.is_file():
+                    continue
+                hasil.append((p.relative_to(akar).as_posix(), p))
+        return hasil
+
     def agent_unduh(self, run_id):
-        """Unduh hasil sebuah proses Agent: satu berkas (?berkas=nama) atau semuanya sebagai zip."""
-        folder = Path(tim.KERJA) / run_id / "hasil"
-        if not folder.is_dir():
+        """Unduh hasil sebuah proses Agent: satu berkas (?berkas=rel) atau semuanya sebagai zip.
+
+        Berkas dikirim byte-per-byte apa adanya (gambar, data, dsb. tidak rusak). Zip disusun di
+        berkas sementara lalu dialirkan, supaya RAM server kecil tidak habis."""
+        akar = (Path(tim.KERJA) / run_id / "hasil").resolve()
+        if not akar.is_dir():
             return self._json(404, {"error": "Hasil tidak ditemukan"})
-        berkas = tim.baca_proyek(folder, tim.MAKS_BACA)
         nama = (parse_qs(urlparse(self.path).query).get("berkas") or [""])[0]
         if nama:
-            try:
-                nama = tim.aman_nama(nama)
-            except ValueError:
+            p = (akar / nama).resolve()
+            if akar not in p.parents or (akar / nama).is_symlink():
                 return self._json(400, {"error": "Nama berkas tidak valid"})
-            isi = dict(berkas).get(nama)
-            if isi is None:
+            if not p.is_file():
                 return self._json(404, {"error": "Berkas tidak ditemukan"})
-            return self._kirim_unduhan(isi.encode("utf-8"), "text/plain; charset=utf-8", nama.replace("/", "_"))
+            tipe = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
+            if tipe.startswith("text/") or tipe in ("application/json", "application/javascript"):
+                tipe += "; charset=utf-8"
+            with open(p, "rb") as f:
+                return self._kirim_aliran(f, p.stat().st_size, tipe, p.name)
+        berkas = self._berkas_hasil(akar)
         if not berkas:
-            return self._json(404, {"error": "Hasil kosong"})
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-            for rel, isi in berkas:
-                z.writestr(rel, isi)
+            return self._json(404, {"error": "Hasil kosong: Agent belum menulis berkas apa pun"})
+        if len(berkas) > UNDUH_MAKS_BERKAS:
+            return self._json(413, {"error": "Terlalu banyak berkas (%d, maks %d)" % (len(berkas), UNDUH_MAKS_BERKAS)})
+        if sum(p.stat().st_size for _, p in berkas) > UNDUH_MAKS_BYTE:
+            return self._json(413, {"error": "Hasil terlalu besar (maks %d MB)" % (UNDUH_MAKS_BYTE // 1_000_000)})
         judul = ""
         try:
             judul = tim.baca_run(run_id).get("judul") or ""
         except (FileNotFoundError, OSError, ValueError):
             pass
         slug = re.sub(r"[^A-Za-z0-9_-]+", "-", judul).strip("-")[:40] or run_id
-        self._kirim_unduhan(buf.getvalue(), "application/zip", slug + ".zip")
+        with tempfile.TemporaryFile() as tmp:
+            with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED, strict_timestamps=False) as z:
+                for rel, p in berkas:
+                    z.write(p, slug + "/" + rel)        # satu folder induk: unzip tidak berserakan
+            ukuran = tmp.tell()
+            tmp.seek(0)
+            lg.log("INFO", f"Hasil Agent diunduh: {run_id} ({len(berkas)} berkas, {ukuran // 1024} KB)")
+            self._kirim_aliran(tmp, ukuran, "application/zip", slug + ".zip")
+
+    def _tajuk_unduhan(self, tipe, ukuran, nama):
+        aman = re.sub(r'[^A-Za-z0-9._-]+', "_", nama).strip("_") or "unduhan"
+        self.send_response(200)
+        self.send_header("Content-Type", tipe)
+        self.send_header("Content-Length", str(ukuran))
+        self.send_header("Content-Disposition",
+                         "attachment; filename=\"%s\"; filename*=UTF-8''%s" % (aman, quote(nama, safe="")))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def _kirim_aliran(self, f, ukuran, tipe, nama):
+        try:
+            self._tajuk_unduhan(tipe, ukuran, nama)
+            shutil.copyfileobj(f, self.wfile, 256 * 1024)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
 
     def _kirim_unduhan(self, data, tipe, nama):
         try:
-            self.send_response(200)
-            self.send_header("Content-Type", tipe)
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Content-Disposition", 'attachment; filename="%s"' % nama)
-            self.send_header("Cache-Control", "no-store")
-            self.end_headers()
+            self._tajuk_unduhan(tipe, len(data), nama)
             self.wfile.write(data)
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
