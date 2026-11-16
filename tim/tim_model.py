@@ -128,7 +128,8 @@ class Pemuat:
         """Jaring pengaman (tanpa event): dipanggil di 'finally'."""
         for nama in list(self.milik):
             try:
-                if self.milik.pop(nama):
+                if self.milik.get(nama, False):
                     bongkar(nama)
-            except Exception:  # noqa: BLE001
+                    self.milik.pop(nama, None)
+            except Exception:  # noqa: BLE001 - pertahankan catatan agar bongkar_sisa() bisa mencoba lagi
                 pass

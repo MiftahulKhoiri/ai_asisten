@@ -1272,5 +1272,22 @@ class TestPemuatRetry(unittest.TestCase):
             self.assertNotIn("model-A", pemuat.milik)
 
 
+
+    def test_gagal_dua_kali_tetap_dicatat_untuk_pembersihan_saat_shutdown(self):
+        ctx = mock.Mock()
+        pemuat = tim_model.Pemuat(ctx, bongkar_tiap=True)
+        pemuat.milik["model-B"] = True
+
+        with mock.patch.object(tim_model, "bongkar",
+                               side_effect=[RuntimeError("gagal pertama"), RuntimeError("gagal kedua")]):
+            gen = pemuat.lepas("model-B")
+            next(gen)
+            with self.assertRaisesRegex(RuntimeError, "gagal pertama"):
+                next(gen)
+            pemuat.lepas_diam()
+
+        # Jangan menghapus jejak kepemilikan bila percobaan pembersihan terakhir juga gagal.
+        self.assertTrue(pemuat.milik["model-B"])
+
 if __name__ == "__main__":
     unittest.main()
