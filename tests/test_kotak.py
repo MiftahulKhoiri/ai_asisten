@@ -51,6 +51,20 @@ class TestEnvironment(DasarKotak):
         self.assertFalse(Path(out.strip()).exists())            # file tmpfs tidak terlihat di host
         self.assertNotEqual(out.strip(), str(Path.home()))
 
+    def test_tidak_bisa_membaca_file_host_di_luar_folder_hasil(self):
+        rahasia = self.dir.parent / (self.dir.name + "-rahasia.txt")
+        rahasia.write_text("RAHASIA_HOST", encoding="utf-8")
+        self.addCleanup(lambda: rahasia.unlink(missing_ok=True))
+        kode, out = self.jalan("""
+            from pathlib import Path
+            try:
+                print(Path(%r).read_text())
+            except OSError:
+                print("AKSES_DITOLAK")
+            """ % str(rahasia))
+        self.assertEqual(kode, 0, out)
+        self.assertEqual(out, "AKSES_DITOLAK")
+
     def test_berjalan_di_folder_hasil(self):
         (self.dir / "data.txt").write_text("isi-data", encoding="utf-8")
         kode, out = self.jalan("print(open('data.txt').read())")
