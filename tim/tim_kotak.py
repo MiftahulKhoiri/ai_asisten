@@ -90,6 +90,8 @@ def argumen_isolasi(cmd, cwd):
     if os.path.isdir("/etc/pki/tls/certs"):
         args += ["--dir", "/etc/pki", "--dir", "/etc/pki/tls",
                  "--ro-bind", "/etc/pki/tls/certs", "/etc/pki/tls/certs"]
+    if os.path.isdir("/etc/alternatives"):
+        args += ["--ro-bind", "/etc/alternatives", "/etc/alternatives"]
     if os.path.isfile("/etc/ld.so.cache"):
         args += ["--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache"]
 
