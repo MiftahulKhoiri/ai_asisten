@@ -1250,5 +1250,44 @@ class TestAsapJs(DasarAgent):
         self.assertIn("Tersambung ke proses yang berjalan", " ".join(d3["info"]))
 
 
+
+class TestPemuatRetry(unittest.TestCase):
+    def test_gagal_bongkar_tetap_dilacak_dan_dicoba_ulang(self):
+        ctx = mock.Mock()
+        pemuat = tim_model.Pemuat(ctx, bongkar_tiap=True)
+        pemuat.milik["model-A"] = True
+
+        with mock.patch.object(tim_model, "bongkar",
+                               side_effect=[RuntimeError("server sementara gagal"), None]) as lepas:
+            gen = pemuat.lepas("model-A")
+            self.assertEqual(next(gen), {"t": "bongkar_mulai", "model": "model-A"})
+            with self.assertRaisesRegex(RuntimeError, "sementara gagal"):
+                next(gen)
+
+            # Kepemilikan tidak hilang saat bongkar pertama gagal.
+            self.assertTrue(pemuat.milik["model-A"])
+            pemuat.lepas_diam()
+
+            self.assertEqual(lepas.call_count, 2)
+            self.assertNotIn("model-A", pemuat.milik)
+
+
+
+    def test_gagal_dua_kali_tetap_dicatat_untuk_pembersihan_saat_shutdown(self):
+        ctx = mock.Mock()
+        pemuat = tim_model.Pemuat(ctx, bongkar_tiap=True)
+        pemuat.milik["model-B"] = True
+
+        with mock.patch.object(tim_model, "bongkar",
+                               side_effect=[RuntimeError("gagal pertama"), RuntimeError("gagal kedua")]):
+            gen = pemuat.lepas("model-B")
+            next(gen)
+            with self.assertRaisesRegex(RuntimeError, "gagal pertama"):
+                next(gen)
+            pemuat.lepas_diam()
+
+        # Jangan menghapus jejak kepemilikan bila percobaan pembersihan terakhir juga gagal.
+        self.assertTrue(pemuat.milik["model-B"])
+
 if __name__ == "__main__":
     unittest.main()
