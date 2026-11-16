@@ -224,12 +224,12 @@ def jalankan_terkurung(cmd, cwd, timeout):
             data = f.read()
         teks = data.decode("utf-8", "replace").strip()
         if ukuran > maks:
-            teks = "...[keluaran dipotong, %d KB awal dibuang]\\n%s" % ((ukuran - maks) // 1000, teks)
+            teks = "...[keluaran dipotong, %d KB awal dibuang]\n%s" % ((ukuran - maks) // 1000, teks)
         petunjuk = _petunjuk(kode)
         if not petunjuk and ukuran >= FSIZE_MB * 1_000_000:
             petunjuk = _petunjuk(-25)
         if petunjuk:
-            teks = (teks + "\\n[" + petunjuk + "]").strip()
+            teks = (teks + "\n[" + petunjuk + "]").strip()
         return kode, teks
     finally:
         shutil.rmtree(rumah, ignore_errors=True)
