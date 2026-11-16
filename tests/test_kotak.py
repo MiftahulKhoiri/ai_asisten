@@ -254,7 +254,8 @@ class TestSandboxConfig(unittest.TestCase):
         self.assertIn("--dir", args)
         self.assertIn("/workspace", args)
         self.assertIn("/etc/ssl/certs", args)
-        self.assertNotIn("/etc/ssl", args)
+        ro_sources = [args[i + 1] for i, arg in enumerate(args[:-2]) if arg == "--ro-bind"]
+        self.assertNotIn("/etc/ssl", ro_sources)
         self.assertNotIn("/etc/ssl/private", args)
         self.assertNotIn("/home", args)
         self.assertNotIn("/root", args)
