@@ -1,5 +1,6 @@
 """Tes kotak uji (tim/tim_kotak.py): environment bersih, batas sumber daya, jaringan, keluaran."""
 import os
+import shutil
 import sys
 import tempfile
 import textwrap
@@ -25,6 +26,7 @@ class DasarKotak(unittest.TestCase):
             return tim_kotak.jalankan_terkurung([sys.executable, "p.py"], str(self.dir), timeout)
 
 
+@unittest.skipUnless(shutil.which("bwrap"), "bubblewrap tidak tersedia; uji integrasi sandbox dilewati")
 class TestEnvironment(DasarKotak):
     def test_rahasia_dari_proses_server_tidak_terbawa(self):
         kode, out = self.jalan("""
@@ -42,12 +44,26 @@ class TestEnvironment(DasarKotak):
             import os
             h = os.environ["HOME"]
             open(os.path.join(h, "coba.txt"), "w").write("x")
-            print(h)
+            print(os.path.join(h, "coba.txt"))
             """)
         self.assertEqual(kode, 0)
         self.assertTrue(out.strip().startswith(tempfile.gettempdir()))
-        self.assertFalse(Path(out.strip()).exists())            # folder sementara sudah dibersihkan
+        self.assertFalse(Path(out.strip()).exists())            # file tmpfs tidak terlihat di host
         self.assertNotEqual(out.strip(), str(Path.home()))
+
+    def test_tidak_bisa_membaca_file_host_di_luar_folder_hasil(self):
+        rahasia = self.dir.parent / (self.dir.name + "-rahasia.txt")
+        rahasia.write_text("RAHASIA_HOST", encoding="utf-8")
+        self.addCleanup(lambda: rahasia.unlink(missing_ok=True))
+        kode, out = self.jalan("""
+            from pathlib import Path
+            try:
+                print(Path(%r).read_text())
+            except OSError:
+                print("AKSES_DITOLAK")
+            """ % str(rahasia))
+        self.assertEqual(kode, 0, out)
+        self.assertEqual(out, "AKSES_DITOLAK")
 
     def test_berjalan_di_folder_hasil(self):
         (self.dir / "data.txt").write_text("isi-data", encoding="utf-8")
@@ -60,6 +76,7 @@ class TestEnvironment(DasarKotak):
         self.assertIn("tidak ditemukan", out)
 
 
+@unittest.skipUnless(shutil.which("bwrap"), "bubblewrap tidak tersedia; uji integrasi sandbox dilewati")
 class TestBatas(DasarKotak):
     def test_batas_memori(self):
         kode, out = self.jalan("""
@@ -161,31 +178,33 @@ class TestBatas(DasarKotak):
         self.assertLess(len(out), 12_000)                  # RAM server aman: hanya ekor yang dibaca
         self.assertIn("dihentikan sistem", out[-200:])
 
+@unittest.skipUnless(shutil.which("bwrap"), "bubblewrap tidak tersedia; uji integrasi sandbox dilewati")
 class TestJaringan(DasarKotak):
     KODE = """
         print("NET=" + ",".join(sorted(l.split(":")[0].strip() for l in open("/proc/net/dev").read().splitlines()[2:])))
         """
 
-    @unittest.skipUnless(tim_kotak.jaringan_bisa_diputus(), "unshare -rn tidak tersedia di sistem ini")
     def test_jaringan_diputus_secara_bawaan(self):
         kode, out = self.jalan(self.KODE)
         self.assertEqual(kode, 0)
         self.assertEqual(out.strip(), "NET=lo")             # hanya loopback di namespace kosong
 
-    @unittest.skipUnless(tim_kotak.jaringan_bisa_diputus(), "unshare -rn tidak tersedia di sistem ini")
     def test_jaringan_boleh_lewat_pengaturan(self):
         asli = set(l.split(":")[0].strip() for l in open("/proc/net/dev").read().splitlines()[2:])
         kode, out = self.jalan(self.KODE, env={"ASISTEN_UJI_JARINGAN": "boleh"})
         self.assertEqual(kode, 0)
         self.assertEqual(set(out.strip()[4:].split(",")), asli)
 
-    def test_tanpa_unshare_tetap_jalan_dan_dicatat(self):
-        with mock.patch.object(tim_kotak, "jaringan_bisa_diputus", return_value=False):
-            kode, out = self.jalan("print('tetap-jalan')")
-            self.assertEqual((kode, out), (0, "tetap-jalan"))
-            self.assertIn("TIDAK diputus", tim_kotak.ringkas_isolasi(["python3", "x.py"]))
+    def test_tanpa_bwrap_gagal_tertutup(self):
+        asli = shutil.which
+        with mock.patch.object(tim_kotak.shutil, "which",
+                               side_effect=lambda nama: None if nama == "bwrap" else asli(nama)):
+            kode, out = tim_kotak.jalankan_terkurung([sys.executable, "p.py"], str(self.dir), 5)
+        self.assertEqual(kode, 126)
+        self.assertIn("UJI DITOLAK", out)
 
 
+@unittest.skipUnless(shutil.which("bwrap"), "bubblewrap tidak tersedia; uji integrasi sandbox dilewati")
 class TestCekJalan(DasarKotak):
     def spec(self):
         return {"jalankan": ["python3", "main.py"], "harapan": []}
@@ -212,6 +231,49 @@ class TestCekJalan(DasarKotak):
             _, baris, out = tim_cek.cek_jalan(self.dir, self.spec(), True)
         self.assertEqual(out, "None")
         self.assertNotIn("kunci-rahasia", "\n".join(baris))
+
+
+class TestSandboxFailClosed(unittest.TestCase):
+    def test_bwrap_tidak_ada_maka_program_tidak_dijalankan(self):
+        asli = shutil.which
+        with mock.patch.object(tim_kotak.shutil, "which",
+                               side_effect=lambda nama: None if nama == "bwrap" else asli(nama)), \\
+             mock.patch.object(tim_kotak.subprocess, "Popen") as proses:
+            kode, out = tim_kotak.jalankan_terkurung([sys.executable, "-c", "print('JALAN')"], ".", 2)
+        self.assertEqual(kode, 126)
+        self.assertIn("UJI DITOLAK", out)
+        self.assertNotIn("JALAN", out)
+        proses.assert_not_called()
+
+    def test_environment_hanya_mengandung_variabel_yang_diizinkan(self):
+        with mock.patch.dict(os.environ, {"LLAMA_API_KEY": "rahasia", "TOKEN": "rahasia"}, clear=True):
+            env = tim_kotak.env_bersih("/tmp/uji")
+        self.assertEqual(set(env), {"PATH", "LANG", "HOME", "TMPDIR",
+                                    "PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED"})
+        self.assertNotIn("rahasia", repr(env))
+
+
+class TestSandboxConfig(unittest.TestCase):
+    def test_mount_tidak_menyertakan_home_root_atau_ssl_private(self):
+        with tempfile.TemporaryDirectory() as folder, \\
+             mock.patch.object(tim_kotak.shutil, "which", return_value="/usr/bin/bwrap"), \\
+             mock.patch.object(tim_kotak.os.path, "islink", return_value=False), \\
+             mock.patch.object(tim_kotak.os.path, "isdir",
+                               side_effect=lambda p: p in ("/usr", "/etc/ssl/certs", folder)), \\
+             mock.patch.object(tim_kotak.os.path, "isfile", return_value=False):
+            args = tim_kotak.argumen_isolasi(["python3", "main.py"], folder)
+        self.assertIn("--unshare-user", args)
+        self.assertIn("--unshare-pid", args)
+        self.assertIn("--unshare-net", args)
+        self.assertIn("--dir", args)
+        self.assertIn("/workspace", args)
+        self.assertIn("/etc/ssl/certs", args)
+        ro_sources = [args[i + 1] for i, arg in enumerate(args[:-2]) if arg == "--ro-bind"]
+        self.assertNotIn("/etc/ssl", ro_sources)
+        self.assertNotIn("/etc/ssl/private", args)
+        self.assertNotIn("/home", args)
+        self.assertNotIn("/root", args)
+        self.assertNotIn("/", args)
 
 
 if __name__ == "__main__":

@@ -1,24 +1,18 @@
-"""Kotak uji: menjalankan program buatan model dengan pembatasan.
+"""Kotak uji: menjalankan program buatan model dalam sandbox OS.
 
-Program hasil model bukan kode tepercaya. Pemeriksa menjalankannya dengan:
-  - environment BERSIH (tanpa LLAMA_API_KEY, token, atau variabel rahasia lain dari proses server);
-    HOME dan TMPDIR menunjuk ke folder sementara yang dihapus sesudahnya;
-  - batas memori (RLIMIT_AS), waktu CPU, ukuran berkas yang ditulis, jumlah berkas terbuka, dan
-    jumlah proses baru (menahan fork bomb);
-  - jaringan diputus (namespace jaringan kosong lewat `unshare -rn`) bila sistemnya mendukung;
-  - keluaran ditulis ke berkas sementara dan hanya ekornya yang dibaca, jadi program yang
-    mencetak tanpa henti tidak menghabiskan RAM server (penting di perangkat RAM 1 GB).
+Eksekusi hanya diizinkan bila bubblewrap (bwrap) tersedia. Sandbox memakai namespace
+user/PID/IPC/UTS/jaringan, filesystem minimal read-only untuk runtime, dan hanya folder
+hasil proyek yang dapat ditulis. HOME/TMPDIR berada di tmpfs. Jika bwrap tidak tersedia
+atau namespace ditolak kernel, eksekusi GAGAL TERTUTUP (tidak ada fallback tanpa isolasi).
 
-Pembatasan dipasang oleh peluncur kecil (interpreter baru yang memasang batas lalu `exec`), bukan
-`preexec_fn`, karena server ini memakai banyak thread dan `preexec_fn` tidak aman di sana.
+Batas tambahan: RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NOFILE, RLIMIT_NPROC dan RLIMIT_AS
+(untuk selain Node.js). Node.js memakai --max-old-space-size; ini batas heap, bukan
+batas RSS/cgroup yang keras. Untuk batas memori keras lintas runtime, jalankan layanan
+di container/cgroup dengan MemoryMax.
 
-Ini pengurungan dasar, bukan sandbox penuh. Yang tidak dicegah: membaca berkas milik pengguna yang
-sama lewat jalur absolut (mis. ~/.token). Untuk itu tetap nyalakan "uji jalan" hanya untuk tugas
-yang kamu percaya.
-
-Pengaturan (variabel lingkungan, semuanya opsional):
-  ASISTEN_UJI_RAM_MB     batas memori program uji, MB (bawaan 512; 0 = tanpa batas)
-  ASISTEN_UJI_JARINGAN   "putus" (bawaan) atau "boleh"
+Pengaturan:
+  ASISTEN_UJI_RAM_MB       batas memori/heap, MB (bawaan 512; 0 = tanpa batas tambahan)
+  ASISTEN_UJI_JARINGAN     "putus" (bawaan) atau "boleh" (berbagi jaringan secara eksplisit)
   ASISTEN_UJI_KELUARAN_KB  keluaran yang dibaca kembali, KB (bawaan 200)
 """
 import json
@@ -60,26 +54,82 @@ def batas_ram_mb():
     return _int_env("ASISTEN_UJI_RAM_MB", RAM_MB_BAWAAN)
 
 
-def jaringan_bisa_diputus():
-    """True bila `unshare -rn` berfungsi di sistem ini (hasilnya di-cache)."""
-    global _JARINGAN_BISA
-    if _JARINGAN_BISA is None:
-        ok = False
-        if shutil.which("unshare"):
-            try:
-                ok = subprocess.run(["unshare", "-rn", "true"], stdin=subprocess.DEVNULL,
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                    timeout=5).returncode == 0
-            except (OSError, subprocess.SubprocessError):
-                ok = False
-        _JARINGAN_BISA = ok
-    return _JARINGAN_BISA
+def bwrap_tersedia():
+    """Apakah bubblewrap tersedia? Tanpa bwrap, program tidak boleh dijalankan."""
+    return shutil.which("bwrap") is not None
 
 
-def _putus_jaringan():
-    return os.environ.get("ASISTEN_UJI_JARINGAN", "putus").strip().lower() != "boleh" \
-        and jaringan_bisa_diputus()
+def argumen_isolasi(cmd, cwd):
+    """Bangun perintah bubblewrap; folder proyek adalah satu-satunya mount tulis.
 
+    Tidak me-mount /home, /root, /run, /var, atau root filesystem host. Runtime
+    sistem dipasang read-only. Namespace jaringan diputus secara default.
+    """
+    bwrap = shutil.which("bwrap")
+    if not bwrap:
+        raise FileNotFoundError("bubblewrap (bwrap) tidak terpasang; uji jalan ditolak demi keamanan")
+
+    # User namespace wajib (bukan --unshare-user-try): jika kernel menolaknya,
+    # bubblewrap harus gagal, bukan melanjutkan tanpa batas filesystem.
+    args = [bwrap, "--unshare-user", "--unshare-ipc", "--unshare-pid",
+            "--unshare-net", "--unshare-uts", "--unshare-cgroup-try",
+            "--die-with-parent", "--new-session", "--cap-drop", "ALL",
+            "--ro-bind", "/usr", "/usr", "--dir", "/etc"]
+
+    # FHS berbeda antar distro: direktori ini bisa berupa symlink ke /usr atau
+    # direktori nyata. Pertahankan bentuknya agar executable dan dynamic loader ditemukan.
+    for path in ("/bin", "/sbin", "/lib", "/lib64"):
+        if os.path.islink(path):
+            args += ["--symlink", os.readlink(path), path]
+        elif os.path.isdir(path):
+            args += ["--ro-bind", path, path]
+
+    # Hanya sertifikat publik; jangan mount /etc/ssl/private yang dapat berisi private key.
+    if os.path.isdir("/etc/ssl/certs"):
+        args += ["--dir", "/etc/ssl", "--ro-bind", "/etc/ssl/certs", "/etc/ssl/certs"]
+    if os.path.isdir("/etc/pki/tls/certs"):
+        args += ["--dir", "/etc/pki", "--dir", "/etc/pki/tls",
+                 "--ro-bind", "/etc/pki/tls/certs", "/etc/pki/tls/certs"]
+    if os.path.isdir("/etc/alternatives"):
+        args += ["--ro-bind", "/etc/alternatives", "/etc/alternatives"]
+    if os.path.isfile("/etc/ld.so.cache"):
+        args += ["--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache"]
+
+    if os.environ.get("ASISTEN_UJI_JARINGAN", "putus").strip().lower() == "boleh":
+        args += ["--share-net"]
+
+    hasil = str(Path(cwd).resolve(strict=True))
+    if not os.path.isdir(hasil):
+        raise ValueError("folder hasil proyek bukan direktori")
+    args += ["--dir", "/workspace", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+             "--dir", "/tmp/home", "--bind", hasil, "/workspace", "--chdir", "/workspace",
+             "--clearenv", "--setenv", "HOME", "/tmp/home",
+             "--setenv", "TMPDIR", "/tmp",
+             "--setenv", "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+             "--setenv", "LANG", "C.UTF-8",
+             "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
+             "--setenv", "PYTHONUNBUFFERED", "1",
+             "--"]
+    return args
+
+
+def ringkas_isolasi(cmd, kode=None):
+    """Ringkasan isolasi; jelaskan bila sandbox bahkan tidak berhasil dimulai."""
+    if kode == 126:
+        return "uji jalan ditolak: bubblewrap tidak tersedia atau folder hasil tidak dapat disiapkan"
+    bagian = ["bubblewrap: filesystem runtime read-only, folder hasil saja yang dapat ditulis",
+              "namespace user/proses terisolasi"]
+    if os.environ.get("ASISTEN_UJI_JARINGAN", "putus").strip().lower() == "boleh":
+        bagian.append("jaringan diizinkan oleh pengaturan")
+    else:
+        bagian.append("namespace jaringan diputus")
+    ram = batas_ram_mb()
+    if ram:
+        bagian.append("RAM maks %d MB" % ram if not _node(cmd)
+                      else "heap Node.js maks %d MB (bukan batas RSS keras)" % ram)
+    else:
+        bagian.append("batas RAM tambahan dimatikan")
+    return ", ".join(bagian)
 
 def _node(cmd):
     return os.path.basename(cmd[0]) in ("node", "nodejs")
@@ -118,23 +168,10 @@ def batas_rlimit(cmd, timeout):
 
 
 def env_bersih(rumah):
-    """Environment minimal untuk program uji. Tidak mewarisi apa pun dari proses server selain PATH."""
-    return {"PATH": os.environ.get("PATH") or "/usr/local/bin:/usr/bin:/bin",
+    """Environment minimum; rahasia proses server tidak diwariskan ke child."""
+    return {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "LANG": "C.UTF-8", "HOME": str(rumah), "TMPDIR": str(rumah),
             "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1"}
-
-
-def ringkas_isolasi(cmd):
-    """Satu kalimat tentang pengurungan yang berlaku, untuk dicatat di hasil pemeriksaan."""
-    bagian = ["environment bersih"]
-    ram = batas_ram_mb()
-    bagian.append("RAM maks %d MB" % ram if ram and not _node(cmd)
-                  else ("RAM tanpa batas (node)" if ram else "RAM tanpa batas"))
-    bagian.append("jaringan diputus" if _putus_jaringan() else
-                  "jaringan TIDAK diputus (%s)" % (
-                      "diatur boleh" if os.environ.get("ASISTEN_UJI_JARINGAN", "").strip().lower() == "boleh"
-                      else "unshare tidak tersedia"))
-    return ", ".join(bagian)
 
 
 def _petunjuk(kode):
@@ -144,26 +181,36 @@ def _petunjuk(kode):
 
 
 def jalankan_terkurung(cmd, cwd, timeout):
-    """Jalankan `cmd` (list) terkurung. Kembalian (kode, keluaran) seperti src.util._run:
-    kode None = melebihi batas waktu; 127 = perintah tidak ada."""
+    """Jalankan perintah hanya di bubblewrap. kode 126 berarti sandbox tidak tersedia."""
     if not cmd:
         return 127, "perintah kosong"
     if os.sep not in cmd[0] and not shutil.which(cmd[0]):
         return 127, "perintah tidak ditemukan: %s" % cmd[0]
+
+    try:
+        dasar = [sys.executable or "python3", "-I", "-c", _PELUNCUR,
+                 json.dumps(batas_rlimit(cmd, timeout))]
+        dasar += argumen_isolasi(cmd, cwd)
+    except (FileNotFoundError, OSError, ValueError) as e:
+        return 126, "UJI DITOLAK: %s" % e
+
+    # Node V8 memakai ruang alamat besar sehingga RLIMIT_AS tidak aman untuknya.
+    # Batas ini mengendalikan heap JS, bukan seluruh RSS/native memory.
+    perintah = list(cmd)
+    if _node(perintah) and batas_ram_mb():
+        perintah.insert(1, "--max-old-space-size=%d" % batas_ram_mb())
+
     rumah = tempfile.mkdtemp(prefix="uji_")
     try:
         keluar_path = Path(rumah) / ".keluaran"
-        dasar = [sys.executable or "python3", "-I", "-c", _PELUNCUR,
-                 json.dumps(batas_rlimit(cmd, timeout))]
-        if _putus_jaringan():
-            dasar += ["unshare", "-rn", "--"]
         with open(keluar_path, "wb") as f:
             try:
-                p = subprocess.Popen(dasar + list(cmd), stdin=subprocess.DEVNULL, stdout=f,
-                                     stderr=subprocess.STDOUT, cwd=cwd, env=env_bersih(rumah),
+                p = subprocess.Popen(dasar + perintah, stdin=subprocess.DEVNULL,
+                                     stdout=f, stderr=subprocess.STDOUT,
+                                     cwd=str(Path(cwd).resolve()), env=env_bersih(rumah),
                                      start_new_session=True)
-            except FileNotFoundError:
-                return 127, "perintah tidak ditemukan: %s" % cmd[0]
+            except FileNotFoundError as e:
+                return 127, "perintah sandbox tidak ditemukan: %s" % e
             try:
                 kode = p.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
@@ -184,7 +231,6 @@ def jalankan_terkurung(cmd, cwd, timeout):
             teks = "...[keluaran dipotong, %d KB awal dibuang]\n%s" % ((ukuran - maks) // 1000, teks)
         petunjuk = _petunjuk(kode)
         if not petunjuk and ukuran >= FSIZE_MB * 1_000_000:
-            # Python mengabaikan SIGXFSZ: program hanya melihat OSError saat menulis, lalu berhenti
             petunjuk = _petunjuk(-25)
         if petunjuk:
             teks = (teks + "\n[" + petunjuk + "]").strip()

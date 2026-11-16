@@ -74,6 +74,7 @@ isi alamatnya, atau nyalakan `./llama_server.sh`, lalu muat ulang daftar model.
 | `build-essential`, `cmake`, `libcurl4-openssl-dev` | Hanya saat membangun llama.cpp | |
 | `iproute2` (`ip`, `ss`), `procps` (`ps`), `diffutils` (`diff`), `systemd` (`systemctl`, `journalctl`) | Bawaan Raspberry Pi OS | dipakai tool `info_sistem` dan `bandingkan_file` |
 | `vcgencmd` | Opsional, hanya ada di Raspberry Pi | membaca status *throttling* (pembatasan kecepatan karena panas/daya) di `info_sistem` |
+| `bubblewrap` (`bwrap`) | Wajib untuk uji jalan Agent | sandbox filesystem dan namespace; tanpa ini program Agent tidak dijalankan |
 | `node` (Node.js) | Opsional | hanya untuk pemeriksaan sintaks JS saat pengujian |
 
 ## Instalasi dari nol
@@ -84,7 +85,7 @@ Semua perintah dijalankan di terminal Raspberry Pi (lewat SSH juga boleh).
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 build-essential cmake libcurl4-openssl-dev wget
+sudo apt install -y git python3 bubblewrap build-essential cmake libcurl4-openssl-dev wget
 python3 --version        # pastikan 3.9 atau lebih baru
 ```
 
@@ -804,6 +805,25 @@ dibongkar saat selesai (bila "Bongkar model tiap tahap" aktif).
 | **Perencana** (Model 1) | menerima perintah, menyusun lembar tugas `tugas.json` + `tugas.md`, lalu menjelaskan hasil akhir kepada kamu |
 | **Pelaksana** (Model 2) | membaca lembar tugas dan **hanya menulis** program ke folder `hasil/` (tidak menjalankan apa pun) |
 | **Pemeriksa** | menerima hasil Pelaksana langsung, **menjalankan** programnya, lalu **menentukan benar/salah**: dinyatakan jadi (selesai) atau memberi koreksi yang dikirim ke Pelaksana |
+
+### Isolasi uji jalan
+
+Saat izin **uji jalan** diaktifkan, program hasil model hanya dijalankan melalui
+`bubblewrap` (`bwrap`). Folder `hasil/` menjadi satu-satunya folder host yang dapat
+ditulis; runtime sistem dipasang hanya-baca; folder rumah, kunci, konfigurasi, dan
+direktori host lain tidak dipasang ke sandbox. Proses mendapat namespace user/PID/IPC/UTS
+terpisah dan jaringan diputus secara bawaan. Jaringan hanya dibagikan bila
+`ASISTEN_UJI_JARINGAN=boleh` diatur secara eksplisit.
+
+Jika `bwrap` tidak terpasang atau kernel menolak namespace user, uji jalan **ditolak**
+(tidak ada fallback menjalankan kode tanpa isolasi). Pasang di Debian/Raspberry Pi OS:
+`sudo apt install bubblewrap`.
+
+Batas RAM Python memakai `RLIMIT_AS`. Untuk Node.js, `--max-old-space-size` membatasi
+heap JavaScript tetapi bukan seluruh RSS/native memory; batas memori keras untuk semua
+runtime tetap memerlukan cgroup/container dengan `MemoryMax`. Bubblewrap memperkecil
+akses filesystem dan namespace, tetapi bukan pengganti patch keamanan kernel atau
+menjalankan agent di mesin terpisah bila kode sangat tidak tepercaya.
 
 ### Prompt tiap peran (tombol "+ prompt")
 

@@ -6,16 +6,24 @@ on:
 
 jobs:
   unittest:
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.11", "3.13"]
+        include:
+          - python-version: "3.9"
+            os: ubuntu-22.04
+          - python-version: "3.11"
+            os: ubuntu-latest
+          - python-version: "3.13"
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Pasang bubblewrap untuk uji sandbox Agent
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap
       - name: Periksa sintaks skrip
         run: |
           bash -n start.sh
