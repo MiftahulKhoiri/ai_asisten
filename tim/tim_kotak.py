@@ -100,8 +100,8 @@ def argumen_isolasi(cmd, cwd):
     if not os.path.isdir(hasil):
         raise ValueError("folder hasil proyek bukan direktori")
     args += ["--dir", "/workspace", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
-             "--bind", hasil, "/workspace", "--chdir", "/workspace",
-             "--clearenv", "--setenv", "HOME", "/tmp",
+             "--dir", "/tmp/home", "--bind", hasil, "/workspace", "--chdir", "/workspace",
+             "--clearenv", "--setenv", "HOME", "/tmp/home",
              "--setenv", "TMPDIR", "/tmp",
              "--setenv", "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
              "--setenv", "LANG", "C.UTF-8",
