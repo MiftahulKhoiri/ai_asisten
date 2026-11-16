@@ -219,5 +219,45 @@ class TestCekJalan(DasarKotak):
         self.assertNotIn("kunci-rahasia", "\n".join(baris))
 
 
+class TestSandboxFailClosed(unittest.TestCase):
+    def test_bwrap_tidak_ada_maka_program_tidak_dijalankan(self):
+        asli = shutil.which
+        with mock.patch.object(tim_kotak.shutil, "which",
+                               side_effect=lambda nama: None if nama == "bwrap" else asli(nama)), \\
+             mock.patch.object(tim_kotak.subprocess, "Popen") as proses:
+            kode, out = tim_kotak.jalankan_terkurung([sys.executable, "-c", "print('JALAN')"], ".", 2)
+        self.assertEqual(kode, 126)
+        self.assertIn("UJI DITOLAK", out)
+        self.assertNotIn("JALAN", out)
+        proses.assert_not_called()
+
+    def test_environment_hanya_mengandung_variabel_yang_diizinkan(self):
+        with mock.patch.dict(os.environ, {"LLAMA_API_KEY": "rahasia", "TOKEN": "rahasia"}, clear=True):
+            env = tim_kotak.env_bersih("/tmp/uji")
+        self.assertEqual(set(env), {"PATH", "LANG", "HOME", "TMPDIR",
+                                    "PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED"})
+        self.assertNotIn("rahasia", repr(env))
+
+
+class TestSandboxConfig(unittest.TestCase):
+    def test_mount_tidak_menyertakan_home_root_atau_ssl_private(self):
+        with tempfile.TemporaryDirectory() as folder, \\
+             mock.patch.object(tim_kotak.shutil, "which", return_value="/usr/bin/bwrap"), \\
+             mock.patch.object(tim_kotak.os.path, "islink", return_value=False), \\
+             mock.patch.object(tim_kotak.os.path, "isdir",
+                               side_effect=lambda p: p in ("/usr", "/etc/ssl/certs", folder)), \\
+             mock.patch.object(tim_kotak.os.path, "isfile", return_value=False):
+            args = tim_kotak.argumen_isolasi(["python3", "main.py"], folder)
+        self.assertIn("--unshare-all", args)
+        self.assertIn("--dir", args)
+        self.assertIn("/workspace", args)
+        self.assertIn("/etc/ssl/certs", args)
+        self.assertNotIn("/etc/ssl", args)
+        self.assertNotIn("/etc/ssl/private", args)
+        self.assertNotIn("/home", args)
+        self.assertNotIn("/root", args)
+        self.assertNotIn("/", args)
+
+
 if __name__ == "__main__":
     unittest.main()
