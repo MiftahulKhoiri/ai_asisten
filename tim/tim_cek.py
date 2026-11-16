@@ -101,7 +101,7 @@ def cek_jalan(hasil_dir, spec, boleh):
     penuh = out or ""
     ringkas = _ekor_teks(penuh or "(tanpa keluaran)", 1500)
     # Catatan untuk Pemeriksa: kegagalan akibat pengurungan (mis. akses jaringan) bukan bug program.
-    catatan = "CATATAN isolasi uji jalan: " + ringkas_isolasi(cmd) + "."
+    catatan = "CATATAN isolasi uji jalan: " + ringkas_isolasi(cmd, kode) + "."
     if kode is None:
         return "gagal", ["GAGAL uji jalan `%s`: %s" % (tampil, ringkas), catatan], penuh
     if kode != 0:
