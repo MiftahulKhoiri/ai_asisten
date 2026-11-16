@@ -44,11 +44,11 @@ class TestEnvironment(DasarKotak):
             import os
             h = os.environ["HOME"]
             open(os.path.join(h, "coba.txt"), "w").write("x")
-            print(h)
+            print(os.path.join(h, "coba.txt"))
             """)
         self.assertEqual(kode, 0)
         self.assertTrue(out.strip().startswith(tempfile.gettempdir()))
-        self.assertFalse(Path(out.strip()).exists())            # folder sementara sudah dibersihkan
+        self.assertFalse(Path(out.strip()).exists())            # file tmpfs tidak terlihat di host
         self.assertNotEqual(out.strip(), str(Path.home()))
 
     def test_berjalan_di_folder_hasil(self):
