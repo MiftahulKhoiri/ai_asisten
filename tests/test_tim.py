@@ -1250,5 +1250,27 @@ class TestAsapJs(DasarAgent):
         self.assertIn("Tersambung ke proses yang berjalan", " ".join(d3["info"]))
 
 
+
+class TestPemuatRetry(unittest.TestCase):
+    def test_gagal_bongkar_tetap_dilacak_dan_dicoba_ulang(self):
+        ctx = mock.Mock()
+        pemuat = tim_model.Pemuat(ctx, bongkar_tiap=True)
+        pemuat.milik["model-A"] = True
+
+        with mock.patch.object(tim_model, "bongkar",
+                               side_effect=[RuntimeError("server sementara gagal"), None]) as lepas:
+            gen = pemuat.lepas("model-A")
+            self.assertEqual(next(gen), {"t": "bongkar_mulai", "model": "model-A"})
+            with self.assertRaisesRegex(RuntimeError, "sementara gagal"):
+                next(gen)
+
+            # Kepemilikan tidak hilang saat bongkar pertama gagal.
+            self.assertTrue(pemuat.milik["model-A"])
+            pemuat.lepas_diam()
+
+            self.assertEqual(lepas.call_count, 2)
+            self.assertNotIn("model-A", pemuat.milik)
+
+
 if __name__ == "__main__":
     unittest.main()

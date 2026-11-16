@@ -104,9 +104,12 @@ class Pemuat:
             self.milik[nama] = yield from muat(nama, self.ctx)
 
     def lepas(self, nama):
-        if self.milik.pop(nama, False):
+        # Jangan hapus kepemilikan sebelum bongkar berhasil. Jika API gagal, lepas_diam()
+        # di blok finally masih perlu tahu bahwa model ini milik Agent dan mencoba lagi.
+        if self.milik.get(nama, False):
             yield {"t": "bongkar_mulai", "model": nama}   # tampil di log langsung sebelum menunggu
             bongkar(nama)
+            self.milik.pop(nama, None)
             yield {"t": "bongkar", "model": nama}
 
     def selesai_tahap(self, berikutnya=None):
