@@ -1,5 +1,6 @@
 """Tes kotak uji (tim/tim_kotak.py): environment bersih, batas sumber daya, jaringan, keluaran."""
 import os
+import shutil
 import sys
 import tempfile
 import textwrap
@@ -25,6 +26,7 @@ class DasarKotak(unittest.TestCase):
             return tim_kotak.jalankan_terkurung([sys.executable, "p.py"], str(self.dir), timeout)
 
 
+@unittest.skipUnless(shutil.which("bwrap"), "bubblewrap tidak tersedia; uji integrasi sandbox dilewati")
 class TestEnvironment(DasarKotak):
     def test_rahasia_dari_proses_server_tidak_terbawa(self):
         kode, out = self.jalan("""
@@ -60,6 +62,7 @@ class TestEnvironment(DasarKotak):
         self.assertIn("tidak ditemukan", out)
 
 
+@unittest.skipUnless(shutil.which("bwrap"), "bubblewrap tidak tersedia; uji integrasi sandbox dilewati")
 class TestBatas(DasarKotak):
     def test_batas_memori(self):
         kode, out = self.jalan("""
@@ -161,31 +164,33 @@ class TestBatas(DasarKotak):
         self.assertLess(len(out), 12_000)                  # RAM server aman: hanya ekor yang dibaca
         self.assertIn("dihentikan sistem", out[-200:])
 
+@unittest.skipUnless(shutil.which("bwrap"), "bubblewrap tidak tersedia; uji integrasi sandbox dilewati")
 class TestJaringan(DasarKotak):
     KODE = """
         print("NET=" + ",".join(sorted(l.split(":")[0].strip() for l in open("/proc/net/dev").read().splitlines()[2:])))
         """
 
-    @unittest.skipUnless(tim_kotak.jaringan_bisa_diputus(), "unshare -rn tidak tersedia di sistem ini")
     def test_jaringan_diputus_secara_bawaan(self):
         kode, out = self.jalan(self.KODE)
         self.assertEqual(kode, 0)
         self.assertEqual(out.strip(), "NET=lo")             # hanya loopback di namespace kosong
 
-    @unittest.skipUnless(tim_kotak.jaringan_bisa_diputus(), "unshare -rn tidak tersedia di sistem ini")
     def test_jaringan_boleh_lewat_pengaturan(self):
         asli = set(l.split(":")[0].strip() for l in open("/proc/net/dev").read().splitlines()[2:])
         kode, out = self.jalan(self.KODE, env={"ASISTEN_UJI_JARINGAN": "boleh"})
         self.assertEqual(kode, 0)
         self.assertEqual(set(out.strip()[4:].split(",")), asli)
 
-    def test_tanpa_unshare_tetap_jalan_dan_dicatat(self):
-        with mock.patch.object(tim_kotak, "jaringan_bisa_diputus", return_value=False):
-            kode, out = self.jalan("print('tetap-jalan')")
-            self.assertEqual((kode, out), (0, "tetap-jalan"))
-            self.assertIn("TIDAK diputus", tim_kotak.ringkas_isolasi(["python3", "x.py"]))
+    def test_tanpa_bwrap_gagal_tertutup(self):
+        asli = shutil.which
+        with mock.patch.object(tim_kotak.shutil, "which",
+                               side_effect=lambda nama: None if nama == "bwrap" else asli(nama)):
+            kode, out = tim_kotak.jalankan_terkurung([sys.executable, "p.py"], str(self.dir), 5)
+        self.assertEqual(kode, 126)
+        self.assertIn("UJI DITOLAK", out)
 
 
+@unittest.skipUnless(shutil.which("bwrap"), "bubblewrap tidak tersedia; uji integrasi sandbox dilewati")
 class TestCekJalan(DasarKotak):
     def spec(self):
         return {"jalankan": ["python3", "main.py"], "harapan": []}
