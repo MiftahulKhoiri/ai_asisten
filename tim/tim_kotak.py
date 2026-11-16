@@ -80,9 +80,11 @@ def argumen_isolasi(cmd, cwd):
         elif os.path.isdir(path):
             args += ["--ro-bind", path, path]
 
-    # Sertifikat CA dibutuhkan sebagian program, tetapi tidak perlu membuka seluruh /etc.
-    if os.path.isdir("/etc/ssl"):
-        args += ["--ro-bind", "/etc/ssl", "/etc/ssl"]
+    # Hanya sertifikat publik; jangan mount /etc/ssl/private yang dapat berisi private key.
+    if os.path.isdir("/etc/ssl/certs"):
+        args += ["--ro-bind", "/etc/ssl/certs", "/etc/ssl/certs"]
+    if os.path.isdir("/etc/pki/tls/certs"):
+        args += ["--ro-bind", "/etc/pki/tls/certs", "/etc/pki/tls/certs"]
     if os.path.isfile("/etc/ld.so.cache"):
         args += ["--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache"]
 
@@ -92,7 +94,7 @@ def argumen_isolasi(cmd, cwd):
     hasil = str(Path(cwd).resolve(strict=True))
     if not os.path.isdir(hasil):
         raise ValueError("folder hasil proyek bukan direktori")
-    args += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
+    args += ["--dir", "/workspace", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
              "--bind", hasil, "/workspace", "--chdir", "/workspace",
              "--setenv", "HOME", "/tmp",
              "--setenv", "TMPDIR", "/tmp",
