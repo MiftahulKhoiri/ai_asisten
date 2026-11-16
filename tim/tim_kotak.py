@@ -69,8 +69,12 @@ def argumen_isolasi(cmd, cwd):
     if not bwrap:
         raise FileNotFoundError("bubblewrap (bwrap) tidak terpasang; uji jalan ditolak demi keamanan")
 
-    args = [bwrap, "--unshare-all", "--die-with-parent", "--new-session",
-            "--cap-drop", "ALL", "--ro-bind", "/usr", "/usr"]
+    # User namespace wajib (bukan --unshare-user-try): jika kernel menolaknya,
+    # bubblewrap harus gagal, bukan melanjutkan tanpa batas filesystem.
+    args = [bwrap, "--unshare-user", "--unshare-ipc", "--unshare-pid",
+            "--unshare-net", "--unshare-uts", "--unshare-cgroup-try",
+            "--die-with-parent", "--new-session", "--cap-drop", "ALL",
+            "--ro-bind", "/usr", "/usr", "--dir", "/etc"]
 
     # FHS berbeda antar distro: direktori ini bisa berupa symlink ke /usr atau
     # direktori nyata. Pertahankan bentuknya agar executable dan dynamic loader ditemukan.
@@ -82,9 +86,10 @@ def argumen_isolasi(cmd, cwd):
 
     # Hanya sertifikat publik; jangan mount /etc/ssl/private yang dapat berisi private key.
     if os.path.isdir("/etc/ssl/certs"):
-        args += ["--ro-bind", "/etc/ssl/certs", "/etc/ssl/certs"]
+        args += ["--dir", "/etc/ssl", "--ro-bind", "/etc/ssl/certs", "/etc/ssl/certs"]
     if os.path.isdir("/etc/pki/tls/certs"):
-        args += ["--ro-bind", "/etc/pki/tls/certs", "/etc/pki/tls/certs"]
+        args += ["--dir", "/etc/pki", "--dir", "/etc/pki/tls",
+                 "--ro-bind", "/etc/pki/tls/certs", "/etc/pki/tls/certs"]
     if os.path.isfile("/etc/ld.so.cache"):
         args += ["--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache"]
 
@@ -96,7 +101,7 @@ def argumen_isolasi(cmd, cwd):
         raise ValueError("folder hasil proyek bukan direktori")
     args += ["--dir", "/workspace", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
              "--bind", hasil, "/workspace", "--chdir", "/workspace",
-             "--setenv", "HOME", "/tmp",
+             "--clearenv", "--setenv", "HOME", "/tmp",
              "--setenv", "TMPDIR", "/tmp",
              "--setenv", "PATH", "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
              "--setenv", "LANG", "C.UTF-8",
@@ -109,7 +114,7 @@ def argumen_isolasi(cmd, cwd):
 def ringkas_isolasi(cmd):
     """Ringkasan batas yang benar-benar diminta untuk proses uji."""
     bagian = ["bubblewrap: filesystem runtime read-only, folder hasil saja yang dapat ditulis",
-              "namespace proses dan user terisolasi"]
+              "namespace user/proses terisolasi"]
     if os.environ.get("ASISTEN_UJI_JARINGAN", "putus").strip().lower() == "boleh":
         bagian.append("jaringan diizinkan oleh pengaturan")
     else:
