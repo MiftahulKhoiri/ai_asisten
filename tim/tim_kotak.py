@@ -111,8 +111,10 @@ def argumen_isolasi(cmd, cwd):
     return args
 
 
-def ringkas_isolasi(cmd):
-    """Ringkasan batas yang benar-benar diminta untuk proses uji."""
+def ringkas_isolasi(cmd, kode=None):
+    """Ringkasan isolasi; jelaskan bila sandbox bahkan tidak berhasil dimulai."""
+    if kode == 126:
+        return "uji jalan ditolak: bubblewrap tidak tersedia atau folder hasil tidak dapat disiapkan"
     bagian = ["bubblewrap: filesystem runtime read-only, folder hasil saja yang dapat ditulis",
               "namespace user/proses terisolasi"]
     if os.environ.get("ASISTEN_UJI_JARINGAN", "putus").strip().lower() == "boleh":
