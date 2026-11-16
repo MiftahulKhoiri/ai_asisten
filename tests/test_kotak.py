@@ -248,7 +248,9 @@ class TestSandboxConfig(unittest.TestCase):
                                side_effect=lambda p: p in ("/usr", "/etc/ssl/certs", folder)), \\
              mock.patch.object(tim_kotak.os.path, "isfile", return_value=False):
             args = tim_kotak.argumen_isolasi(["python3", "main.py"], folder)
-        self.assertIn("--unshare-all", args)
+        self.assertIn("--unshare-user", args)
+        self.assertIn("--unshare-pid", args)
+        self.assertIn("--unshare-net", args)
         self.assertIn("--dir", args)
         self.assertIn("/workspace", args)
         self.assertIn("/etc/ssl/certs", args)
