@@ -46,7 +46,9 @@ function lingkungan(opsi) {
     requestAnimationFrame: f => f(), TextDecoder, TextEncoder, Intl, Date, JSON, Math, Promise, Set, Map,
   };
   konteks.window.localStorage = konteks.localStorage; konteks.window.document = document;
-  vm.createContext(konteks); vm.runInContext(kode, konteks);
+  vm.createContext(konteks);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'web', 'teks.js'), 'utf8'), konteks);
+  vm.runInContext(kode, konteks);
   return {byId, panggilan, lemari, skillBtn, ubahStatus: v => { opsi.status = v; }};
 }
 const tunggu = ms => new Promise(r => setTimeout(r, ms));

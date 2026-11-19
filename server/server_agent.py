@@ -108,12 +108,14 @@ def mulai_proses(tugas, cfg, lanjut=None, bahan=None, paket=None, chat_id=None, 
     SEBELUM halaman diberi tahu bahwa proses berakhir (tempat menulis hasil ke obrolan); boleh
     mengembalikan fungsi tanpa argumen yang dijalankan setelah kunci dilepas (mis. muat ulang model).
     ProsesGagal bila model chat masih dimuat atau ada proses lain."""
+    # Status dicek dan GEN_LOCK diambil di bawah S_LOCK yang SAMA: /api/model/pilih juga memeriksa
+    # GEN_LOCK di bawah S_LOCK, jadi model chat tidak bisa mulai dimuat di sela-sela keduanya.
     with state.S_LOCK:
         if state.S["status"] in ("siap", "memuat"):
             raise ProsesGagal(409, "Sesi chat masih memuat model. Akhiri dulu di halaman Chat "
                                    "(tombol Selesai).")
-    if not state.GEN_LOCK.acquire(blocking=False):
-        raise ProsesGagal(409, "Masih ada proses berjalan")
+        if not state.GEN_LOCK.acquire(blocking=False):
+            raise ProsesGagal(409, "Masih ada proses berjalan")
     diserahkan = False   # True setelah thread kerja berjalan: dialah yang melepas kunci
     sesi = None
     try:

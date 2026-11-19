@@ -81,7 +81,7 @@ function lingkungan(opsi) {
   };
   konteks.window.localStorage = konteks.localStorage; konteks.window.document = document;
   vm.createContext(konteks);
-  vm.runInContext(web('prompt.js'), konteks); vm.runInContext(web('index.js'), konteks);
+  vm.runInContext(web('teks.js'), konteks); vm.runInContext(web('prompt.js'), konteks); vm.runInContext(web('index.js'), konteks);
   return {byId, panggilan, lemari, skillBtn, prompt, unduhan, setKonfirmasi: v => { konfirmasi = v; }};
 }
 const tunggu = ms => new Promise(r => setTimeout(r, ms));

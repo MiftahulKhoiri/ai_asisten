@@ -6,23 +6,7 @@
   let kartu = {}, daftar = [];
 
   /* ---------- util ---------- */
-  function esc(s) {
-    return s.replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
-  }
-  function md(s) {
-    return s.split('```').map((p, i) => {
-      if (i % 2 === 1) {
-        const nl = p.indexOf('\n');
-        const kode = (nl >= 0 && /^[\w+-]*$/.test(p.slice(0, nl).trim())) ? p.slice(nl + 1) : p;
-        return '<div class="kode"><button type="button" class="salin">Salin</button><pre><code>' +
-          esc(kode.replace(/\n$/, '')) + '</code></pre></div>';
-      }
-      return esc(p)
-        .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/\n/g, '<br>');
-    }).join('');
-  }
+  const {esc, md} = globalThis.AsistenTeks;     // web/teks.js
   async function salinTeks(teks) {
     try {
       if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(teks); return true; }

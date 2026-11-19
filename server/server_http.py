@@ -6,11 +6,9 @@ import mimetypes
 import os
 import queue
 import re
-import secrets
 import shutil
 import tempfile
 import threading
-import time
 import traceback
 import zipfile
 from http.server import BaseHTTPRequestHandler
@@ -62,6 +60,7 @@ STATIS = {
     "/serahkan.js": ("serahkan.js", "application/javascript; charset=utf-8"),
     "/unggah.css": ("unggah.css", "text/css; charset=utf-8"),
     "/unggah.js": ("unggah.js", "application/javascript; charset=utf-8"),
+    "/teks.js": ("teks.js", "application/javascript; charset=utf-8"),
 }
 
 
@@ -75,6 +74,10 @@ UNDUH_LEWATI = {"__pycache__", ".git", ".venv", "venv", "node_modules", ".mypy_c
 # dan halaman tidak boleh dibingkai situs lain.
 TAJUK_AMAN = (("X-Content-Type-Options", "nosniff"), ("X-Frame-Options", "DENY"),
               ("Referrer-Policy", "no-referrer"))
+
+
+class BodyTidakValid(ValueError):
+    """Body permintaan tidak bisa dibaca (Content-Length salah atau terlalu besar) -> 400."""
 
 
 class H(BaseHTTPRequestHandler):
@@ -101,15 +104,21 @@ class H(BaseHTTPRequestHandler):
             pass
 
     def _body(self):
-        n = int(self.headers.get("Content-Length") or 0)
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            raise BodyTidakValid("Content-Length tidak valid") from None
+        if n < 0:                   # rfile.read(-1) akan membaca sampai koneksi ditutup
+            raise BodyTidakValid("Content-Length tidak valid")
         if n > 1_000_000:
-            raise ValueError("body terlalu besar")
+            raise BodyTidakValid("body terlalu besar")
         return json.loads(self.rfile.read(n) or b"{}") if n else {}
 
     def _auth(self):
         h = self.headers.get("Authorization", "")
         tok = h[7:] if h.startswith("Bearer ") else ""
-        return hmac.compare_digest(tok, conf.TOKEN)
+        # dibandingkan sebagai byte: compare_digest menolak str berisi huruf non-ASCII (TypeError -> 500)
+        return hmac.compare_digest(tok.encode("utf-8", "surrogateescape"), conf.TOKEN.encode("utf-8"))
 
     def _tangani(self, metode):
         path = urlparse(self.path).path
@@ -142,6 +151,8 @@ class H(BaseHTTPRequestHandler):
             self.rute(metode, path)
         except FileNotFoundError:
             self._json(404, {"error": "Tidak ditemukan"})
+        except BodyTidakValid as e:
+            self._json(400, {"error": str(e)})
         except (BrokenPipeError, ConnectionResetError):
             pass
         except Exception as e:  # noqa: BLE001
@@ -774,4 +785,4 @@ class H(BaseHTTPRequestHandler):
                     lg.log("WARN", "Klien terputus, proses dibatalkan")
 
 
-__all__ = ['STATIS', 'TAJUK_AMAN', 'H']
+__all__ = ['STATIS', 'TAJUK_AMAN', 'BodyTidakValid', 'H']

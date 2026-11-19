@@ -241,7 +241,7 @@ def _pesan_galat(e, kunci):
 
 def koneksi_uji(b):
     """Coba hubungi alamat/kunci dari formulir TANPA menerapkannya. (kode HTTP, isi JSON)."""
-    cid, alamat, kunci, jenis, nama, galat = _masukan(b)
+    _, alamat, kunci, _, _, galat = _masukan(b)
     if galat:
         return 400, {"ok": False, "error": galat}
     dasar, v1 = agen.pecah_alamat(alamat)

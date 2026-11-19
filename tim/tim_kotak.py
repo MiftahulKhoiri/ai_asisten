@@ -17,7 +17,6 @@ Pengaturan:
 """
 import json
 import os
-import resource
 import shutil
 import subprocess
 import signal
@@ -180,6 +179,14 @@ def _petunjuk(kode):
             -9: "dimatikan (kemungkinan kehabisan memori atau melebihi batas)"}.get(kode, "")
 
 
+def _bunuh_grup(pgid):
+    """SIGKILL ke seluruh grup proses program uji (start_new_session=True: pgid = pid peluncur)."""
+    try:
+        os.killpg(pgid, signal.SIGKILL)
+    except OSError:          # grup sudah kosong
+        pass
+
+
 def jalankan_terkurung(cmd, cwd, timeout):
     """Jalankan perintah hanya di bubblewrap. kode 126 berarti sandbox tidak tersedia."""
     if not cmd:
@@ -214,12 +221,10 @@ def jalankan_terkurung(cmd, cwd, timeout):
             try:
                 kode = p.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(p.pid, signal.SIGKILL)
-                except OSError:
-                    pass
+                _bunuh_grup(p.pid)
                 p.wait()
                 return None, "melebihi batas waktu %d detik" % timeout
+            _bunuh_grup(p.pid)      # proses latar yang ditinggalkan program (cmd &) ikut dihentikan
         maks = _int_env("ASISTEN_UJI_KELUARAN_KB", 200) * 1000
         with open(keluar_path, "rb") as f:
             f.seek(0, os.SEEK_END)

@@ -189,7 +189,7 @@ class TestDasbor(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node tidak terpasang")
-        for nama in ("dasbor.js", "agent.js", "index.js", "hidup.js", "robot.js"):
+        for nama in ("dasbor.js", "agent.js", "index.js", "hidup.js", "robot.js", "teks.js"):
             r = subprocess.run([node, "--check", str(WEB / nama)], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, nama + ": " + r.stderr)
 

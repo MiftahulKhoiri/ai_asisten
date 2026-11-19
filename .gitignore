@@ -8,5 +8,6 @@ aksi.log.*
 llama-server.log
 *.zip
 pengaturan.json
+*.migrasi
 pengaturan.json.tmp
 android/build/

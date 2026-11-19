@@ -105,6 +105,22 @@ KONFIRMASI_SELALU = [
     r"\bloginctl\b[^;&|\n]*\b(?:enable-linger|disable-linger|terminate-\w+|kill-\w+)\b",
     r"\b(?:nc|ncat|netcat|socat)\b[^;&|\n]*\s(?:-\w*[ec]\b|--(?:exec|sh-exec)\b|EXEC:|exec:)",
     r"/dev/(?:tcp|udp)/",
+    # --- mengirim data keluar / membuka berkas ke jaringan ---
+    r"\|\s*(?:sudo\s+)?(?:\S*/)?(?:nc|ncat|netcat|socat)\b",                # tar cf - ~ | nc host 9
+    r"\b(?:nc|ncat|netcat|socat)\b[^;&|\n]*<",                               # nc host 9 < berkas
+    r"\b(?:scp|rsync)\b[^;&|\n]*\s(?:[\w.-]+@)?[\w.-]+:",                # salin ke perangkat lain
+    r"\bsftp\b",
+    r"\b(?:curl|wget)\b[^;&|\n]*(?:\s-T\b|--upload-file\b|--post-file\b|=@|\s-d\s*@|"
+    r"--data(?:-binary|-raw|-urlencode)?[=\s]+@)",                           # unggah berkas lewat curl/wget
+    r"http\.server\b[^;&|\n]*(?:\s-d|--directory)(?:\s+|=)(?:/|~|\$HOME|\$\{HOME\})/?(?=\s|$|[;&|)])",
+    r"(?:^|[;&|]\s*)cd\s+(?:/|~|\$HOME|\$\{HOME\})/?\s*(?:&&|;)[^\n]*http\.server\b",
+    # --- awk menjalankan perintah shell ---
+    r"\b[gm]?awk\b[^\n]*\bsystem\s*\(",
+    r"\b[gm]?awk\b[^\n]*\|\s*getline\b",
+    r"\b[gm]?awk\b[^\n]*\bprint[^|\n]*\|\s*\"",
+    # --- memindahkan folder langsung di home (mv ~/proyek /tmp) dan dd ke berkas ---
+    r"\bmv\s+(?:\S+\s+)*?(?:~|\$HOME|\$\{HOME\}|/home/[^/\s]+)/[^/\s;&|]+/?(?=\s)",
+    r"\bdd\b[^;&|\n]*\bof=",
 ]
 
 

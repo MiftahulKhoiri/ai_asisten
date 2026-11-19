@@ -120,6 +120,7 @@ vm.createContext(konteks);
 
 (async () => {
   try {
+    vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'web', 'teks.js'), 'utf8'), konteks, {filename: 'teks.js'});
     vm.runInContext(kode, konteks, {filename: 'agent.js'});
     await new Promise(r => setTimeout(r, 60));
     if (MODE !== 'lampirkan') {
