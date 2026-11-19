@@ -237,7 +237,7 @@ class TestSandboxFailClosed(unittest.TestCase):
     def test_bwrap_tidak_ada_maka_program_tidak_dijalankan(self):
         asli = shutil.which
         with mock.patch.object(tim_kotak.shutil, "which",
-                               side_effect=lambda nama: None if nama == "bwrap" else asli(nama)), \\
+                               side_effect=lambda nama: None if nama == "bwrap" else asli(nama)), \
              mock.patch.object(tim_kotak.subprocess, "Popen") as proses:
             kode, out = tim_kotak.jalankan_terkurung([sys.executable, "-c", "print('JALAN')"], ".", 2)
         self.assertEqual(kode, 126)
@@ -255,11 +255,11 @@ class TestSandboxFailClosed(unittest.TestCase):
 
 class TestSandboxConfig(unittest.TestCase):
     def test_mount_tidak_menyertakan_home_root_atau_ssl_private(self):
-        with tempfile.TemporaryDirectory() as folder, \\
-             mock.patch.object(tim_kotak.shutil, "which", return_value="/usr/bin/bwrap"), \\
-             mock.patch.object(tim_kotak.os.path, "islink", return_value=False), \\
+        with tempfile.TemporaryDirectory() as folder, \
+             mock.patch.object(tim_kotak.shutil, "which", return_value="/usr/bin/bwrap"), \
+             mock.patch.object(tim_kotak.os.path, "islink", return_value=False), \
              mock.patch.object(tim_kotak.os.path, "isdir",
-                               side_effect=lambda p: p in ("/usr", "/etc/ssl/certs", folder)), \\
+                               side_effect=lambda p: p in ("/usr", "/etc/ssl/certs", folder)), \
              mock.patch.object(tim_kotak.os.path, "isfile", return_value=False):
             args = tim_kotak.argumen_isolasi(["python3", "main.py"], folder)
         self.assertIn("--unshare-user", args)
