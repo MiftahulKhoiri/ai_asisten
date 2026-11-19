@@ -8,6 +8,7 @@ function El(tag) {
     tag, className: '', textContent: '', hidden: false, disabled: false, children: [], attrs: {}, parentNode: null,
     title: '', type: '', value: '', href: '', id: '', checked: false, onclick: null,
     get firstChild() { return this.children[0] || null; },
+    get isConnected() { return !!this.parentNode; },
     appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
     append(...cs) { cs.forEach(c => this.appendChild(c)); },
     insertBefore(n, ref) { n.parentNode = this; const i = ref ? this.children.indexOf(ref) : this.children.length; this.children.splice(i < 0 ? this.children.length : i, 0, n); return n; },
@@ -153,5 +154,32 @@ function baru() {
   assert.ok(teks(analisis).includes('🔎 Hasil Agent') && !teks(analisis).includes('Unduh semua'));
   const info_ = s.kartuHasil({run: '20261024-120000-bbbb', judul: 'x', status: 'butuh_info', berkas: []});
   assert.ok(teks(info_).includes('serahkan lagi ke Agent'));
+
+  // --- Sesi AI Asisten: tawaran otomatis "Kerjakan dengan tim Agent?"
+  wadah.children = []; s = baru(); panggilan.length = 0;
+  s.tawarkan({tawar: true, jalur_label: 'Buat / kembangkan', alasan: 'permintaan buatkan script'});
+  let kt = cari(wadah, 'tawar')[0];
+  assert.ok(kt && teks(kt).includes('Kerjakan dengan tim Agent?') && teks(kt).includes('Buat / kembangkan'), 'kartu tawaran tampil');
+  s.tawarkan({tawar: true}); assert.strictEqual(cari(wadah, 'tawar').length, 1, 'tawaran tidak dobel');
+  semuaTombol(kt).find(b => b.textContent === 'Lanjut ngobrol').onclick();
+  assert.strictEqual(cari(wadah, 'serah').length, 0, 'Lanjut ngobrol menutup tawaran');
+  s.tawarkan({tawar: true}); s.tutupTawaran(); assert.strictEqual(cari(wadah, 'serah').length, 0, 'pesan baru menutup tawaran');
+  s.tawarkan({tawar: true}); kt = cari(wadah, 'tawar')[0];
+  semuaTombol(kt).find(b => b.textContent === 'Kerjakan dengan Agent').onclick(); await tunggu(20);
+  assert.ok(panggilan.some(p => p.url === '/api/handoff/ringkas'), 'Kerjakan -> menyusun brief');
+  assert.ok(cari(wadah, 'brief')[0] && !cari(wadah, 'tawar').length, 'tawaran diganti kartu brief');
+  // model Agent belum diatur: Sesi AI Asisten memakai model chat untuk semua peran
+  const asli2 = lemari.ag_cfg; delete lemari.ag_cfg; wadah.children = [];
+  s = S.pasang({token: () => 'T0K', chatId: () => chatId, wadah, sebelum: btnAgent, gulir() {},
+    info: (t, g) => info.push([t, !!g]), toast: t => toastPesan.push(t), sibuk: () => false,
+    muatUlang: async () => { muatUlang++; }, setelahSelesai: () => { selesai++; },
+    cfgCadangan: () => ({mode: 2, model_p: 'Q', model_e: 'Q', model_c: 'Q', model_c2: '', maks: 3, bongkar: true, uji: false, prompt_peran: {}, cadangan: true})});
+  s.mulai(); await tunggu(20);
+  const kb = cari(wadah, 'brief')[0]; assert.ok(teks(kb).includes('memakai model chat (Q)'), 'keterangan model cadangan');
+  const setujuQ = semuaTombol(kb).find(b => b.textContent.startsWith('Setujui')); assert.ok(!setujuQ.disabled, 'bisa langsung dikirim');
+  panggilan.length = 0; setujuQ.onclick(); await tunggu(60);
+  const kirimB = JSON.parse(panggilan.find(p => p.url === '/api/handoff/kirim').body);
+  assert.strictEqual(kirimB.model_p, 'Q'); assert.strictEqual(kirimB.model_e, 'Q'); assert.ok(!('cadangan' in kirimB), 'penanda cadangan tidak dikirim');
+  lemari.ag_cfg = asli2;
   console.log('OK');
 })().catch(e => { console.error(e); process.exit(1); });

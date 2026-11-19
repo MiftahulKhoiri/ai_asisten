@@ -85,23 +85,25 @@
     if (utama && utama.ok === false) chip('peringatan', 'llama-server tidak terhubung');
     else chip('ok', 'Server aktif');
 
-    // kartu AI Asisten
+    // kartu AI Chatboot dan AI Asisten: keduanya memakai sesi model dan riwayat obrolan yang sama
     const model = s.model_tampil || s.model || '';
-    if (s.status === 'siap') {
-      setStatus('stChat', 'ok', 'Sesi berjalan · ' + potong(model, 28) + (s.skill ? ' · ' + labelSkill(s.skill) : ''));
-      $('aksiChat').textContent = 'Lanjutkan sesi';
-    } else if (s.status === 'memuat') {
-      setStatus('stChat', 'muat', 'Memuat model...');
-      $('aksiChat').textContent = 'Buka AI Asisten';
-    } else if (s.status === 'error') {
-      setStatus('stChat', 'mati', 'Gagal memuat: ' + potong(s.pesan, 40));
-      $('aksiChat').textContent = 'Buka AI Asisten';
-    } else if (ag && ag.chat_id) {
-      setStatus('stChat', 'kerja', 'Obrolan sedang dikerjakan Agent');
-      $('aksiChat').textContent = 'Buka AI Asisten';
-    } else {
-      setStatus('stChat', 'diam', nChat ? nChat + ' obrolan tersimpan' : 'Belum ada obrolan');
-      $('aksiChat').textContent = 'Buka AI Asisten';
+    for (const [st, aksi, nama] of [['stChat', 'aksiChat', 'Buka AI Chatboot'], ['stAsisten', 'aksiAsisten', 'Buka AI Asisten']]) {
+      if (s.status === 'siap') {
+        setStatus(st, 'ok', 'Sesi berjalan · ' + potong(model, 28) + (s.skill ? ' · ' + labelSkill(s.skill) : ''));
+        $(aksi).textContent = 'Lanjutkan sesi';
+      } else if (s.status === 'memuat') {
+        setStatus(st, 'muat', 'Memuat model...');
+        $(aksi).textContent = nama;
+      } else if (s.status === 'error') {
+        setStatus(st, 'mati', 'Gagal memuat: ' + potong(s.pesan, 40));
+        $(aksi).textContent = nama;
+      } else if (ag && ag.chat_id) {
+        setStatus(st, 'kerja', 'Obrolan sedang dikerjakan Agent');
+        $(aksi).textContent = nama;
+      } else {
+        setStatus(st, 'diam', nChat ? nChat + ' obrolan tersimpan' : 'Belum ada obrolan');
+        $(aksi).textContent = nama;
+      }
     }
 
     // kartu Agent
@@ -148,6 +150,7 @@
   function gambarPutus() {
     chip('mati', 'Server tidak terjangkau');
     setStatus('stChat', 'mati', 'Tidak bisa menghubungi server');
+    setStatus('stAsisten', 'mati', 'Tidak bisa menghubungi server');
     setStatus('stAgent', 'mati', 'Tidak bisa menghubungi server');
   }
 

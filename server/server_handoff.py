@@ -10,6 +10,7 @@ Alurnya (tiap langkah atas persetujuan pengguna di halaman chat):
      supaya diskusi bisa dilanjutkan.
 """
 import os
+import re
 import threading
 from pathlib import Path
 
@@ -219,5 +220,83 @@ def serahkan(cid, tugas, cfg, muat_ulang=True, lanjut=None):
         raise
 
 
+# ---------------------------------------------------------------- 4. Sesi AI Asisten: tawaran otomatis
+# Sesi AI Asisten = Chatboot + Agent. Setelah model chat menjawab, halaman bertanya apakah pesan terakhir
+# pengguna adalah TUGAS untuk tim Agent (membuat/memperbaiki program). Bila ya, halaman menawarkan kartu
+# "Kerjakan dengan tim Agent?"; persetujuan tetap di tangan pengguna (brief bisa diubah dulu).
+# Deteksinya berbasis kata (cepat, tanpa memanggil model lagi; penting di Pi).
+_KATA_KERJA = re.compile(
+    r"\b(?:buat(?:kan|in)?|bikin(?:kan|in)?|tulis(?:kan|in)?|susun(?:kan)?|kembangkan|rancang(?:kan)?|"
+    r"implementasi(?:kan)?|generate|develop|programkan|codingkan|"
+    r"perbaiki|betulkan|benerin|benahi|fix|debug|perbaikan|"
+    r"tambah(?:kan|in)?|ubah(?:lah)?|ganti(?:kan)?|modifikasi|refactor|refaktor|rapikan|optimalkan|"
+    r"cari(?:kan)?\s+(?:bug|galat|error|kesalahan|masalah)|periksa\s+(?:kode|program|skrip|script|bug))\b")
+_OBJEK = re.compile(
+    r"\b(?:program|aplikasi|app|apk|skrip|script|kode|code|source|fungsi|function|class|kelas|modul|module|"
+    r"library|pustaka|api|endpoint|server|web|website|situs|halaman|html|css|javascript|js|typescript|"
+    r"python|py|bash|shell|c\+\+|cpp|java|kotlin|golang|rust|php|sql|database|fastapi|flask|django|"
+    r"react|vue|bot|cli|game|kalkulator|fitur|bug|error|galat|exception|traceback|crash|tes|test|unittest|"
+    r"pytest|repo|proyek|project|berkas|file)\b"
+    r"|\.(?:py|js|ts|html|css|sh|cpp|hpp|c|h|java|kt|go|rs|php|json|yaml|yml|toml|sql)\b")
+_AGENT = re.compile(r"\b(?:agent|agen)\b")
+_SERAH = re.compile(r"\b(?:kerjakan|serahkan|lempar(?:kan)?|kirim(?:kan)?|pakai|gunakan|suruh|minta)\b")
+_HANYA_TANYA = re.compile(
+    r"^(?:apa(?:kah)?|apa\s+itu|apa\s+bedanya|siapa|kapan|mengapa|kenapa|jelaskan|terangkan|"
+    r"bagaimana|gimana|cara|maksudnya|artinya|contoh(?:nya)?\s+apa|bisakah\s+kamu\s+jelaskan)\b")
+_INGIN = re.compile(r"\b(?:mau|ingin|pengen|butuh|perlu)\s+(?:dibuatkan\s+|dibikinin\s+)?(?:sebuah\s+|satu\s+)?"
+                    r"(?:program|aplikasi|app|apk|skrip|script|bot|game|website|web|kalkulator)\b")
+_MIN_KATA = 3
+
+
+def deteksi_tugas(teks, ada_lampiran=False):
+    """Apakah `teks` (pesan pengguna) sebuah tugas untuk tim Agent? Kembalian: dict
+    {tugas: bool, alasan: str}. Tugas = ada kata kerja membuat/memperbaiki DAN objek pemrograman
+    (atau lampiran kode), atau pengguna menyebut Agent secara langsung. Pertanyaan konsep
+    ("apa itu ...", "jelaskan ...") tanpa kata kerja tugas bukan tugas."""
+    t = " ".join(str(teks or "").lower().split())
+    t = re.sub(r"^(?:tolong|coba|mohon|please|bro|kak|bang)\s+", "", t)
+    if len(t.split()) < _MIN_KATA and not ada_lampiran:
+        return {"tugas": False, "alasan": "pesan terlalu pendek"}
+    kerja, objek = _KATA_KERJA.search(t), _OBJEK.search(t)
+    if _AGENT.search(t) and (_SERAH.search(t) or kerja):
+        return {"tugas": True, "alasan": "kamu meminta Agent mengerjakannya"}
+    if _HANYA_TANYA.search(t):
+        return {"tugas": False, "alasan": "pertanyaan, bukan permintaan membuat/memperbaiki"}
+    if _INGIN.search(t):
+        return {"tugas": True, "alasan": "kamu ingin dibuatkan " + _INGIN.search(t).group(0).split()[-1]}
+    if kerja and (objek or ada_lampiran):
+        return {"tugas": True, "alasan": "permintaan %s %s" % (kerja.group(0), objek.group(0) if objek else "berkas terlampir")}
+    return {"tugas": False, "alasan": "tidak ada permintaan membuat/memperbaiki program"}
+
+
+def tawaran_agent(cid):
+    """Isi /api/asisten/deteksi untuk obrolan `cid`: apakah perlu menawarkan tim Agent sekarang.
+
+    Ditawarkan bila pesan pengguna TERAKHIR adalah tugas, belum pernah diserahkan (tidak ada hasil
+    Agent / pesan serah terima sesudahnya), dan Agent sedang tidak bekerja."""
+    if not isinstance(cid, str):
+        raise FileNotFoundError("id tidak valid")
+    chat = rwy.baca_chat(cid)
+    pesan = chat.get("pesan", [])
+    idx = next((i for i in range(len(pesan) - 1, -1, -1) if pesan[i].get("role") == "user"), None)
+    if idx is None:
+        return {"tawar": False, "alasan": "belum ada pesan"}
+    if any(m.get("hasil") or m.get("agent") for m in pesan[idx + 1:]):
+        return {"tawar": False, "alasan": "sudah diserahkan ke Agent"}
+    with state.AGENT_COND:
+        if state.AGENT.get("aktif"):
+            return {"tawar": False, "alasan": "Agent sedang bekerja"}
+    m = pesan[idx]
+    teks = m.get("tampil") if isinstance(m.get("tampil"), str) else m.get("content")
+    lamp = lampiran_chat(cid)
+    d = deteksi_tugas(teks if isinstance(teks, str) else "", bool(lamp) or bool(m.get("lampiran")))
+    hasil = {"tawar": d["tugas"], "alasan": d["alasan"]}
+    if d["tugas"]:
+        jalur, alasan = tim.pilih_jalur(teks or "", "otomatis", bool(lamp))
+        hasil.update(jalur=jalur, jalur_label=tim.JALUR[jalur]["label"], alasan_jalur=alasan,
+                     lanjut=hasil_terakhir(chat))
+    return hasil
+
+
 __all__ = ["PROMPT_BRIEF", "lampiran_dir", "lampiran_chat", "simpan_lampiran", "ringkas_diskusi",
-           "pesan_hasil", "hasil_terakhir", "serahkan"]
+           "pesan_hasil", "hasil_terakhir", "serahkan", "deteksi_tugas", "tawaran_agent"]

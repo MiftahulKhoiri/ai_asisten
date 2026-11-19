@@ -2,10 +2,10 @@
    Dua kartu besar: Sesi Agent dan Sesi AI Asisten, lalu kondisi sistem dan proses Agent terbaru. */
 
 :root{
-  --c-agent:#b794f6;--c-chat:#5b9cff;--panel2:#20242c;--bayang:0 12px 32px rgba(0,0,0,.40);
+  --c-agent:#b794f6;--c-chat:#5b9cff;--c-asisten:#34d399;--panel2:#20242c;--bayang:0 12px 32px rgba(0,0,0,.40);
 }
 @media (prefers-color-scheme:light){
-  :root{--c-agent:#7c3aed;--c-chat:#2563eb;--panel2:#f3f5f9;--bayang:0 12px 32px rgba(20,30,60,.16)}
+  :root{--c-agent:#7c3aed;--c-chat:#2563eb;--c-asisten:#059669;--panel2:#f3f5f9;--bayang:0 12px 32px rgba(20,30,60,.16)}
 }
 
 body.dasbor{
@@ -48,7 +48,7 @@ body.dasbor{
 .hero p{margin:0}
 .hero-ik{display:grid;place-items:center;width:58px;height:58px;margin-bottom:12px;border-radius:18px;color:var(--aksen);background:color-mix(in srgb,var(--aksen) 14%,var(--panel))}
 
-/* ---------- dua kartu sesi ---------- */
+/* ---------- kartu sesi: AI Asisten (gabungan, selebar penuh), Agent, AI Chatboot ---------- */
 .pilihan{display:grid;gap:14px;grid-template-columns:minmax(0,1fr)}
 .sesi{
   --cs:var(--c-chat);
@@ -60,6 +60,7 @@ body.dasbor{
 }
 .sesi-agent{--cs:var(--c-agent)}
 .sesi-chat{--cs:var(--c-chat)}
+.sesi-asisten{--cs:var(--c-asisten)}
 .sesi:hover{transform:translateY(-3px);border-color:color-mix(in srgb,var(--cs) 62%,var(--garis));box-shadow:var(--bayang)}
 .sesi:active{transform:scale(.99)}
 .sesi-ik{display:grid;place-items:center;width:54px;height:54px;border-radius:17px;color:var(--cs);
@@ -111,6 +112,7 @@ body.dasbor{
   .hero{padding-bottom:24px}
   .hero h1{font-size:34px}
   .pilihan{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  .sesi-asisten{grid-column:1/-1}
   .sesi{grid-template-columns:minmax(0,1fr);padding:22px;gap:10px}
   .sesi-ik{width:58px;height:58px}
   .kisi-bawah{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}

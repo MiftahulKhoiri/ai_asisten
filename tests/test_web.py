@@ -134,12 +134,14 @@ class TestLayarMulai(unittest.TestCase):
 class TestDasbor(unittest.TestCase):
     """Halaman awal: dua tombol besar (Sesi Agent, Sesi AI Asisten) dan navigasi kembali dari tiap sesi."""
 
-    def test_dasbor_punya_dua_tombol_sesi(self):
+    def test_dasbor_punya_tiga_tombol_sesi(self):
         html = (WEB / "dasbor.html").read_text(encoding="utf-8")
         self.assertIn("Sesi Agent", html)
+        self.assertIn("Sesi AI Chatboot", html)
         self.assertIn("Sesi AI Asisten", html)
         self.assertRegex(html, r'id="kartuAgent"[^>]*href="agent\.html"')
         self.assertRegex(html, r'id="kartuChat"[^>]*href="chat"')
+        self.assertRegex(html, r'id="kartuAsisten"[^>]*href="asisten"')
 
     def test_id_di_js_ada_di_html(self):
         js = (WEB / "dasbor.js").read_text(encoding="utf-8")
@@ -152,7 +154,7 @@ class TestDasbor(unittest.TestCase):
     def test_berkas_yang_dirujuk_ada(self):
         html = (WEB / "dasbor.html").read_text(encoding="utf-8")
         for ref in re.findall(r'(?:href|src)="([^"]+)"', html):
-            if ref in ("chat", "agent.html"):
+            if ref in ("chat", "asisten", "agent.html"):
                 continue
             self.assertTrue((WEB / ref).is_file(), ref)
 

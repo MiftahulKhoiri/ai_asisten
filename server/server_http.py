@@ -39,7 +39,8 @@ STATIS = {
     "/dasbor.html": ("dasbor.html", "text/html; charset=utf-8"),
     "/dasbor.css": ("dasbor.css", "text/css; charset=utf-8"),
     "/dasbor.js": ("dasbor.js", "application/javascript; charset=utf-8"),
-    "/chat": ("index.html", "text/html; charset=utf-8"),      # Sesi AI Asisten
+    "/chat": ("index.html", "text/html; charset=utf-8"),      # Sesi AI Chatboot
+    "/asisten": ("index.html", "text/html; charset=utf-8"),   # Sesi AI Asisten (Chatboot + Agent, mode dari alamat)
     "/index.html": ("index.html", "text/html; charset=utf-8"),
     "/index.css": ("index.css", "text/css; charset=utf-8"),
     "/index.js": ("index.js", "application/javascript; charset=utf-8"),
@@ -253,6 +254,11 @@ class H(BaseHTTPRequestHandler):
                 return self.handoff_ringkas(b)
             if path == "/api/handoff/kirim":
                 return self.handoff_kirim(b)
+            if path == "/api/asisten/deteksi":
+                try:
+                    return self._json(200, ho.tawaran_agent(b.get("id")))
+                except FileNotFoundError:
+                    return self._json(404, {"error": "Obrolan tidak ditemukan"})
             if path == "/api/chat/baru":
                 with state.S_LOCK:
                     model = state.S["model"]

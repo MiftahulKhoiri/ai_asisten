@@ -42,20 +42,28 @@ function lingkungan(opsi) {
     window: {addEventListener() {}, visualViewport: null, matchMedia: () => ({matches: false, addEventListener() {}}), innerHeight: 800},
     document, console, fetch: fetchPalsu, setTimeout, clearTimeout, setInterval: () => 0, clearInterval() {},
     localStorage: {getItem: k => (k in lemari ? lemari[k] : null), setItem: (k, v) => { lemari[k] = String(v); }, removeItem: k => { delete lemari[k]; }},
-    location: {search: '', pathname: '/', hash: ''}, history: {replaceState() {}}, URLSearchParams, navigator: {clipboard: null},
+    location: {search: '', pathname: opsi.pathname || '/chat', hash: ''}, history: {replaceState() {}}, URLSearchParams, navigator: {clipboard: null},
     requestAnimationFrame: f => f(), TextDecoder, TextEncoder, Intl, Date, JSON, Math, Promise, Set, Map,
   };
   konteks.window.localStorage = konteks.localStorage; konteks.window.document = document;
   vm.createContext(konteks);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'web', 'teks.js'), 'utf8'), konteks);
   vm.runInContext(kode, konteks);
-  return {byId, panggilan, lemari, skillBtn, ubahStatus: v => { opsi.status = v; }};
+  return {byId, panggilan, lemari, skillBtn, document, ubahStatus: v => { opsi.status = v; }};
 }
 const tunggu = ms => new Promise(r => setTimeout(r, ms));
 const MODEL = [{id: 'A', mb: 1000}, {id: 'B', mb: 2500}];
 const kelas = e => ' ' + e.className + ' ';
 
 (async () => {
+  // --- 0. nama sesi dari alamat: /chat = AI Chatboot, /asisten = AI Asisten (Chatboot + Agent)
+  for (const [p, nama, gabung] of [['/chat', 'AI Chatboot', false], ['/asisten', 'AI Asisten', true], ['/asisten/', 'AI Asisten', true]]) {
+    const L0 = lingkungan({models: MODEL, pathname: p}); await tunggu(30);
+    assert.strictEqual(L0.document.title, nama, 'judul tab ' + p);
+    assert.strictEqual(L0.byId.judulChat.textContent, nama, 'judul header ' + p);
+    assert.strictEqual(L0.document.body.classes.has('mode-asisten'), gabung, 'kelas mode ' + p);
+  }
+
   // --- 1. awal: tidak ada model terpilih, Mulai mati, tidak memuat apa pun
   let L = lingkungan({models: MODEL}); await tunggu(60);
   const daftar = L.byId['daftarModel'], mulai = L.byId['btnMulai'];

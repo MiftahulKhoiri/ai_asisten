@@ -4,6 +4,13 @@
   let TOKEN = localStorage.getItem('aa_token') || '';
   let layar = '', chatId = null, sibuk = false, pollTimer = null, pollMs = 0;
   let kartu = {}, daftar = [];
+  /* Halaman ini melayani dua sesi (alamat menentukan modenya):
+       /chat     Sesi AI Chatboot: tanya jawab dengan satu model (tombol 🏭 untuk serah ke Agent manual)
+       /asisten  Sesi AI Asisten: Chatboot + Agent. Setelah model menjawab, pesan yang berupa tugas
+                 membuat/memperbaiki program otomatis ditawari "Kerjakan dengan tim Agent?" */
+  const MODE_ASISTEN = /^\/asisten\/?$/.test(location.pathname);
+  const NAMA_SESI = MODE_ASISTEN ? 'AI Asisten' : 'AI Chatboot';
+  let modelAktif = '';        // model chat yang sedang termuat (cadangan model Agent di Sesi AI Asisten)
 
   /* ---------- util ---------- */
   const {esc, md} = globalThis.AsistenTeks;     // web/teks.js
@@ -66,7 +73,7 @@
     $('btnMenu').hidden = (nama !== 'chat');
     $('btnAgent').hidden = (nama === 'token');
     if (serah) serah.tampilkan(nama === 'chat');
-    if (nama !== 'chat') { $('judulChat').textContent = 'AI Asisten'; $('subModel').textContent = ''; }
+    if (nama !== 'chat') { $('judulChat').textContent = NAMA_SESI; $('subModel').textContent = ''; }
   }
   function setPoll(ms) {
     if (ms === pollMs) return;
@@ -239,6 +246,7 @@
       if (s.status === 'siap' || (ag && ag.chat_id)) {
         if (s.status === 'siap') {
           setAgentAktif(false);
+          modelAktif = s.model || '';
           $('subModel').textContent = (s.model_tampil || s.model) + (s.skill ? ' · ' + labelSkill(s.skill) : '')
             + promptHeader(s);
           const adaTool = s.tool_aktif !== 0;
@@ -595,8 +603,9 @@
     if (agentAktif) { toast('Agent sedang bekerja. Tunggu hasilnya dulu.'); return; }
     if (unggah && unggah.sibuk()) { toast('Tunggu unggahan selesai.'); return; }
     $('input').value = ''; ukuranInput();
+    if (serah) serah.tutupTawaran();     // pesan baru: tawaran Agent untuk pesan sebelumnya ditutup
     tambahUser(teks || 'Tolong baca berkas terlampir.', lamp); setSibuk(true); mulaiBerpikir();
-    const st = {bubble: null, raw: '', pikir: null, pikirRaw: ''};
+    const st = {bubble: null, raw: '', pikir: null, pikirRaw: '', gagal: false};
     try {
       const r = await api('/api/kirim', {method: 'POST', body: {id: chatId, teks, unggahan: unggah ? unggah.paket() : null}});
       if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || ('HTTP ' + r.status)); }
@@ -613,8 +622,18 @@
           tangani(ev, st);
         }
       }
-    } catch (e) { if (e.message !== '401') tambahInfo('⚠ ' + e.message, true); }
-    finally { hentiBerpikir(); setSibuk(false); muatDaftarChat(); bukaJudul(); }
+    } catch (e) { st.gagal = true; if (e.message !== '401') tambahInfo('⚠ ' + e.message, true); }
+    finally {
+      hentiBerpikir(); setSibuk(false); muatDaftarChat(); bukaJudul();
+      if (MODE_ASISTEN && !st.gagal) tawarAgent();
+    }
+  }
+  /* Sesi AI Asisten: tanya server apakah pesan terakhir adalah tugas untuk tim Agent */
+  async function tawarAgent() {
+    if (!serah || agentAktif || serah.aktif() || !chatId) return;
+    let d = null;
+    try { d = await apij('/api/asisten/deteksi', {method: 'POST', body: {id: chatId}}); } catch (e) { return; }
+    if (d && d.tawar && !sibuk && !agentAktif) serah.tawarkan(d);
   }
   async function bukaJudul() {
     try { const c = await apij('/api/chat/' + chatId); $('judulChat').textContent = c.judul || 'Obrolan'; } catch (e) { /* abaikan */ }
@@ -656,8 +675,8 @@
         if (kurang.length) tambahInfo('📎 Tidak semua isi lampiran muat di konteks model: ' + kurang.map(b => b.nama + (b.disertakan ? ' (dipotong)' : ' (tidak disertakan)')).join(', ') + '. Kirim bagian yang penting saja bila perlu.');
         break;
       }
-      case 'error': hentiBerpikir(); tambahInfo('⚠ ' + ev.d, true); break;
-      case 'batal': hentiBerpikir(); tambahInfo('Dibatalkan.'); break;
+      case 'error': st.gagal = true; hentiBerpikir(); tambahInfo('⚠ ' + ev.d, true); break;
+      case 'batal': st.gagal = true; hentiBerpikir(); tambahInfo('Dibatalkan.'); break;
       case 'batas': hentiBerpikir(); tambahInfo('Batas langkah tercapai. Kirim pesan lanjutan jika perlu.'); break;
       default: break;
     }
@@ -725,7 +744,15 @@
     gulir, info: tambahInfo, toast, sibuk: () => sibuk,
     muatUlang: async () => { if (chatId) await bukaChat(chatId); },
     setelahSelesai: () => cekStatus(),
+    // Sesi AI Asisten: bila model Agent belum diatur di halaman Agent, semua peran memakai model chat
+    cfgCadangan: MODE_ASISTEN ? () => (modelAktif ? {mode: 2, model_p: modelAktif, model_e: modelAktif, model_c: modelAktif,
+      model_c2: '', maks: 3, bongkar: true, uji: false, prompt_peran: {}, cadangan: true} : null) : null,
   }) : null;
+
+  /* ---------- nama sesi di judul ---------- */
+  document.title = NAMA_SESI;
+  document.body.classList.toggle('mode-asisten', MODE_ASISTEN);
+  $('judulChat').textContent = NAMA_SESI;
 
   /* ---------- mulai ---------- */
   const qs = new URLSearchParams(location.search);

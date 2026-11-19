@@ -22,3 +22,5 @@
 .serah.hasil .berkas small{color:var(--redup)}
 .serah.hasil .berkas button{padding:4px 10px;font-size:13px}
 .serah a.btn{text-decoration:none;display:inline-block}
+/* Sesi AI Asisten: tawaran otomatis "Kerjakan dengan tim Agent?" */
+.serah.tawar{border-color:color-mix(in srgb,var(--aksen,#7c3aed) 45%,var(--garis));background:color-mix(in srgb,var(--aksen,#7c3aed) 7%,var(--panel))}

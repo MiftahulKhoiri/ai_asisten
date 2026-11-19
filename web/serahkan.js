@@ -112,8 +112,11 @@
         l.append(cekLanjut, el('span', '', 'Lanjutkan dari hasil Agent sebelumnya (' + (d.lanjut.judul || d.lanjut.run) + ')'));
         k.appendChild(l);
       }
-      const cfg = bacaCfg();
-      k.appendChild(el('div', 'redup kecil', cfg
+      const cfg = bacaCfg() || (opt.cfgCadangan ? opt.cfgCadangan() : null);
+      k.appendChild(el('div', 'redup kecil', cfg && cfg.cadangan
+        ? 'Model Agent belum diatur, jadi semua peran memakai model chat (' + cfg.model_p + ') · maks ' + cfg.maks
+          + ' putaran · uji jalan: mati. Atur tim model sendiri di halaman Agent.'
+        : cfg
         ? 'Model Agent: ' + cfg.model_p + ' / ' + cfg.model_e + (cfg.mode === 3 ? ' / ' + cfg.model_c : '') + ' · maks ' + cfg.maks
           + ' putaran · uji jalan: ' + (cfg.uji ? 'diizinkan' : 'mati')
           + (Object.keys(cfg.prompt_peran).length ? ' · prompt: ' + Object.keys(cfg.prompt_peran).join(', ') : '') + '. Ubah di halaman Agent.'
@@ -132,6 +135,7 @@
         if (!tugas) { galat.textContent = 'Brief tidak boleh kosong.'; galat.hidden = false; return; }
         kirim.disabled = true; galat.hidden = true;
         const body = Object.assign({id: opt.chatId(), tugas, jalur, muat_ulang: cekMuat.checked}, cfg);
+        delete body.cadangan;
         if (cekLanjut && cekLanjut.checked) body.lanjut = d.lanjut.run;
         try {
           const j = await json('/api/handoff/kirim', body);
@@ -249,9 +253,28 @@
       return k;
     }
 
+    /* ---------- Sesi AI Asisten: tawaran otomatis setelah model menjawab ---------- */
+    function tawarkan(d) {
+      if (st.ikuti || (st.kartu && st.kartu.isConnected)) return;   // Agent sedang bekerja, atau kartu lain sedang terbuka
+      const k = el('div', 'serah tawar');
+      k.appendChild(el('div', 'jud', '🤖 Kerjakan dengan tim Agent?'));
+      k.appendChild(el('div', 'redup kecil', 'Sepertinya ini tugas ' + (d.jalur_label ? '"' + d.jalur_label + '"' : 'membuat program')
+        + (d.alasan ? ' (' + d.alasan + ')' : '') + '. Tim Agent (Perencana, Pelaksana, Pemeriksa) bisa mengerjakannya; '
+        + 'kamu memeriksa brief-nya dulu, dan hasilnya kembali ke obrolan ini.'));
+      if (d.lanjut) k.appendChild(el('div', 'redup kecil', '↻ Bisa melanjutkan hasil Agent sebelumnya: ' + (d.lanjut.judul || d.lanjut.run)));
+      const aksi = el('div', 'aksi');
+      const ya = el('button', 'btn', 'Kerjakan dengan Agent'); ya.type = 'button';
+      const tidak = el('button', 'btn abu', 'Lanjut ngobrol'); tidak.type = 'button';
+      ya.onclick = () => { buangKartu(); mulai(); };
+      tidak.onclick = () => buangKartu();
+      aksi.append(ya, tidak); k.appendChild(aksi);
+      pasangKartu(k);
+    }
+
     tombol.onclick = mulai;
     return {
-      mulai, pulihkan, kartuHasil, unduh,
+      mulai, pulihkan, kartuHasil, unduh, tawarkan,
+      tutupTawaran: () => { if (st.kartu && (' ' + st.kartu.className + ' ').includes(' tawar ')) buangKartu(); },
       tampilkan: v => { tombol.hidden = !v; },
       aktif: () => st.ikuti,
     };
